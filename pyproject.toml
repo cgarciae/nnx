@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "nnx"
+version = "0.0.0"
+description = ""
+authors = ["Cristian Garcia <cgarcia.e88@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+refx = { path = "../refx", develop = true }
+
+
+[tool.poetry.group.test.dependencies]
+pytest = "^7.2.2"
+pytest-cov = "^4.0.0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
