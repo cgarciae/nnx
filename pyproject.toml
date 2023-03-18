@@ -18,6 +18,10 @@ pytest-cov = "^4.0.0"
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"
 
+[tool.poetry.group.examples.dependencies]
+matplotlib = "^3.7.1"
+ciclo = { path = "../ciclo", develop = true }
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

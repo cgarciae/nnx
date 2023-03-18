@@ -2,6 +2,8 @@ import dataclasses
 import refx
 import typing as tp
 
+from nnx.ref_field import ref_field
+
 A = tp.TypeVar("A")
 
 
@@ -33,7 +35,7 @@ def param(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return refx.ref_field(
+    return ref_field(
         default=default,
         ref_type=Param,
         default_factory=default_factory,
@@ -55,7 +57,7 @@ def batch_stat(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return refx.ref_field(
+    return ref_field(
         default=default,
         ref_type=BatchStat,
         default_factory=default_factory,
