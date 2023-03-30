@@ -1,46 +1,40 @@
 import functools
-from typing import (
-    Any,
-    Callable,
-    Hashable,
-    Iterable,
-    Literal,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    overload,
-)
+import typing as tp
 import jax
 import jax.stages
 import refx
 from jax._src.interpreters import pxla
 
-from nnx.refs import Param
+from nnx.ref_fields import Param
 
-A = TypeVar("A")
-F = TypeVar("F", bound=Callable[..., Any])
-AxisName = Hashable
-TypeOrSeqType = Union[Type[refx.Ref[Any]], Sequence[Type[refx.Ref[Any]]]]
+A = tp.TypeVar("A")
+F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
+AxisName = tp.Hashable
+TypeOrSeqType = tp.Union[
+    tp.Type[refx.Ref[tp.Any]], tp.Sequence[tp.Type[refx.Ref[tp.Any]]]
+]
+Leaf = tp.Any
+Leaves = tp.List[Leaf]
 
 
 class RefJIT(jax.stages.Wrapped):
     def __init__(self, fun, **jit_kwargs):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(*args, **kwargs):
-            args, kwargs = refx.reref((args, kwargs))
-            out = fun(*args, **kwargs)
-            out = refx.deref(out)
-            return out
+        def jitted_fn(
+            dag: refx.Dag[A],
+            *args,
+            **kwargs,
+        ) -> refx.Dag[tp.Tuple[A, tp.Any]]:
+            pytree = dag.value
+            out = fun(pytree, *args, **kwargs)
+            return refx.Dag((pytree, out))
 
         self.jitted_fn = jitted_fn
 
-    def __call__(self, *args, **kwargs):
-        args, kwargs = refx.deref((args, kwargs))
-        out = self.jitted_fn(*args, **kwargs)
-        out = refx.reref(out)
+    def __call__(self, pytree, *args, **kwargs):
+        dag = self.jitted_fn(refx.Dag(pytree), *args, **kwargs)
+        pytree_out, out = dag.value
+        refx.update_from(pytree, pytree_out)
         return out
 
     def __repr__(self):
@@ -50,30 +44,18 @@ class RefJIT(jax.stages.Wrapped):
         return self.jitted_fn.lower(*args, **kwargs)
 
 
-def _update_decorator_fields(
-    decorator: Callable[..., Any], wrapped: Callable[..., Any]
-):
-    """Update the fields of a decorator to match the wrapped function."""
-    if hasattr(wrapped, "__signature__"):
-        decorator.__signature__ = wrapped.__signature__
-        # decorator.__call__.__signature__ = wrapped.__signature__
-    if hasattr(wrapped, "__name__"):
-        decorator.__name__ = wrapped.__name__
-        # decorator.__call__.__name__ = wrapped.__name__
-
-
 def jit(
-    fun: Callable[..., Any],
-    in_shardings: Any = pxla._UNSPECIFIED,
-    out_shardings: Any = pxla._UNSPECIFIED,
-    static_argnums: Union[int, Sequence[int], None] = None,
-    static_argnames: Union[str, Iterable[str], None] = None,
-    donate_argnums: Union[int, Sequence[int]] = (),
+    fun: tp.Callable[..., tp.Any],
+    in_shardings: tp.Any = pxla._UNSPECIFIED,
+    out_shardings: tp.Any = pxla._UNSPECIFIED,
+    static_argnums: tp.Union[int, tp.Sequence[int], None] = None,
+    static_argnames: tp.Union[str, tp.Iterable[str], None] = None,
+    donate_argnums: tp.Union[int, tp.Sequence[int]] = (),
     keep_unused: bool = False,
-    device: Optional[jax.Device] = None,
-    backend: Optional[str] = None,
+    device: tp.Optional[jax.Device] = None,
+    backend: tp.Optional[str] = None,
     inline: bool = False,
-    abstracted_axes: Optional[Any] = None,
+    abstracted_axes: tp.Optional[tp.Any] = None,
 ) -> jax.stages.Wrapped:
     """JIT compile a function, dereferencing and rereferencing Refs."""
     ref_jit = RefJIT(
@@ -97,7 +79,7 @@ def jit(
 class RefGrad:
     def __init__(
         self,
-        fun: Callable[..., Any],
+        fun: tp.Callable[..., tp.Any],
         type_predicate: TypeOrSeqType,
         **grad_kwargs,
     ):
@@ -131,42 +113,42 @@ class RefGrad:
 
 @overload
 def grad(
-    fun: Callable[..., Any],
+    fun: tp.Callable[..., tp.Any],
     type_predicate: TypeOrSeqType = Param,
     *,
     has_aux: Literal[False] = False,
-    argnums: Union[int, Sequence[int]] = 0,
+    argnums: tp.Union[int, tp.Sequence[int]] = 0,
     holomorphic: bool = False,
     allow_int: bool = False,
-    reduce_axes: Sequence[AxisName] = (),
-) -> Callable[..., Any]:
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., tp.Any]:
     ...
 
 
 @overload
 def grad(
-    fun: Callable[..., Any],
+    fun: tp.Callable[..., tp.Any],
     type_predicate: TypeOrSeqType = Param,
     *,
     has_aux: Literal[True],
-    argnums: Union[int, Sequence[int]] = 0,
+    argnums: tp.Union[int, tp.Sequence[int]] = 0,
     holomorphic: bool = False,
     allow_int: bool = False,
-    reduce_axes: Sequence[AxisName] = (),
-) -> Callable[..., Tuple[Any, Any]]:
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., Tuple[tp.Any, tp.Any]]:
     ...
 
 
 def grad(
-    fun: Callable[..., Any],
+    fun: tp.Callable[..., tp.Any],
     type_predicate: TypeOrSeqType = Param,
     *,
-    argnums: Union[int, Sequence[int]] = 0,
+    argnums: tp.Union[int, tp.Sequence[int]] = 0,
     has_aux: bool = False,
     holomorphic: bool = False,
     allow_int: bool = False,
-    reduce_axes: Sequence[AxisName] = (),
-) -> Callable[..., Union[Tuple[Any, Any], Any]]:
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., tp.Union[Tuple[tp.Any, tp.Any], tp.Any]]:
     ref_grad = RefGrad(
         fun,
         type_predicate,
