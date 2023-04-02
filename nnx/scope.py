@@ -8,7 +8,7 @@ import jax
 import jax.tree_util as jtu
 
 from refx import tracers
-from refx.rng_stream import RngStream
+from nnx.rng_stream import RngStream
 import refx
 
 KeyArray = jax.random.KeyArray
@@ -72,26 +72,18 @@ def current_scope() -> Scope:
     return _CONTEXT.scope_stack[-1]
 
 
-def set_scope(scope: Scope):
-    context = _CONTEXT
-    context.scope_stack.append(scope)
-
-
-def reset_scope():
-    context = _CONTEXT
-    context.scope_stack.pop()
-
-
 @contextlib.contextmanager
-def scope(
+def set_scope(
     rng_keys_or_scope: tp.Union[tp.Mapping[tp.Hashable, KeyArray], Scope],
-    **flags: tp.Hashable,
+    flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
 ):
     if isinstance(rng_keys_or_scope, Scope):
-        if flags:
+        if flags is not None:
             raise ValueError("Cannot set flags when passing a Scope")
         scope = rng_keys_or_scope
     else:
+        if flags is None:
+            flags = {}
         rng_streams = {k: RngStream(v) for k, v in rng_keys_or_scope.items()}
         scope = Scope(rng_streams, flags)
     context = _CONTEXT
@@ -100,6 +92,10 @@ def scope(
         yield
     finally:
         context.scope_stack.pop()
+
+
+def fork_scope(flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None):
+    return set_scope(current_scope().fork(), flags)
 
 
 def make_rng(collection: tp.Hashable) -> KeyArray:

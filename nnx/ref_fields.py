@@ -11,6 +11,39 @@ A = tp.TypeVar("A")
 # ----------------------------------------
 
 
+def reference(
+    default: tp.Any = dataclasses.MISSING,
+    *,
+    collection: str,
+    default_factory: tp.Any = dataclasses.MISSING,
+    init: bool = True,
+    repr: bool = True,
+    hash: tp.Optional[bool] = None,
+    compare: bool = True,
+    metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
+) -> tp.Any:
+    if metadata is None:
+        metadata = {}
+    else:
+        metadata = dict(metadata)
+
+    if hasattr(default, "pytree_node"):
+        raise ValueError("metadata already set containing 'pytree_node'")
+
+    metadata["pytree_node"] = True
+
+    return refx.RefField(
+        collection=collection,
+        default=default,
+        default_factory=default_factory,
+        init=init,
+        repr=repr,
+        hash=hash,
+        compare=compare,
+        metadata=metadata,
+    )
+
+
 def param(
     default: tp.Any = dataclasses.MISSING,
     *,
@@ -21,9 +54,9 @@ def param(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return refx.RefField(
-        key="params",
+    return reference(
         default=default,
+        collection="params",
         default_factory=default_factory,
         init=init,
         repr=repr,
@@ -43,9 +76,9 @@ def batch_stat(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return refx.RefField(
-        key="batch_stats",
+    return reference(
         default=default,
+        collection="batch_stats",
         default_factory=default_factory,
         init=init,
         repr=repr,

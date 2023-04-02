@@ -1,14 +1,13 @@
 import functools
 import typing as tp
-from attr import NOTHING
+
 import jax
 import jax.tree_util as jtu
-
-from jax._src.interpreters import pxla
-
 import refx
-from refx.partitioning import Partition, Predicate
 import refx.tracers
+import nnx
+from jax._src.interpreters import pxla
+from refx.partitioning import Partition, Predicate
 
 A = tp.TypeVar("A")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
@@ -130,13 +129,12 @@ class FilterGrad:
             reduce_axes=reduce_axes,
         )
         def grad_fn(diff: Partition, non_diff: Partition, treedef, *args):
-            # scope has been forked but was not traced
+            # scope has been forked but it was not traced
             # so we need to manually update it
-            refx.current_scope().unsafe_trace_update()
+            nnx.current_scope().unsafe_trace_update()
 
             diff_trace = refx.tracers.get_top_trace(diff)
-
-            with refx.scope(refx.current_scope().fork()), refx.tracers.refx_trace(
+            with nnx.set_scope(nnx.current_scope().fork()), refx.tracers.refx_trace(
                 diff_trace
             ):
                 diff, non_diff = refx.reref((diff, non_diff))
