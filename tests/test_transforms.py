@@ -43,6 +43,26 @@ class TestJIT:
         assert pytree[1].value == 2
         assert out == 1.0
 
+    def test_jit_stateless(self):
+        r1: refx.Ref[int] = refx.Ref(1)
+        pytree = (r1, r1)
+
+        @partial(nnx.jit, stateful=False)
+        def g(pytree):
+            r2, r3 = pytree
+            assert r2 is r3
+
+            r2.value = 2
+            assert r1 is not r2
+            assert r3.value == 2
+            return 1.0
+
+        out = g(pytree)
+
+        assert pytree[0].value == 1
+        assert pytree[1].value == 1
+        assert out == 1.0
+
 
 class TestGrad:
     def test_grad(self):
