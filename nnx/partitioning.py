@@ -1,10 +1,30 @@
 import dataclasses
 import typing as tp
+import jax
 
 import refx
 
 Predicate = tp.Callable[[tp.Any], bool]
 CollectionFilter = tp.Union[str, tp.Sequence[str], Predicate]
+LeafPredicate = tp.Callable[[tp.Any], bool]
+
+
+def tree_partition(
+    pytree,
+    *filters: CollectionFilter,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[tp.Tuple[refx.Partition, ...], jax.tree_util.PyTreeDef]:
+    predicates = (to_predicate(filter) for filter in filters)
+    return refx.tree_partition(pytree, *predicates, is_leaf=is_leaf)
+
+
+def get_partition(
+    pytree,
+    filter: CollectionFilter,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> refx.Partition:
+    predicate = to_predicate(filter)
+    return refx.get_partition(pytree, predicate, is_leaf=is_leaf)
 
 
 def to_predicate(collection_filter: CollectionFilter) -> Predicate:
@@ -16,6 +36,9 @@ def to_predicate(collection_filter: CollectionFilter) -> Predicate:
         return collection_filter
     else:
         raise TypeError(f"Invalid collection filter: {collection_filter}")
+
+
+merge_partitions = refx.merge_partitions
 
 
 @dataclasses.dataclass

@@ -15,12 +15,16 @@ from .scope_lib import (
     get_flag,
 )
 
+from .module import Module, ModuleDef
+
 
 __all__ = [
     "batch_stat",
     "param",
     "GradTransform",
     "JitTransform",
+    "Module",
+    "ModuleDef",
     "grad",
     "jit",
     "dagify",

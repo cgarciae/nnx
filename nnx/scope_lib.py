@@ -18,7 +18,7 @@ class Scope:
 
     def __init__(
         self,
-        rng_streams: tp.Mapping[tp.Hashable, RngStream],
+        rng_streams: tp.Mapping[str, RngStream],
         flags: tp.Mapping[str, tp.Hashable],
     ):
         self._rng_streams = MappingProxyType(rng_streams)
@@ -28,8 +28,15 @@ class Scope:
     def empty(cls) -> "Scope":
         return Scope({}, {})
 
+    @classmethod
+    def from_keys_and_flags(
+        cls, keys: tp.Mapping[str, KeyArray], flags: tp.Mapping[str, tp.Hashable]
+    ) -> "Scope":
+        rng_streams = {k: RngStream(v) for k, v in keys.items()}
+        return Scope(rng_streams, flags)
+
     @property
-    def rng_streams(self) -> tp.Mapping[tp.Hashable, RngStream]:
+    def rng_streams(self) -> tp.Mapping[str, RngStream]:
         return self._rng_streams
 
     @property
@@ -88,7 +95,7 @@ def scope(
 
 @contextlib.contextmanager
 def scope(
-    rngs_or_scope: tp.Union[tp.Mapping[tp.Hashable, KeyArray], Scope],
+    rngs_or_scope: tp.Union[tp.Mapping[str, KeyArray], Scope],
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
 ):
     if isinstance(rngs_or_scope, Scope):
@@ -98,9 +105,7 @@ def scope(
     else:
         if flags is None:
             raise ValueError("Must set flags when passing a mapping of rng keys")
-
-        rng_streams = {k: RngStream(v) for k, v in rngs_or_scope.items()}
-        scope = Scope(rng_streams, flags)
+        scope = Scope.from_keys_and_flags(rngs_or_scope, flags)
     context = _CONTEXT
     context.scope_stack.append(scope)
     try:

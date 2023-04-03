@@ -138,7 +138,7 @@ class GradTransform:
         self.has_aux = has_aux
 
     def __call__(self, pytree, *args):
-        (diff, nondiff), treedef = refx.partition_tree(pytree, self.predicate)
+        (diff, nondiff), treedef = refx.tree_partition(pytree, self.predicate)
         diff, nondiff = refx.deref((diff, nondiff))
         grads = self.grad_fn(diff, nondiff, treedef, *args)
 
