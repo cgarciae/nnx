@@ -6,10 +6,10 @@ from .transforms import GradTransform, JitTransform, grad, jit
 from .filters import dagify
 from .rng_stream import RngStream
 
-from .scope import (
+from .scope_lib import (
     Scope,
     fork_scope,
-    set_scope,
+    scope,
     current_scope,
     make_rng,
     get_flag,
@@ -24,13 +24,11 @@ __all__ = [
     "grad",
     "jit",
     "dagify",
-    "filter_jit",
-    "filter_grad",
     "RngStream",
     "Scope",
-    "set_scope",
+    "scope",
     "current_scope",
-    "set_scope",
+    "scope",
     "make_rng",
     "get_flag",
     "fork_scope",

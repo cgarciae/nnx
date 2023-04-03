@@ -71,19 +71,35 @@ def current_scope() -> Scope:
     return _CONTEXT.scope_stack[-1]
 
 
+@tp.overload
+def scope(
+    rngs_or_scope: tp.Mapping[tp.Hashable, KeyArray],
+    flags: tp.Mapping[str, tp.Hashable],
+) -> tp.ContextManager[None]:
+    ...
+
+
+@tp.overload
+def scope(
+    rngs_or_scope: Scope,
+) -> tp.ContextManager[None]:
+    ...
+
+
 @contextlib.contextmanager
-def set_scope(
-    rng_keys_or_scope: tp.Union[tp.Mapping[tp.Hashable, KeyArray], Scope],
+def scope(
+    rngs_or_scope: tp.Union[tp.Mapping[tp.Hashable, KeyArray], Scope],
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
 ):
-    if isinstance(rng_keys_or_scope, Scope):
+    if isinstance(rngs_or_scope, Scope):
         if flags is not None:
             raise ValueError("Cannot set flags when passing a Scope")
-        scope = rng_keys_or_scope
+        scope = rngs_or_scope
     else:
         if flags is None:
-            flags = {}
-        rng_streams = {k: RngStream(v) for k, v in rng_keys_or_scope.items()}
+            raise ValueError("Must set flags when passing a mapping of rng keys")
+
+        rng_streams = {k: RngStream(v) for k, v in rngs_or_scope.items()}
         scope = Scope(rng_streams, flags)
     context = _CONTEXT
     context.scope_stack.append(scope)
@@ -93,16 +109,14 @@ def set_scope(
         context.scope_stack.pop()
 
 
-def fork_scope(flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None):
-    return set_scope(current_scope().fork(), flags)
+def fork_scope():
+    return scope(current_scope().fork())
 
 
 def make_rng(collection: tp.Hashable) -> KeyArray:
     scope = current_scope()
-
     if collection not in scope.rng_streams:
         raise ValueError(f"Unknown collection: {collection}")
-
     return scope.rng_streams[collection].next()
 
 

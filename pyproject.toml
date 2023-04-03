@@ -25,3 +25,11 @@ ciclo = { path = "../ciclo", develop = true }
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "@overload",
+    "@tp.overload",
+    "@abstractmethod",
+]

@@ -27,7 +27,7 @@ def fork_scope_and_update_refx_trace(
 ):
     if scope is None:
         scope = nnx.current_scope()
-    with nnx.set_scope(scope.fork()), refx.tracers.refx_trace(refx_trace):
+    with nnx.scope(scope.fork()), refx.tracers.refx_trace(refx_trace):
         nnx.current_scope().unsafe_trace_update()
         yield
 
@@ -52,7 +52,8 @@ class JitTransform(jax.stages.Wrapped):
         self.jitted_fn = jitted_fn
         self.stateful = stateful
 
-    def __call__(self, pytree_in, *args, **kwargs):
+    def __call__(self, pytree, *args, **kwargs):
+        pytree_in = pytree
         pytree, args, kwargs = refx.deref((pytree_in, args, kwargs))
         scope = nnx.current_scope().fork()
         out = self.jitted_fn(pytree, scope, *args, **kwargs)
