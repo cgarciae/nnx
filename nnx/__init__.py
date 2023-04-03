@@ -3,7 +3,7 @@ __version__ = "0.0.0"
 from .ref_fields import batch_stat, param
 from .transforms import GradTransform, JitTransform, grad, jit
 
-from .filters import dagify, filter_jit, filter_grad
+from .filters import dagify
 from .rng_stream import RngStream
 
 from .scope import (

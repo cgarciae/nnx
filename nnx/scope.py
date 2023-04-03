@@ -9,7 +9,6 @@ import jax.tree_util as jtu
 
 from refx import tracers
 from nnx.rng_stream import RngStream
-import refx
 
 KeyArray = jax.random.KeyArray
 
@@ -51,8 +50,8 @@ def _scope_flatten_with_keys(scope: Scope):
     return ((jtu.GetAttrKey("rng_streams"), scope._rng_streams.copy()),), scope._flags
 
 
-def _scope_unflatten(flags, rng_streams):
-    return Scope(rng_streams, flags)
+def _scope_unflatten(flags, children):
+    return Scope(children[0], flags)
 
 
 jtu.register_pytree_with_keys(Scope, _scope_flatten_with_keys, _scope_unflatten)

@@ -22,7 +22,9 @@ Leaves = tp.List[Leaf]
 
 
 @contextlib.contextmanager
-def fork_scope_and_update_refx_trace(refx_trace, scope: tp.Optional[nnx.Scope] = None):
+def fork_scope_and_update_refx_trace(
+    refx_trace, scope: tp.Optional["nnx.Scope"] = None
+):
     if scope is None:
         scope = nnx.current_scope()
     with nnx.set_scope(scope.fork()), refx.tracers.refx_trace(refx_trace):
@@ -43,18 +45,18 @@ class JitTransform(jax.stages.Wrapped):
             with fork_scope_and_update_refx_trace(top_trace, scope):
                 pytree, args, kwargs = refx.reref((pytree, args, kwargs))
                 out = fun(pytree, *args, **kwargs)
-            return refx.deref((pytree, out))
+                return refx.deref((pytree, out))
 
         self.jitted_fn = jitted_fn
         self.stateful = stateful
 
-    def __call__(self, pytree, *args, **kwargs):
-        pytree, args, kwargs = refx.deref((pytree, args, kwargs))
+    def __call__(self, pytree_in, *args, **kwargs):
+        pytree, args, kwargs = refx.deref((pytree_in, args, kwargs))
         scope = nnx.current_scope().fork()
         out = self.jitted_fn(pytree, scope, *args, **kwargs)
         pytree_out, out = refx.reref(out)
         if self.stateful:
-            refx.update_from(pytree, pytree_out)
+            refx.update_from(pytree_in, pytree_out)
         return out
 
     def __repr__(self):
@@ -149,17 +151,17 @@ class GradTransform:
 
 def grad(
     fun: tp.Callable[..., tp.Any],
-    collection_filter: partitioning.CollectionFilter = "params",
+    wrt: partitioning.CollectionFilter = "params",
     *,
     has_aux: bool = False,
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
 ) -> tp.Callable[..., tp.Union[tp.Tuple[Partition, tp.Any], Partition]]:
-    predicate = partitioning.to_predicate(collection_filter)
+    predicate = partitioning.to_predicate(wrt)
     ref_grad = GradTransform(
         fun,
-        predicate,
+        predicate=predicate,
         has_aux=has_aux,
         holomorphic=holomorphic,
         allow_int=allow_int,

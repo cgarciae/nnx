@@ -2,7 +2,8 @@ import jax
 import numpy as np
 import pytest
 import refx
-from refx.rng_stream import _stable_hash
+import nnx
+from nnx.rng_stream import _stable_hash
 
 
 class TestRngStream:
@@ -12,7 +13,7 @@ class TestRngStream:
 
     def test_rng_stream(self):
         key0 = jax.random.PRNGKey(0)
-        rng = refx.RngStream(key0)
+        rng = nnx.RngStream(key0)
         assert rng.count == 0
 
         key1 = rng.next()
@@ -27,7 +28,7 @@ class TestRngStream:
 
     def test_rng_fork(self):
         key0 = jax.random.PRNGKey(0)
-        rng = refx.RngStream(key0)
+        rng = nnx.RngStream(key0)
 
         rng1 = rng.fork()
         assert rng1.count == 0
@@ -40,7 +41,7 @@ class TestRngStream:
 
     def test_rng_is_pytree(self):
         key0 = jax.random.PRNGKey(0)
-        rng = refx.RngStream(key0).fork()
+        rng = nnx.RngStream(key0).fork()
 
         rng1 = jax.tree_util.tree_map(lambda x: x, rng)
 
@@ -50,7 +51,7 @@ class TestRngStream:
 
     def test_rng_trace_level_constraints(self):
         key0 = jax.random.PRNGKey(0)
-        rng = refx.RngStream(key0)
+        rng = nnx.RngStream(key0)
 
         @jax.jit
         def f():
@@ -64,7 +65,7 @@ class TestRngStream:
         @jax.jit
         def g():
             nonlocal rng1
-            rng1 = refx.RngStream(jax.random.PRNGKey(1))
+            rng1 = nnx.RngStream(jax.random.PRNGKey(1))
 
         g()
 
