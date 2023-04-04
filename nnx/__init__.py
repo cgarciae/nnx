@@ -34,7 +34,7 @@ __all__ = [
     "make_rng",
     "get_flag",
     "fork_scope",
-    "ref_field",
+    "reference",
     "static_field",
     "field",
 ]
