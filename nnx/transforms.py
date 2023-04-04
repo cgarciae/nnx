@@ -72,6 +72,7 @@ class JitTransform(jax.stages.Wrapped):
 
 def jit(
     fun: tp.Callable[..., tp.Any],
+    *,
     stateful: bool = True,
     in_shardings: tp.Any = pxla._UNSPECIFIED,
     out_shardings: tp.Any = pxla._UNSPECIFIED,
@@ -108,6 +109,7 @@ class GradTransform:
     def __init__(
         self,
         fun: tp.Callable[..., tp.Any],
+        stateful: bool,
         predicate: partitioning.Predicate,
         has_aux: bool,
         holomorphic: bool,
@@ -117,7 +119,7 @@ class GradTransform:
         @functools.partial(
             jax.grad,
             argnums=0,  # we'll handle this ourselves
-            has_aux=has_aux,
+            has_aux=has_aux or stateful,
             holomorphic=holomorphic,
             allow_int=allow_int,
             reduce_axes=reduce_axes,
@@ -130,22 +132,37 @@ class GradTransform:
                 pytree = refx.merge_partitions((diff, non_diff), treedef)
                 out = fun(pytree, *args)
 
-            out = refx.deref(out)
-            return out
+                if self.has_aux and self.stateful:
+                    loss, aux = out
+                    out = (loss, (pytree, aux))
+                elif self.stateful:
+                    out = (out, pytree)
+
+                out = refx.deref(out)
+                return out
 
         self.grad_fn = grad_fn
         self.predicate = predicate
         self.has_aux = has_aux
+        self.stateful = stateful
 
     def __call__(self, pytree, *args):
+        pytree_in = pytree
+        pytree = refx.deref(pytree)
         (diff, nondiff), treedef = refx.tree_partition(pytree, self.predicate)
-        diff, nondiff = refx.deref((diff, nondiff))
+        # diff, nondiff = refx.deref((diff, nondiff))
         grads = self.grad_fn(diff, nondiff, treedef, *args)
 
-        if self.has_aux:
-            grad, aux = grads
-            aux = refx.reref(aux)
+        if self.has_aux and self.stateful:
+            grad, (pytree_out, aux) = grads
+            pytree_out, aux = refx.reref((pytree_out, aux))
+            refx.update_from(pytree_in, pytree_out)
             return grad, aux
+        elif self.stateful:
+            grad, pytree_out = grads
+            pytree_out = refx.reref(pytree_out)
+            refx.update_from(pytree_in, pytree_out)
+            return grad
         else:
             return grads
 
@@ -157,6 +174,7 @@ def grad(
     fun: tp.Callable[..., tp.Any],
     wrt: partitioning.CollectionFilter = "params",
     *,
+    stateful: bool = True,
     has_aux: bool = False,
     holomorphic: bool = False,
     allow_int: bool = False,
@@ -165,6 +183,7 @@ def grad(
     predicate = partitioning.to_predicate(wrt)
     ref_grad = GradTransform(
         fun,
+        stateful=stateful,
         predicate=predicate,
         has_aux=has_aux,
         holomorphic=holomorphic,

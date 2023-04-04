@@ -12,9 +12,9 @@ A = tp.TypeVar("A")
 
 
 def reference(
+    collection: str,
     default: tp.Any = dataclasses.MISSING,
     *,
-    collection: str,
     default_factory: tp.Any = dataclasses.MISSING,
     init: bool = True,
     repr: bool = True,
@@ -55,8 +55,8 @@ def param(
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
     return reference(
+        "params",
         default=default,
-        collection="params",
         default_factory=default_factory,
         init=init,
         repr=repr,
@@ -77,8 +77,8 @@ def batch_stat(
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
     return reference(
+        "batch_stats",
         default=default,
-        collection="batch_stats",
         default_factory=default_factory,
         init=init,
         repr=repr,

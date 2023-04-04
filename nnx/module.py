@@ -65,14 +65,18 @@ class Module(Pytree):
     @classmethod
     def init(
         cls: tp.Type[M],
+        rngs: tp.Union[
+            tp.Dict[str, jax.random.KeyArray], jax.random.KeyArray, None
+        ] = None,
         *,
-        rngs: tp.Optional[tp.Dict[str, jax.random.KeyArray]] = None,
         flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
     ) -> tp.Type[M]:
         if flags is None:
             flags = {}
         if rngs is None:
             rngs = {}
+        elif isinstance(rngs, jax.Array):
+            rngs = {"params": rngs}
 
         scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
         return ScopeContextCaller(scope, cls)  # type: ignore

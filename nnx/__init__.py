@@ -1,22 +1,20 @@
 __version__ = "0.0.0"
 
-from .ref_fields import batch_stat, param
-from .transforms import GradTransform, JitTransform, grad, jit
+from simple_pytree import static_field, field
 
 from .filters import dagify
+from .module import Module, ModuleDef
+from .ref_fields import reference, batch_stat, param
 from .rng_stream import RngStream
-
 from .scope_lib import (
     Scope,
-    fork_scope,
-    scope,
     current_scope,
-    make_rng,
+    fork_scope,
     get_flag,
+    make_rng,
+    scope,
 )
-
-from .module import Module, ModuleDef
-
+from .transforms import GradTransform, JitTransform, grad, jit
 
 __all__ = [
     "batch_stat",
@@ -36,4 +34,7 @@ __all__ = [
     "make_rng",
     "get_flag",
     "fork_scope",
+    "ref_field",
+    "static_field",
+    "field",
 ]

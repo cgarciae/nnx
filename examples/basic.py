@@ -1,13 +1,11 @@
 # %%
-import ciclo
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-import simple_pytree as spt
+from jax.nn import initializers
 
 import nnx
-import refx
 
 X = np.linspace(0, 1, 100)[:, None]
 Y = 0.8 * X + 0.1 + np.random.normal(0, 0.1, size=X.shape)
@@ -19,13 +17,25 @@ def dataset(batch_size):
         yield X[idx], Y[idx]
 
 
-class LinearClassifier(spt.Pytree):
-    def __init__(self, din: int, dout: int, *, key: jax.random.KeyArray):
-        self.w = nnx.Param(jax.nn.initializers.kaiming_normal()(key, (dout, din)))
-        self.b = nnx.Param(jnp.zeros((dout,)))
+class LinearClassifier(nnx.Module):
+    w: jax.Array = nnx.param()
+    b: jax.Array = nnx.param()
+    count: jax.Array = nnx.reference("state")
+
+    def __init__(
+        self,
+        din: int,
+        dout: int,
+        kernel_init: initializers.Initializer = initializers.kaiming_normal(),
+    ):
+        w_key = nnx.make_rng("params")
+        self.w = kernel_init(w_key, (dout, din))
+        self.b = jnp.zeros((dout,))
+        self.count = jnp.array(0)
 
     def __call__(self, x):
-        return jnp.dot(x, self.w.value) + self.b.value
+        self.count += 1
+        return jnp.dot(x, self.w) + self.b
 
 
 def mse(y, y_pred):
@@ -45,45 +55,37 @@ def train_step(model: LinearClassifier, batch):
     grad = grad_fn(model)
 
     # sdg
-    params = refx.get_partition(refx.deref(model), nnx.Param)
-    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
-    refx.update_partition(model, params, nnx.Param)
+    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
 
-    logs = ciclo.logs()
-    logs.add_metric("loss", loss)
-
-    return logs, model
+    return {"loss": loss}
 
 
 @nnx.jit
 def test_step(model: LinearClassifier, batch):
-    y_pred = model(X)
-    loss = mse(Y, y_pred)
+    x, y = batch
+    y_pred = model(x)
+    loss = mse(y, y_pred)
 
-    logs = ciclo.logs()
-    logs.add_metric("mse", loss)
-
-    return logs
+    return {"loss": loss}
 
 
 total_steps = 10_000
 
-model = LinearClassifier(din=1, dout=1, key=jax.random.PRNGKey(0))
-model, history, elapsed = ciclo.loop(
-    state=model,
-    dataset=dataset(batch_size=32),
-    tasks={
-        ciclo.every(100): [test_step],
-        ciclo.every(1): [
-            train_step,
-            ciclo.keras_bar(total=total_steps),
-        ],
-    },
-    stop=total_steps,
-)
+model = LinearClassifier.init(jax.random.PRNGKey(0))(din=1, dout=1)
 
+for step, batch in enumerate(dataset(32)):
+    train_step(model, batch)
+
+    if step % 100 == 0:
+        logs = test_step(model, (X, Y))
+        print(f"step: {step}, loss: {logs['loss']}")
+
+    if step >= total_steps:
+        break
 
 y_pred = model(X)
+
+print("step:", model.count)
 
 plt.scatter(X, Y, color="blue")
 plt.plot(X, y_pred, color="black")
