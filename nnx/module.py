@@ -68,7 +68,7 @@ class Module(Pytree):
 
     def partition(
         self: M,
-        *extract_colelctions: str,
+        *extract_collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[
         tp.Union[tp.Dict[str, refx.Partition], tp.Tuple[refx.Partition, ...]],
@@ -83,19 +83,19 @@ class Module(Pytree):
         if all(x is refx.NOTHING for x in partitions[-1].values()):
             partitions = partitions[:-1]
         else:
-            # add "rest" as a unexistant collection name reserved for the rest of the tree
+            # add "rest" as a reserved name for the rest of the tree
             collections.append("rest")
 
         partitions = dict(zip(collections, partitions))
 
-        if extract_colelctions:
-            if set(extract_colelctions) != set(collections):
+        if extract_collections:
+            if set(extract_collections) != set(collections):
                 raise ValueError(
                     f"extract_colelctions contain all collections: "
-                    f"{extract_colelctions} != {collections}"
+                    f"{extract_collections} != {collections}"
                 )
 
-            partitions = tuple(partitions[x] for x in extract_colelctions)
+            partitions = tuple(partitions[x] for x in extract_collections)
 
         return partitions, moduledef
 
