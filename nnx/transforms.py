@@ -43,21 +43,20 @@ class JitTransform(jax.stages.Wrapped):
         def jitted_fn(pytree, scope: nnx.Scope, *args, **kwargs):
             top_trace = refx.tracers.current_jax_trace()
             with fork_scope_and_update_refx_trace(top_trace, scope):
-                pytree, args, kwargs = refx.reref((pytree, args, kwargs))
+                pytree = refx.reref(pytree)
                 out = fun(pytree, *args, **kwargs)
                 if self.stateful:
-                    out = (pytree, out)
-                return refx.deref(out)
+                    out = (refx.deref(pytree), out)
+                return out
 
         self.jitted_fn = jitted_fn
         self.stateful = stateful
 
     def __call__(self, pytree, *args, **kwargs):
         pytree_in = pytree
-        pytree, args, kwargs = refx.deref((pytree_in, args, kwargs))
+        pytree = refx.deref(pytree_in)
         scope = nnx.current_scope().fork()
         out = self.jitted_fn(pytree, scope, *args, **kwargs)
-        out = refx.reref(out)
         if self.stateful:
             pytree_out, out = out
             refx.update_from(pytree_in, pytree_out)

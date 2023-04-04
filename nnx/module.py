@@ -10,19 +10,21 @@ import jax.tree_util as jtu
 M = tp.TypeVar("M", bound="Module")
 
 
+class _ProxyContext(tp.Protocol):
+    def __call__(self, __fn: tp.Callable[..., tp.Any], *args, **kwargs) -> tp.Any:
+        ...
+
+
 @dataclasses.dataclass
-class ScopeContextCaller:
-    _scope_context_scope: scope_lib.Scope
-    _scope_context_obj: tp.Any
+class CallableProxy:
+    _proxy_context: _ProxyContext
+    _proxy_callable: tp.Callable[..., tp.Any]
 
     def __call__(self, *args, **kwargs):
-        with scope_lib.scope(self._scope_context_scope):
-            return self._scope_context_obj(*args, **kwargs)
+        return self._proxy_context(self._proxy_callable, *args, **kwargs)
 
-    def __getattr__(self, name) -> "ScopeContextCaller":
-        return ScopeContextCaller(
-            self._scope_context_scope, getattr(self._scope_context_obj, name)
-        )
+    def __getattr__(self, name) -> "CallableProxy":
+        return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
 
 
 class Module(Pytree):
@@ -48,19 +50,54 @@ class Module(Pytree):
             if isinstance(x.collection, str)
         )
 
+    @tp.overload
     def partition(
-        self: M, is_leaf: tp.Optional[partitioning.LeafPredicate] = None
+        self: M,
+        *,
+        is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[tp.Dict[str, refx.Partition], "ModuleDef[M]"]:
+        ...
+
+    @tp.overload
+    def partition(
+        self: M,
+        *extract_colelctions: str,
+        is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
+    ) -> tp.Tuple[tp.Tuple[refx.Partition, ...], "ModuleDef[M]",]:
+        ...
+
+    def partition(
+        self: M,
+        *extract_colelctions: str,
+        is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
+    ) -> tp.Tuple[
+        tp.Union[tp.Dict[str, refx.Partition], tp.Tuple[refx.Partition, ...]],
+        "ModuleDef[M]",
+    ]:
         collections = list(self.collections())
         partitions, treedef = partitioning.tree_partition(
             self.deref(), *collections, is_leaf=is_leaf
         )
         moduledef = ModuleDef(treedef)
-        # add "rest" as a unexistant collection name reserved for the rest of the tree
-        # tree_partition will always return a partition for "rest"
-        collections.append("rest")
 
-        return dict(zip(collections, partitions)), moduledef
+        if all(x is refx.NOTHING for x in partitions[-1].values()):
+            partitions = partitions[:-1]
+        else:
+            # add "rest" as a unexistant collection name reserved for the rest of the tree
+            collections.append("rest")
+
+        partitions = dict(zip(collections, partitions))
+
+        if extract_colelctions:
+            if set(extract_colelctions) != set(collections):
+                raise ValueError(
+                    f"extract_colelctions contain all collections: "
+                    f"{extract_colelctions} != {collections}"
+                )
+
+            partitions = tuple(partitions[x] for x in extract_colelctions)
+
+        return partitions, moduledef
 
     @classmethod
     def init(
@@ -79,7 +116,12 @@ class Module(Pytree):
             rngs = {"params": rngs}
 
         scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
-        return ScopeContextCaller(scope, cls)  # type: ignore
+
+        def _context(fn, *args, **kwargs):
+            with scope_lib.scope(scope):
+                return fn(*args, **kwargs)
+
+        return CallableProxy(_context, cls)  # type: ignore
 
     def apply(
         self: M,
@@ -93,18 +135,65 @@ class Module(Pytree):
             rngs = {}
 
         scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
-        return ScopeContextCaller(scope, self)  # type: ignore
+
+        def _context(fn, *args, **kwargs):
+            with scope_lib.scope(scope):
+                return fn(*args, **kwargs)
+
+        return CallableProxy(_context, self)  # type: ignore
+
+
+class ApplyCaller(tp.Protocol):
+    def __getattr__(self, __name) -> "ApplyCaller":
+        ...
+
+    def __call__(
+        self, *args, **kwargs
+    ) -> tp.Tuple[tp.Any, tp.Dict[str, refx.Partition]]:
+        ...
 
 
 class ModuleDef(refx.Static[jtu.PyTreeDef], tp.Generic[M]):
     def apply(
         self,
-        partitions: tp.Dict[str, refx.Partition],
+        partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
         *,
         rngs: tp.Optional[tp.Dict[str, jax.random.KeyArray]] = None,
         flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
+    ) -> ApplyCaller:
+        if flags is None:
+            flags = {}
+        if rngs is None:
+            rngs = {}
+        if isinstance(partitions, dict):
+            partitions = tuple(partitions.values())
+        module: M = self.merge(partitions)
+        scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
+
+        def _context(fn, *args, **kwargs):
+            with scope_lib.scope(scope):
+                out = fn(*args, **kwargs)
+                partitions, _ = module.deref().partition()
+                return out, partitions
+
+        return CallableProxy(_context, module)  # type: ignore
+
+    def merge(
+        self,
+        partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
     ) -> M:
-        module: M = partitioning.merge_partitions(
-            tuple(partitions.values()), self.value
-        )
-        return module.apply(rngs=rngs, flags=flags)
+        if isinstance(partitions, dict):
+            partitions = tuple(partitions.values())
+        module: M = partitioning.merge_partitions(partitions, self.value)
+        return module.reref()
+
+
+def _moduledef_flatten(x: ModuleDef[M]) -> tp.Tuple[tp.Tuple[()], jtu.PyTreeDef]:
+    return (), x.value
+
+
+def _moduledef_unflatten(aux_data: jtu.PyTreeDef, _: tp.Tuple[()]) -> ModuleDef[M]:
+    return ModuleDef(aux_data)
+
+
+jtu.register_pytree_node(ModuleDef, _moduledef_flatten, _moduledef_unflatten)

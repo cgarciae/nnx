@@ -45,6 +45,8 @@ class TestModuleDef:
         assert "params" in partitions
         assert "rest" in partitions
 
-        y = moduledef.apply(partitions, rngs={"e": jax.random.PRNGKey(1)})(x=2.0)
+        y, partitions = moduledef.apply(partitions, rngs={"e": jax.random.PRNGKey(1)})(
+            x=2.0
+        )
 
         assert isinstance(y, jax.Array)
