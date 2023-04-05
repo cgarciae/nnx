@@ -2,7 +2,7 @@ __version__ = "0.0.0"
 
 from simple_pytree import static_field, field
 
-from .filters import dagify
+from .filters import dagify, jit_filter
 from .module import Module, ModuleDef
 from .ref_fields import reference, batch_stat, param
 from .rng_stream import RngStream
@@ -37,4 +37,5 @@ __all__ = [
     "reference",
     "static_field",
     "field",
+    "jit_filter",
 ]

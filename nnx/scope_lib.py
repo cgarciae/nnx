@@ -9,6 +9,7 @@ import jax.tree_util as jtu
 
 from refx import tracers
 from nnx.rng_stream import RngStream
+from nnx import utils
 
 KeyArray = jax.random.KeyArray
 
@@ -82,6 +83,8 @@ def current_scope() -> Scope:
 def scope(
     rngs_or_scope: tp.Mapping[tp.Hashable, KeyArray],
     flags: tp.Mapping[str, tp.Hashable],
+    *,
+    refx_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> tp.ContextManager[None]:
     ...
 
@@ -89,6 +92,8 @@ def scope(
 @tp.overload
 def scope(
     rngs_or_scope: Scope,
+    *,
+    refx_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> tp.ContextManager[None]:
     ...
 
@@ -97,6 +102,8 @@ def scope(
 def scope(
     rngs_or_scope: tp.Union[tp.Mapping[str, KeyArray], Scope],
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
+    *,
+    refx_trace: tp.Optional[tracers.MainTrace] = None,
 ):
     if isinstance(rngs_or_scope, Scope):
         if flags is not None:
@@ -106,12 +113,19 @@ def scope(
         if flags is None:
             raise ValueError("Must set flags when passing a mapping of rng keys")
         scope = Scope.from_keys_and_flags(rngs_or_scope, flags)
-    context = _CONTEXT
-    context.scope_stack.append(scope)
+    _CONTEXT.scope_stack.append(scope)
+
+    _contexts = []
+
+    if refx_trace is not None:
+        _contexts.append(tracers.refx_trace(refx_trace))
+
     try:
-        yield
+        with utils.contexts(*_contexts):
+            scope.unsafe_trace_update()
+            yield
     finally:
-        context.scope_stack.pop()
+        _CONTEXT.scope_stack.pop()
 
 
 def fork_scope():

@@ -1,4 +1,3 @@
-import contextlib
 import functools
 import typing as tp
 
@@ -10,7 +9,7 @@ from jax._src.interpreters import pxla
 from refx.partitioning import Partition
 
 import nnx
-from nnx import partitioning
+from nnx import partitioning, scope_lib
 
 A = tp.TypeVar("A")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
@@ -19,17 +18,6 @@ G = tp.TypeVar("G", bound=tp.Callable[..., tp.Any])
 AxisName = tp.Hashable
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
-
-
-@contextlib.contextmanager
-def fork_scope_and_update_refx_trace(
-    refx_trace, scope: tp.Optional["nnx.Scope"] = None
-):
-    if scope is None:
-        scope = nnx.current_scope()
-    with nnx.scope(scope.fork()), refx.tracers.refx_trace(refx_trace):
-        nnx.current_scope().unsafe_trace_update()
-        yield
 
 
 class JitTransform(jax.stages.Wrapped):
@@ -42,7 +30,7 @@ class JitTransform(jax.stages.Wrapped):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(pytree, scope: nnx.Scope, *args, **kwargs):
             top_trace = refx.tracers.current_jax_trace()
-            with fork_scope_and_update_refx_trace(top_trace, scope):
+            with scope_lib.scope(scope.fork(), refx_trace=top_trace):
                 pytree = refx.reref(pytree)
                 out = fun(pytree, *args, **kwargs)
                 if self.stateful:
@@ -55,7 +43,7 @@ class JitTransform(jax.stages.Wrapped):
     def __call__(self, pytree, *args, **kwargs):
         pytree_in = pytree
         pytree = refx.deref(pytree_in)
-        scope = nnx.current_scope().fork()
+        scope = nnx.current_scope()
         out = self.jitted_fn(pytree, scope, *args, **kwargs)
         if self.stateful:
             pytree_out, out = out
@@ -125,8 +113,8 @@ class GradTransform:
         )
         def grad_fn(diff: Partition, non_diff: Partition, treedef, *args):
             diff_trace = refx.tracers.get_top_trace(diff)
-
-            with fork_scope_and_update_refx_trace(diff_trace):
+            scope = scope_lib.current_scope()
+            with scope_lib.scope(scope.fork(), refx_trace=diff_trace):
                 diff, non_diff = refx.reref((diff, non_diff))
                 pytree = refx.merge_partitions((diff, non_diff), treedef)
                 out = fun(pytree, *args)
