@@ -36,7 +36,7 @@ class Linear(nnx.Module):
 
 
 class MLP(nnx.Module):
-    count: jax.Array = nnx.reference("state")
+    count: jax.Array = nnx.ref("state")
 
     def __init__(self, din, dhidden, dout):
         self.count = jnp.array(0)

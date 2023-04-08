@@ -4,7 +4,7 @@ from simple_pytree import static_field, field
 
 from .filters import dagify, jit_filter
 from .module import Module, ModuleDef
-from .ref_fields import reference, batch_stat, param
+from .ref_fields import ref, batch_stat, param
 from .rng_stream import RngStream
 from .scope_lib import (
     Scope,
@@ -34,7 +34,7 @@ __all__ = [
     "make_rng",
     "get_flag",
     "fork_scope",
-    "reference",
+    "ref",
     "static_field",
     "field",
     "jit_filter",
