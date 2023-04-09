@@ -34,6 +34,9 @@ class Module(Pytree):
     def reref(self: M) -> M:
         return refx.reref(self)
 
+    def make_rng(self, collection: str) -> jax.random.KeyArray:
+        return scope_lib.make_rng(collection)
+
     def __getitem__(self, filter: str) -> refx.Partition:
         return partitioning.get_partition(self.deref(), filter)
 

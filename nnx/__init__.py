@@ -1,10 +1,8 @@
 __version__ = "0.0.0"
 
-from simple_pytree import static_field, field
-
+from .fields import field, param, ref, static_field, dataclass
 from .filters import dagify, jit_filter
 from .module import Module, ModuleDef
-from .ref_fields import ref, batch_stat, param
 from .rng_stream import RngStream
 from .scope_lib import (
     Scope,
@@ -17,7 +15,7 @@ from .scope_lib import (
 from .transforms import GradTransform, JitTransform, grad, jit
 
 __all__ = [
-    "batch_stat",
+    "dataclass",
     "param",
     "GradTransform",
     "JitTransform",
