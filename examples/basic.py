@@ -27,7 +27,7 @@ class Linear(nnx.Module):
         dout: int,
         kernel_init: initializers.Initializer = initializers.kaiming_normal(),
     ):
-        w_key = nnx.make_rng("params")
+        w_key = self.make_rng("params")
         self.w = kernel_init(w_key, (din, dout))
         self.b = jnp.zeros((dout,))
 
@@ -79,7 +79,8 @@ def test_step(model: MLP, batch):
 
 total_steps = 10_000
 
-model = MLP.init(jax.random.PRNGKey(0))(din=1, dhidden=10, dout=1)
+with nnx.init(jax.random.PRNGKey(0)):
+    model = MLP(din=1, dhidden=32, dout=1)
 
 for step, batch in enumerate(dataset(32)):
     train_step(model, batch)

@@ -160,3 +160,49 @@ def get_flag(name: str) -> tp.Hashable:
     if name not in scope.flags:
         raise ValueError(f"Unknown flag: {name}")
     return scope.flags[name]
+
+
+def all_mutable(_):
+    return True
+
+
+def init(
+    rngs: tp.Union[KeyArray, tp.Dict[tp.Hashable, KeyArray], None] = None,
+    /,
+    *,
+    mutable: tp.Callable[[tp.Hashable], bool] = all_mutable,
+    flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
+    trace: tp.Optional[tracers.MainTrace] = None,
+) -> tp.ContextManager[None]:
+    if rngs is None:
+        rngs = {}
+    elif isinstance(rngs, jax.Array):
+        rngs = {"params": rngs}
+
+    if flags is None:
+        flags = {}
+
+    flags["initializing"] = True
+
+    return scope(rngs, flags=flags, trace=trace, mutable=mutable)
+
+
+def apply(
+    rngs: tp.Union[KeyArray, tp.Dict[tp.Hashable, KeyArray], None] = None,
+    /,
+    *,
+    mutable: tp.Callable[[tp.Hashable], bool] = all_mutable,
+    flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
+    trace: tp.Optional[tracers.MainTrace] = None,
+) -> tp.ContextManager[None]:
+    if rngs is None:
+        rngs = {}
+    elif isinstance(rngs, jax.Array):
+        rngs = {"dropout": rngs}
+
+    if flags is None:
+        flags = {}
+
+    flags["initializing"] = False
+
+    return scope(rngs, flags=flags, trace=trace, mutable=mutable)

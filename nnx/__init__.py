@@ -11,6 +11,8 @@ from .scope_lib import (
     get_flag,
     make_rng,
     scope,
+    init,
+    apply,
 )
 from .transforms import GradTransform, JitTransform, grad, jit
 
@@ -36,4 +38,6 @@ __all__ = [
     "static_field",
     "field",
     "jit_filter",
+    "init",
+    "apply",
 ]
