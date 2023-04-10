@@ -30,7 +30,7 @@ class JitTransform(jax.stages.Wrapped):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(pytree, scope: nnx.Scope, *args, **kwargs):
             top_trace = refx.tracers.current_jax_trace()
-            with scope_lib.scope(scope.fork(), refx_trace=top_trace):
+            with scope_lib.scope(scope.fork(), trace=top_trace):
                 pytree = refx.reref(pytree)
                 out = fun(pytree, *args, **kwargs)
                 if self.stateful:
@@ -114,7 +114,7 @@ class GradTransform:
         def grad_fn(diff: Partition, non_diff: Partition, treedef, *args):
             diff_trace = refx.tracers.get_top_trace(diff)
             scope = scope_lib.current_scope()
-            with scope_lib.scope(scope.fork(), refx_trace=diff_trace):
+            with scope_lib.scope(scope.fork(), trace=diff_trace):
                 diff, non_diff = refx.reref((diff, non_diff))
                 pytree = refx.merge_partitions((diff, non_diff), treedef)
                 out = fun(pytree, *args)

@@ -184,6 +184,6 @@ class TestGrad:
             # sum all params
             return pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value
 
-        with nnx.scope({"a": jax.random.PRNGKey(0)}, {}):
+        with nnx.scope({"a": jax.random.PRNGKey(0)}, flags={}):
             grad = f(pytree)
         assert isinstance(grad, dict)

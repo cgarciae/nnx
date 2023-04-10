@@ -6,10 +6,11 @@ from types import MappingProxyType
 
 import jax
 import jax.tree_util as jtu
-
+import refx
 from refx import tracers
-from nnx.rng_stream import RngStream
+
 from nnx import utils
+from nnx.rng_stream import RngStream
 
 KeyArray = jax.random.KeyArray
 
@@ -53,6 +54,9 @@ class Scope:
             rng_stream._jax_trace = tracers.current_jax_trace()
             rng_stream._refx_trace = tracers.current_refx_trace()
 
+    def copy(self) -> "Scope":
+        return Scope(self._rng_streams, self._flags)
+
 
 def _scope_flatten_with_keys(scope: Scope):
     return ((jtu.GetAttrKey("rng_streams"), scope._rng_streams.copy()),), scope._flags
@@ -81,44 +85,56 @@ def current_scope() -> Scope:
 
 @tp.overload
 def scope(
-    rngs_or_scope: tp.Mapping[tp.Hashable, KeyArray],
-    flags: tp.Mapping[str, tp.Hashable],
+    rngs: tp.Optional[tp.Mapping[tp.Hashable, KeyArray]] = None,
+    /,
     *,
-    refx_trace: tp.Optional[tracers.MainTrace] = None,
+    flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
+    trace: tp.Optional[tracers.MainTrace] = None,
+    mutable: tp.Optional[tp.Callable[[tp.Hashable], bool]] = None,
 ) -> tp.ContextManager[None]:
     ...
 
 
 @tp.overload
 def scope(
-    rngs_or_scope: Scope,
+    scope: Scope,
+    /,
     *,
-    refx_trace: tp.Optional[tracers.MainTrace] = None,
+    trace: tp.Optional[tracers.MainTrace] = None,
+    mutable: tp.Optional[tp.Callable[[tp.Hashable], bool]] = None,
 ) -> tp.ContextManager[None]:
     ...
 
 
 @contextlib.contextmanager
 def scope(
-    rngs_or_scope: tp.Union[tp.Mapping[str, KeyArray], Scope],
-    flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
+    rngs_or_scope: tp.Union[tp.Mapping[str, KeyArray], Scope, None] = None,
+    /,
     *,
-    refx_trace: tp.Optional[tracers.MainTrace] = None,
+    flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
+    trace: tp.Optional[tracers.MainTrace] = None,
+    mutable: tp.Optional[tp.Callable[[tp.Hashable], bool]] = None,
 ):
     if isinstance(rngs_or_scope, Scope):
         if flags is not None:
             raise ValueError("Cannot set flags when passing a Scope")
-        scope = rngs_or_scope
+        scope = rngs_or_scope.copy()
     else:
         if flags is None:
-            raise ValueError("Must set flags when passing a mapping of rng keys")
+            flags = current_scope().flags
+        if rngs_or_scope is None:
+            rngs_or_scope = current_scope().rng_streams
+
         scope = Scope.from_keys_and_flags(rngs_or_scope, flags)
     _CONTEXT.scope_stack.append(scope)
 
     _contexts = []
 
-    if refx_trace is not None:
-        _contexts.append(tracers.refx_trace(refx_trace))
+    if trace is not None:
+        _contexts.append(tracers.refx_trace(trace))
+
+    if mutable is not None:
+        _contexts.append(refx.mutable(mutable))
 
     try:
         with utils.contexts(*_contexts):

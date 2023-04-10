@@ -29,7 +29,7 @@ def dagify(decorator: A, **deco_kwargs) -> A:
         @functools.wraps(fun)
         def inner_wrapper(*args, **kwargs) -> tp.Any:
             trace = refx.tracers.get_top_trace((args, kwargs))
-            with scope_lib.scope(scope_lib.Scope.empty(), refx_trace=trace):
+            with scope_lib.scope(scope_lib.Scope.empty(), trace=trace):
                 args, kwargs = refx.reref((args, kwargs))
                 out = fun(*args, **kwargs)
                 out = refx.deref(out)
@@ -58,7 +58,7 @@ class JitTransform(jax.stages.Wrapped):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(*args, **kwargs):
             top_trace = refx.tracers.current_jax_trace()
-            with scope_lib.scope(scope_lib.Scope.empty(), refx_trace=top_trace):
+            with scope_lib.scope(scope_lib.Scope.empty(), trace=top_trace):
                 args, kwargs = refx.reref((args, kwargs))
                 out = fun(*args, **kwargs)
                 out = refx.deref(out)

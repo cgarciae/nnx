@@ -9,7 +9,7 @@ import nnx
 
 class TestScope:
     def test_make_rng(self):
-        with nnx.scope({"a": jax.random.PRNGKey(0)}, {}):
+        with nnx.scope({"a": jax.random.PRNGKey(0)}, flags={}):
             key1 = nnx.make_rng("a")
             assert isinstance(key1, jax.Array)
             key2 = nnx.make_rng("a")
@@ -22,7 +22,7 @@ class TestScope:
             nnx.make_rng("a")
 
     def test_flags(self):
-        with nnx.scope({}, {"b": 1}):
+        with nnx.scope(flags={"b": 1}):
             b = nnx.get_flag("b")
             assert b == 1
 
