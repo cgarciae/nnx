@@ -2,7 +2,7 @@ __version__ = "0.0.0"
 
 from .fields import field, param, ref, static_field, dataclass
 from .filters import dagify, jit_filter
-from .module import Module, ModuleDef
+from .nn.module import Module, ModuleDef
 from .rng_stream import RngStream
 from .scope_lib import (
     Scope,

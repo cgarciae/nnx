@@ -5,7 +5,7 @@ from jax import lax
 import jax.numpy as jnp
 import numpy as np
 
-from nnx.module import Module
+from nnx.nn.module import Module
 from nnx.nn import initializers
 from nnx import fields
 from nnx.nn import dtypes

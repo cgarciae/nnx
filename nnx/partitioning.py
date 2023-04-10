@@ -1,11 +1,15 @@
 import dataclasses
+import functools
 import typing as tp
 import jax
 
 import refx
 
 Predicate = tp.Callable[[tp.Any], bool]
-CollectionFilter = tp.Union[str, tp.Sequence[str], Predicate]
+CollectionPredicate = tp.Callable[[tp.Hashable], bool]
+CollectionFilter = tp.Union[
+    str, tp.Sequence[str], CollectionPredicate, tp.Sequence[CollectionPredicate]
+]
 LeafPredicate = tp.Callable[[tp.Any], bool]
 
 
@@ -27,11 +31,25 @@ def get_partition(
     return refx.get_partition(pytree, predicate, is_leaf=is_leaf)
 
 
-def to_predicate(collection_filter: CollectionFilter) -> Predicate:
+def filter_collection(
+    f: tp.Callable[[CollectionFilter], CollectionPredicate]
+) -> tp.Callable[[CollectionFilter], Predicate]:
+    @functools.wraps(f)
+    def wrapper(collection_filter: CollectionFilter) -> Predicate:
+        collection_predicate = f(collection_filter)
+        return lambda x: isinstance(x, refx.Referential) and collection_predicate(
+            x.collection
+        )
+
+    return wrapper
+
+
+@filter_collection
+def to_predicate(collection_filter: CollectionFilter) -> CollectionPredicate:
     if isinstance(collection_filter, str):
         return Is(collection_filter)
     elif isinstance(collection_filter, tp.Sequence):
-        return In(collection_filter)
+        return Any(collection_filter)
     elif callable(collection_filter):
         return collection_filter
     else:
@@ -45,19 +63,18 @@ merge_partitions = refx.merge_partitions
 class Is:
     collection: str
 
-    def __call__(self, x):
-        return isinstance(x, refx.Referential) and x.collection == self.collection
+    def __call__(self, collection):
+        return collection == self.collection
 
 
-@dataclasses.dataclass
-class In:
-    collections: tp.Sequence[str]
+class Any:
+    def __init__(self, collection_filters: tp.Sequence[CollectionFilter]):
+        self.predicates = tuple(
+            to_predicate(collection_filter) for collection_filter in collection_filters
+        )
 
-    def __post_init__(self):
-        self.collections = tuple(self.collections)
-
-    def __call__(self, x):
-        return isinstance(x, refx.Referential) and x.collection in self.collections
+    def __call__(self, collection):
+        return any(predicate(collection) for predicate in self.predicates)
 
 
 class Not:
