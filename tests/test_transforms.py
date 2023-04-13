@@ -84,6 +84,8 @@ class TestGrad:
         grad = f(pytree)
         assert isinstance(grad, dict)
 
+        refx.Value
+
         assert grad[("a", "0")].value == 2.0
         assert isinstance(grad[("a", "0")], refx.Value)
         assert grad[("a", "1")].value == 1.0

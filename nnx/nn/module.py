@@ -28,11 +28,11 @@ class CallableProxy:
 
 
 class Module(Pytree):
-    def deref(self: M) -> M:
+    def deref(self: M) -> tp.Tuple[M, refx.DagDef]:
         return refx.deref(self)
 
-    def reref(self: M) -> M:
-        return refx.reref(self)
+    def reref(self: M, dagdef: refx.DagDef) -> M:
+        return refx.reref(self, dagdef)
 
     def make_rng(self, collection: str) -> jax.random.KeyArray:
         return scope_lib.make_rng(collection)
@@ -78,10 +78,11 @@ class Module(Pytree):
         "ModuleDef[M]",
     ]:
         collections = list(self.collections())
+        module, dagdef = self.deref()
         partitions, treedef = partitioning.tree_partition(
-            self.deref(), *collections, is_leaf=is_leaf
+            module, *collections, is_leaf=is_leaf
         )
-        moduledef = ModuleDef(treedef)
+        moduledef = ModuleDef(dagdef, treedef)
 
         if all(x is refx.NOTHING for x in partitions[-1].values()):
             partitions = partitions[:-1]
@@ -156,7 +157,26 @@ class ApplyCaller(tp.Protocol):
         ...
 
 
-class ModuleDef(refx.Static[jtu.PyTreeDef], tp.Generic[M]):
+class ModuleDefValue(tp.NamedTuple):
+    reref_dagdef: refx.DagDef
+    partition_treedef: jtu.PyTreeDef
+
+
+class ModuleDef(tp.Generic[M]):
+    __slots__ = ("_reref_dagdef", "_partition_treedef")
+
+    def __init__(self, reref_dagdef: refx.DagDef, partition_treedef: jtu.PyTreeDef):
+        self._reref_dagdef = reref_dagdef
+        self._partition_treedef = partition_treedef
+
+    @property
+    def reref_dagdef(self) -> refx.DagDef:
+        return self._reref_dagdef
+
+    @property
+    def partition_treedef(self) -> jtu.PyTreeDef:
+        return self._partition_treedef
+
     def apply(
         self,
         partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
@@ -176,7 +196,7 @@ class ModuleDef(refx.Static[jtu.PyTreeDef], tp.Generic[M]):
         def _context(fn, *args, **kwargs):
             with scope_lib.scope(scope):
                 out = fn(*args, **kwargs)
-                partitions, _ = module.deref().partition()
+                partitions, _ = module.partition()
                 return out, partitions
 
         return CallableProxy(_context, module)  # type: ignore
@@ -187,16 +207,20 @@ class ModuleDef(refx.Static[jtu.PyTreeDef], tp.Generic[M]):
     ) -> M:
         if isinstance(partitions, dict):
             partitions = tuple(partitions.values())
-        module: M = partitioning.merge_partitions(partitions, self.value)
-        return module.reref()
+        module: M = partitioning.merge_partitions(partitions, self.partition_treedef)
+        return module.reref(self.reref_dagdef)
 
 
-def _moduledef_flatten(x: ModuleDef[M]) -> tp.Tuple[tp.Tuple[()], jtu.PyTreeDef]:
-    return (), x.value
+def _moduledef_flatten(
+    x: ModuleDef[M],
+) -> tp.Tuple[tp.Tuple[()], tp.Tuple[refx.DagDef, jtu.PyTreeDef]]:
+    return (), (x.reref_dagdef, x.partition_treedef)
 
 
-def _moduledef_unflatten(aux_data: jtu.PyTreeDef, _: tp.Tuple[()]) -> ModuleDef[M]:
-    return ModuleDef(aux_data)
+def _moduledef_unflatten(
+    aux_data: tp.Tuple[refx.DagDef, jtu.PyTreeDef], _: tp.Tuple[()]
+) -> ModuleDef[M]:
+    return ModuleDef(*aux_data)
 
 
 jtu.register_pytree_node(ModuleDef, _moduledef_flatten, _moduledef_unflatten)

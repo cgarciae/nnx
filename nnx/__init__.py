@@ -1,7 +1,7 @@
 __version__ = "0.0.0"
 
 from .fields import field, param, ref, static_field, dataclass
-from .filters import dagify, jit_filter
+from .filters import jit_filter
 from .nn.module import Module, ModuleDef
 from .rng_stream import RngStream
 from .scope_lib import (
@@ -25,7 +25,7 @@ __all__ = [
     "ModuleDef",
     "grad",
     "jit",
-    "dagify",
+    # "dagify",
     "RngStream",
     "Scope",
     "scope",

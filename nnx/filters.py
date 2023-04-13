@@ -19,34 +19,34 @@ Leaf = tp.Any
 Leaves = tp.List[Leaf]
 
 
-def dagify(decorator: A, **deco_kwargs) -> A:
-    """Wraps a decorator to make it compatible with refx."""
+# def dagify(decorator: A, **deco_kwargs) -> A:
+#     """Wraps a decorator to make it compatible with refx."""
 
-    @functools.wraps(decorator)
-    def decorator_wrapper(fun: F) -> F:
-        """"""
+#     @functools.wraps(decorator)
+#     def decorator_wrapper(fun: F) -> F:
+#         """"""
 
-        @functools.wraps(fun)
-        def inner_wrapper(*args, **kwargs) -> tp.Any:
-            trace = refx.tracers.get_top_trace((args, kwargs))
-            with scope_lib.scope(scope_lib.Scope.empty(), trace=trace):
-                args, kwargs = refx.reref((args, kwargs))
-                out = fun(*args, **kwargs)
-                out = refx.deref(out)
-            return out
+#         @functools.wraps(fun)
+#         def inner_wrapper(*args, **kwargs) -> tp.Any:
+#             trace = refx.tracers.get_top_trace((args, kwargs))
+#             with scope_lib.scope(scope_lib.Scope.empty(), trace=trace):
+#                 args, kwargs = refx.reref((args, kwargs))
+#                 out = fun(*args, **kwargs)
+#                 out = refx.deref(out)
+#             return out
 
-        decorated_fun = decorator(inner_wrapper, **deco_kwargs)
+#         decorated_fun = decorator(inner_wrapper, **deco_kwargs)
 
-        @functools.wraps(fun)
-        def outer_wrapper(*args_in, **kwargs_in) -> tp.Any:
-            args, kwargs = refx.deref((args_in, kwargs_in))
-            out = decorated_fun(*args, **kwargs)
-            out = refx.reref(out)
-            return out
+#         @functools.wraps(fun)
+#         def outer_wrapper(*args_in, **kwargs_in) -> tp.Any:
+#             (args, kwargs), dagdef = refx.deref((args_in, kwargs_in))
+#             out = decorated_fun(*args, **kwargs)
+#             out = refx.reref(out)
+#             return out
 
-        return outer_wrapper
+#         return outer_wrapper
 
-    return decorator_wrapper
+#     return decorator_wrapper
 
 
 class JitTransform(jax.stages.Wrapped):
@@ -56,21 +56,19 @@ class JitTransform(jax.stages.Wrapped):
         **jit_kwargs,
     ):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(*args, **kwargs):
+        def jitted_fn(*args, _nnx__dagdef: refx.DagDef, **kwargs):
             top_trace = refx.tracers.current_jax_trace()
             with scope_lib.scope(scope_lib.Scope.empty(), trace=top_trace):
-                args, kwargs = refx.reref((args, kwargs))
+                args, kwargs = refx.reref((args, kwargs), _nnx__dagdef)
                 out = fun(*args, **kwargs)
-                out = refx.deref(out)
-                return out
+                return refx.deref(out)
 
         self.jitted_fn = jitted_fn
 
     def __call__(self, *args, **kwargs):
-        args, kwargs = refx.deref((args, kwargs))
-        out = self.jitted_fn(*args, **kwargs)
-        out = refx.reref(out)
-        return out
+        (args, kwargs), dagdef = refx.deref((args, kwargs))
+        out, dagdef = self.jitted_fn(*args, _nnx__dagdef=dagdef, **kwargs)
+        return refx.reref(out, dagdef)
 
     def __repr__(self):
         return f"JitTransform({self.jitted_fn})"
@@ -94,6 +92,16 @@ def jit_filter(
     abstracted_axes: tp.Optional[tp.Any] = None,
 ) -> jax.stages.Wrapped:
     """JIT compile a function, dereferencing and rereferencing Refs."""
+
+    if static_argnames is None:
+        static_argnames = []
+    elif isinstance(static_argnames, str):
+        static_argnames = [static_argnames]
+    else:
+        static_argnames = list(static_argnames)
+
+    static_argnames.append("_nnx__dagdef")
+
     ref_jit = JitTransform(
         fun,
         in_shardings=in_shardings,
