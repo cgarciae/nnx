@@ -47,7 +47,7 @@ class JitTransform(jax.stages.Wrapped):
         out = self.jitted_fn(pytree, scope, *args, **kwargs)
         if self.stateful:
             pytree_out, out = out
-            refx.update_from(pytree_in, pytree_out)
+            refx.update_refs(pytree_in, pytree_out)
         return out
 
     def __repr__(self):
@@ -143,12 +143,12 @@ class GradTransform:
         if self.has_aux and self.stateful:
             grad, (pytree_out, aux) = grads
             pytree_out, aux = refx.reref((pytree_out, aux))
-            refx.update_from(pytree_in, pytree_out)
+            refx.update_refs(pytree_in, pytree_out)
             return grad, aux
         elif self.stateful:
             grad, pytree_out = grads
             pytree_out = refx.reref(pytree_out)
-            refx.update_from(pytree_in, pytree_out)
+            refx.update_refs(pytree_in, pytree_out)
             return grad
         else:
             return grads

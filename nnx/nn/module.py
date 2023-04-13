@@ -41,7 +41,7 @@ class Module(Pytree):
         return partitioning.get_partition(self.deref(), filter)
 
     def __setitem__(self, filter: str, value: refx.Partition):
-        refx.update_from(partitioning.get_partition(self, filter), value)
+        refx.update_refs(partitioning.get_partition(self, filter), value)
 
     def collections(self) -> tp.FrozenSet[str]:
         return frozenset(

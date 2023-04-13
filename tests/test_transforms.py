@@ -92,7 +92,7 @@ class TestGrad:
         assert grad[("c",)] is refx.NOTHING
         assert grad[("d",)] is refx.NOTHING
 
-        refx.update_from(pytree, grad)
+        refx.update_refs(pytree, grad)
         assert pytree["a"][0].value == 2.0
         assert pytree["a"][1].value == 1.0
         assert pytree["b"].value == 2.0
@@ -127,7 +127,7 @@ class TestGrad:
         assert grad[("c",)] is refx.NOTHING
         assert grad[("d",)] is refx.NOTHING
 
-        refx.update_from(refx.get_partition(pytree, collection("params")), grad)
+        refx.update_refs(refx.get_partition(pytree, collection("params")), grad)
         assert pytree["a"][0].value == 2.0
         assert pytree["a"][1].value == 20.0
         assert pytree["b"].value == 2.0
@@ -161,7 +161,7 @@ class TestGrad:
         assert grad[("c",)] is refx.NOTHING
         assert grad[("d",)] is refx.NOTHING
 
-        refx.update_from(refx.get_partition(pytree, collection("batch_stats")), grad)
+        refx.update_refs(refx.get_partition(pytree, collection("batch_stats")), grad)
         assert pytree["a"][0].value == 10.0
         assert pytree["a"][1].value == 1.0
         assert pytree["b"].value == 10.0
