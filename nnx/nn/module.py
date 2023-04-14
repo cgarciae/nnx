@@ -34,11 +34,14 @@ class Module(Pytree):
     def reref(self: M, dagdef: refx.DagDef) -> M:
         return refx.reref(self, dagdef)
 
+    def clone(self: M) -> M:
+        return refx.clone(self)
+
     def make_rng(self, collection: str) -> jax.random.KeyArray:
         return scope_lib.make_rng(collection)
 
     def __getitem__(self, filter: str) -> refx.Partition:
-        return partitioning.get_partition(self.deref(), filter)
+        return partitioning.get_partition(self.deref()[0], filter)
 
     def __setitem__(self, filter: str, value: refx.Partition):
         refx.update_refs(partitioning.get_partition(self, filter), value)

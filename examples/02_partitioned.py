@@ -27,7 +27,7 @@ class Linear(nnx.Module):
         dout: int,
         kernel_init: initializers.Initializer = initializers.kaiming_normal(),
     ):
-        w_key = self.make_rng("params")
+        w_key = nnx.make_rng("params")
         self.w = kernel_init(w_key, (din, dout))
         self.b = jnp.zeros((dout,))
 
@@ -51,29 +51,27 @@ class MLP(nnx.Module):
         return x
 
 
-def mse(y, y_pred):
-    return jnp.mean((y - y_pred) ** 2)
-
-
-@nnx.jit
-def train_step(model: MLP, batch):
+@jax.jit
+def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
     x, y = batch
 
-    def loss_fn(model: MLP):
-        y_pred = model(x)
-        return mse(y, y_pred)
+    def loss_fn(params):
+        y_pred, updates = model.apply([params, state])(x)
+        loss = jnp.mean((y - y_pred) ** 2)
+        return loss, updates["state"]
 
-    #                                                       |--default--|
-    grad = nnx.grad(loss_fn, wrt="params")(model)
-    #                              |-------- sgd ---------|
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    grad, state = jax.grad(loss_fn, has_aux=True)(params)
+    #                          |-------- sgd ---------|
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
+
+    return params, state
 
 
-@nnx.jit
-def test_step(model: MLP, batch):
+@jax.jit
+def test_step(model: nnx.ModuleDef[MLP], params, state, batch):
     x, y = batch
-    y_pred = model(x)
-    loss = mse(y, y_pred)
+    y_pred, _ = model.apply([params, state])(x)
+    loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
@@ -81,17 +79,20 @@ total_steps = 10_000
 
 with nnx.init(jax.random.PRNGKey(0)):
     model = MLP(din=1, dhidden=32, dout=1)
+(params, state), model = model.partition("params", "state")
+
 
 for step, batch in enumerate(dataset(32)):
-    train_step(model, batch)
+    params, state = train_step(model, params, state, batch)
 
-    if step % 100 == 0:
-        logs = test_step(model, (X, Y))
+    if step % 1000 == 0:
+        logs = test_step(model, params, state, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
+model = model.merge([params, state])
 print("times called:", model.count)
 
 y_pred = model(X)
