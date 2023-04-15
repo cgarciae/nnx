@@ -40,6 +40,9 @@ class Module(Pytree):
     def make_rng(self, collection: str) -> jax.random.KeyArray:
         return scope_lib.make_rng(collection)
 
+    def get_flag(self, name: str, default: tp.Any = dataclasses.MISSING) -> tp.Any:
+        return scope_lib.get_flag(name, default)
+
     def __getitem__(self, filter: str) -> refx.Partition:
         return partitioning.get_partition(self.deref()[0], filter)
 

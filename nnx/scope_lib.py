@@ -155,10 +155,12 @@ def make_rng(collection: tp.Hashable) -> KeyArray:
     return scope.rng_streams[collection].next()
 
 
-def get_flag(name: str) -> tp.Hashable:
+def get_flag(name: str, default: tp.Any = dataclasses.MISSING) -> tp.Hashable:
     scope = current_scope()
     if name not in scope.flags:
-        raise ValueError(f"Unknown flag: {name}")
+        if default is dataclasses.MISSING:
+            raise ValueError(f"Unknown flag: {name}")
+        return default
     return scope.flags[name]
 
 
