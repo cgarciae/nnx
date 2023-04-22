@@ -202,7 +202,7 @@ class BatchNorm(Module):
         for more details.
     """
 
-    num_features: int
+    num_features: int = fields.static_field()
     use_running_average: tp.Optional[bool] = fields.static_field(default=None)
     axis: int = fields.static_field(default=-1)
     momentum: float = fields.static_field(default=0.99)
