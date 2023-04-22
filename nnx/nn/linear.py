@@ -92,12 +92,12 @@ class Linear(Module):
     bias: tp.Optional[Array] = fields.param(init=False)
 
     def __post_init__(self):
-        kernel_key = self.make_rng("kernel")
+        kernel_key = self.make_rng("params")
         self.kernel = self.kernel_init(
             kernel_key, (self.in_features, self.out_features), self.param_dtype
         )
         if self.use_bias:
-            bias_key = self.make_rng("bias")
+            bias_key = self.make_rng("params")
             self.bias = self.bias_init(bias_key, (self.out_features,), self.param_dtype)
         else:
             self.bias = None

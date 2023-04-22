@@ -115,11 +115,8 @@ class Module(Pytree):
         rngs: tp.Union[
             tp.Dict[str, jax.random.KeyArray], jax.random.KeyArray, None
         ] = None,
-        *,
-        flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
+        **flags: tp.Hashable,
     ) -> tp.Type[M]:
-        if flags is None:
-            flags = {}
         if rngs is None:
             rngs = {}
         elif isinstance(rngs, jax.Array):
@@ -137,10 +134,8 @@ class Module(Pytree):
         self: M,
         *,
         rngs: tp.Optional[tp.Dict[str, jax.random.KeyArray]] = None,
-        flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
+        **flags: tp.Hashable,
     ) -> M:
-        if flags is None:
-            flags = {}
         if rngs is None:
             rngs = {}
 

@@ -5,7 +5,7 @@ import jax
 import jax.stages
 import refx
 import refx.tracers
-from jax._src.interpreters import pxla
+from jax._src import sharding_impls
 from refx.partitioning import Partition
 import jax.tree_util as jtu
 
@@ -64,8 +64,8 @@ def jit(
     fun: tp.Callable[..., tp.Any],
     *,
     stateful: bool = True,
-    in_shardings: tp.Any = pxla._UNSPECIFIED,
-    out_shardings: tp.Any = pxla._UNSPECIFIED,
+    in_shardings: tp.Any = sharding_impls.UNSPECIFIED,
+    out_shardings: tp.Any = sharding_impls.UNSPECIFIED,
     static_argnums: tp.Union[int, tp.Sequence[int], None] = None,
     static_argnames: tp.Union[str, tp.Iterable[str], None] = None,
     donate_argnums: tp.Union[int, tp.Sequence[int]] = (),
@@ -174,6 +174,33 @@ class GradTransform:
 
     def __repr__(self):
         return f"GradTransform({self.grad_fn})"
+
+
+@tp.overload
+def grad(
+    fun: tp.Callable[..., tp.Any],
+    wrt: partitioning.CollectionFilter = "params",
+    *,
+    stateful: bool = True,
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., Partition]:
+    ...
+
+
+@tp.overload
+def grad(
+    fun: tp.Callable[..., tp.Any],
+    wrt: partitioning.CollectionFilter = "params",
+    *,
+    stateful: bool = True,
+    has_aux: tp.Literal[True],
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., tp.Tuple[Partition, tp.Any]]:
+    ...
 
 
 def grad(

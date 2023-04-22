@@ -63,10 +63,12 @@ def train_step(model: MLP, batch):
         y_pred = model(x)
         return jnp.mean((y - y_pred) ** 2)
 
-    #                                                       |--default--|
-    grad = nnx.grad(loss_fn, wrt="params")(model)
+    #                                      |--default--|
+    grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
     #                              |-------- sgd ---------|
     model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+
+    # no return!!!
 
 
 @nnx.jit
