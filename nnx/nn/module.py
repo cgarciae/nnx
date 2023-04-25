@@ -70,6 +70,15 @@ class Module(Pytree):
     @tp.overload
     def partition(
         self: M,
+        collection: str,
+        is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
+    ) -> tp.Tuple[refx.Partition, "ModuleDef[M]",]:
+        ...
+
+    @tp.overload
+    def partition(
+        self: M,
+        collection: str,
         *extract_colelctions: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[tp.Tuple[refx.Partition, ...], "ModuleDef[M]",]:
@@ -80,7 +89,9 @@ class Module(Pytree):
         *extract_collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[
-        tp.Union[tp.Dict[str, refx.Partition], tp.Tuple[refx.Partition, ...]],
+        tp.Union[
+            tp.Dict[str, refx.Partition], tp.Tuple[refx.Partition, ...], refx.Partition
+        ],
         "ModuleDef[M]",
     ]:
         collections = list(self.collections())
@@ -105,7 +116,10 @@ class Module(Pytree):
                     f"{extract_collections} != {collections}"
                 )
 
-            partitions = tuple(partitions[x] for x in extract_collections)
+            if len(extract_collections) == 1:
+                partitions = partitions[extract_collections[0]]
+            else:
+                partitions = tuple(partitions[x] for x in extract_collections)
 
         return partitions, moduledef
 

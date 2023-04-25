@@ -75,13 +75,11 @@ def test_step(model: nnx.ModuleDef[MLP], params, state, batch):
     return {"loss": loss}
 
 
-total_steps = 10_000
-
-with nnx.init(jax.random.PRNGKey(0)):
-    model = MLP(din=1, dhidden=32, dout=1)
+model = MLP.init(jax.random.PRNGKey(0))(din=1, dhidden=32, dout=1)
 (params, state), model = model.partition("params", "state")
 
 
+total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
     params, state = train_step(model, params, state, batch)
 
