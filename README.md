@@ -2,7 +2,7 @@
 
 _**N**erual **N**etworks for JA**X**_
 
-`nnx` is a lightweight module system for JAX that provides the same power as `flax` but with a simpler mental model and implementation. It is built on top of `refx`, which enables shared state, tractable mutability, and semantic partitioning. `nnx` also supports stateful transformations, allowing you to train your models efficiently.
+`nnx` is a lightweight module system for JAX that provides the same power as `flax` but with a simpler mental model and implementation closer to `equinox`. It is built on top of `refx`, which enables shared state, tractable mutability, and semantic partitioning. `nnx` also supports stateful transformations, allowing you to train your models efficiently.
 
 ## Status
 
