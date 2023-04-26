@@ -43,11 +43,11 @@ class Module(Pytree):
     def get_flag(self, name: str, default: tp.Any = dataclasses.MISSING) -> tp.Any:
         return scope_lib.get_flag(name, default)
 
-    def __getitem__(self, filter: str) -> refx.Partition:
-        return partitioning.get_partition(self.deref()[0], filter)
+    def __getitem__(self, collection: str) -> refx.Partition:
+        return partitioning.get_partition(self.deref()[0], collection)
 
-    def __setitem__(self, filter: str, value: refx.Partition):
-        refx.update_refs(partitioning.get_partition(self, filter), value)
+    def __setitem__(self, collection: str, value: refx.Partition):
+        refx.update_refs(partitioning.get_partition(self, collection), value)
 
     def collections(self) -> tp.FrozenSet[str]:
         return frozenset(
