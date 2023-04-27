@@ -2,23 +2,18 @@
 
 _**N**eural **N**etworks for JA**X**_
 
-`nnx` is a lightweight module system for JAX designed to offer the same capabilities as `flax` but with a simpler mental model and implementation, inspired by `equinox`. It is built on top of `refx`, which enables shared state, tractable mutability, and semantic partitioning. `nnx` also supports stateful transformations, making it very simple to construct neural networks and other machine learning models, specially for begginers.
+`nnx` is a lightweight module system for JAX designed to offer the same capabilities as `flax` but with a simpler mental model and implementation, inspired by `equinox`.
 
-## Features
+#### Features
 
-`nnx` offers a set of unique features that make it a user-friendly module system for JAX:
-
-1. **Simplicity**: Designed with a straightforward mental model and implementation, `nnx` is easier to understand and use than some alternative JAX module systems.
-
-2. **Shared state and tractable mutability**: `nnx` enables the creation of modules with shared state and controlled mutability, allowing for the reuse of layers and more efficient model design.
-
-3. **Semantic partitioning**: Manage and manipulate different sections of your model more effectively with the ability to create partitions in your model.
-
-4. **Stateful transformations**: Seamlessly integrate with JAX's native transformation capabilities, such as `jit`, `grad`, and more, using `nnx`'s support for stateful transformations.
+* **Simplicity**: Easy-to-understand mental model and implementation.
+* **Shared state**: Supports shared state and controlled mutability for efficient model design.
+* **Semantic partitioning**: Effectively manage and manipulate model sections.
+* **Stateful transformations**: Seamless integration with JAX's native transformation capabilities.
 
 ## Status
 
-`nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module system for JAX based on Refx. While it's still in the early stages of development, `nnx` has the potential to become a valuable tool for JAX users who seek a simpler alternative to existing module systems.
+`nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module system for JAX based on Refx. It is not intended for production use.
 
 ## Installation
 
