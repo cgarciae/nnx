@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nnx"
-version = "0.0.1"
+version = "0.0.2"
 description = ""
 authors = ["Cristian Garcia <cgarcia.e88@gmail.com>"]
 readme = "README.md"
@@ -25,6 +25,7 @@ ipykernel = "^6.22.0"
 [tool.poetry.group.examples.dependencies]
 matplotlib = "^3.7.1"
 ciclo = { path = "../ciclo", develop = true }
+optax = "^0.1.5"
 
 [build-system]
 requires = ["poetry-core"]

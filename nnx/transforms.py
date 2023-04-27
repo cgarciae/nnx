@@ -5,7 +5,7 @@ import jax
 import jax.stages
 import refx
 import refx.tracers
-from jax._src import sharding_impls
+from jax._src.interpreters import pxla
 from refx.partitioning import Partition
 import jax.tree_util as jtu
 
@@ -64,8 +64,8 @@ def jit(
     fun: tp.Callable[..., tp.Any],
     *,
     stateful: bool = True,
-    in_shardings: tp.Any = sharding_impls.UNSPECIFIED,
-    out_shardings: tp.Any = sharding_impls.UNSPECIFIED,
+    in_shardings: tp.Any = pxla._UNSPECIFIED,
+    out_shardings: tp.Any = pxla._UNSPECIFIED,
     static_argnums: tp.Union[int, tp.Sequence[int], None] = None,
     static_argnames: tp.Union[str, tp.Iterable[str], None] = None,
     donate_argnums: tp.Union[int, tp.Sequence[int]] = (),

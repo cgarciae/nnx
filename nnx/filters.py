@@ -2,13 +2,10 @@ import functools
 import typing as tp
 
 import jax
-import jax.tree_util as jtu
 import refx
 import refx.tracers
-from jax._src import sharding_impls
-from refx.partitioning import Partition, Predicate
+from jax._src.interpreters import pxla
 
-import nnx
 from nnx import scope_lib
 
 A = tp.TypeVar("A")
@@ -81,8 +78,8 @@ class JitTransform(jax.stages.Wrapped):
 def jit_filter(
     fun: tp.Callable[..., tp.Any],
     *,
-    in_shardings: tp.Any = sharding_impls.UNSPECIFIED,
-    out_shardings: tp.Any = sharding_impls.UNSPECIFIED,
+    in_shardings: tp.Any = pxla._UNSPECIFIED,
+    out_shardings: tp.Any = pxla._UNSPECIFIED,
     static_argnums: tp.Union[int, tp.Sequence[int], None] = None,
     static_argnames: tp.Union[str, tp.Iterable[str], None] = None,
     donate_argnums: tp.Union[int, tp.Sequence[int]] = (),
