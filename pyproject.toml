@@ -4,6 +4,8 @@ version = "0.0.2"
 description = ""
 authors = ["Cristian Garcia <cgarcia.e88@gmail.com>"]
 readme = "README.md"
+# include the nxx and pure modules
+packages = [{ include = "nnx" }, { include = "pure" }]
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"

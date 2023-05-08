@@ -12,7 +12,7 @@ from refx import tracers
 from nnx import utils
 from nnx.rng_stream import RngStream
 
-KeyArray = jax.random.KeyArray
+KeyArray = jax.Array
 
 
 class Scope:
@@ -32,9 +32,13 @@ class Scope:
 
     @classmethod
     def from_keys_and_flags(
-        cls, keys: tp.Mapping[str, KeyArray], flags: tp.Mapping[str, tp.Hashable]
+        cls,
+        keys: tp.Mapping[str, tp.Union[KeyArray, RngStream]],
+        flags: tp.Mapping[str, tp.Hashable],
     ) -> "Scope":
-        rng_streams = {k: RngStream(v) for k, v in keys.items()}
+        rng_streams = {
+            k: RngStream(v) if isinstance(v, jax.Array) else v for k, v in keys.items()
+        }
         return Scope(rng_streams, flags)
 
     @property
@@ -108,7 +112,9 @@ def scope(
 
 @contextlib.contextmanager
 def scope(
-    rngs_or_scope: tp.Union[tp.Mapping[str, KeyArray], Scope, None] = None,
+    rngs_or_scope: tp.Union[
+        tp.Mapping[str, tp.Union[KeyArray, RngStream]], Scope, None
+    ] = None,
     /,
     *,
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
@@ -162,6 +168,10 @@ def get_flag(name: str, default: tp.Any = dataclasses.MISSING) -> tp.Hashable:
             raise ValueError(f"Unknown flag: {name}")
         return default
     return scope.flags[name]
+
+
+def get_rngs() -> tp.Mapping[str, RngStream]:
+    return current_scope().rng_streams
 
 
 def all_mutable(_):

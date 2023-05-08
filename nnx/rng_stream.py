@@ -25,7 +25,7 @@ class RngStream:
 
     def __init__(
         self,
-        key: jax.random.KeyArray,
+        key: jax.Array,
         count: int = 0,
         count_path: tp.Tuple[int, ...] = (),
     ):

@@ -7,6 +7,8 @@ import refx
 import typing as tp
 import jax.tree_util as jtu
 
+from nnx.rng_stream import RngStream
+
 M = tp.TypeVar("M", bound="Module")
 
 
@@ -196,7 +198,7 @@ class ModuleDef(tp.Generic[M]):
         self,
         partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
         *,
-        rngs: tp.Optional[tp.Dict[str, jax.random.KeyArray]] = None,
+        rngs: tp.Optional[tp.Mapping[str, tp.Union[jax.Array, RngStream]]] = None,
         flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
     ) -> ApplyCaller:
         if flags is None:

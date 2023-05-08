@@ -42,5 +42,6 @@ from .scope_lib import (
     init,
     make_rng,
     scope,
+    get_rngs,
 )
 from .transforms import grad, jit
