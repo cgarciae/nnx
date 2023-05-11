@@ -58,8 +58,8 @@ class TestPartitioning:
         }
 
         def loss(params, rest, treedef):
-            params = pure.merge_partitions([params], treedef)
-            return sum(p.value for p in jax.tree_util.tree_leaves(params))
+            params = pure.merge_partitions([params, rest], treedef)
+            return sum(jax.tree_util.tree_leaves(params))
 
         (params, rest), treedef = pure.tree_partition(pytree, has_collection("params"))
 
@@ -67,9 +67,9 @@ class TestPartitioning:
 
         pytree = pure.merge_partitions([grads, rest], treedef)
 
-        assert pytree["a"][0].value == 2.0
+        assert pytree["a"][0].value == 1.0
         assert pytree["a"][1].value == -10
-        assert pytree["b"].value == 2.0
+        assert pytree["b"].value == 1.0
         assert pytree["c"] == 100
 
     def test_get_paritition_idenpotent(self):

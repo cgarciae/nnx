@@ -6,3 +6,5 @@ from .partitioning import (
     merge_partitions,
     NOTHING,
 )
+from .rngs import Rngs, RngStream
+from .module import Module, Initializer
