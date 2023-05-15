@@ -1,4 +1,4 @@
-from .state import State, Variable
+from .state import State, Variable, merge
 from .partitioning import (
     Partition,
     tree_partition,

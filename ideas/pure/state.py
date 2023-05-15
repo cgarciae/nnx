@@ -41,43 +41,23 @@ class State(tp.Mapping[str, Node]):
         ...
 
     @tp.overload
-    def partition(self) -> tp.Tuple[tp.Dict[str, Partition], StateDef["State"]]:
+    def partition(self) -> tp.Dict[str, Partition]:
         ...
 
     @tp.overload
-    def partition(self, collection: str) -> tp.Tuple[Partition, StateDef["State"]]:
+    def partition(self, collection: str) -> Partition:
         ...
 
     @tp.overload
-    def partition(
-        self, collection: str, *collections: str
-    ) -> tp.Tuple[tp.Tuple[Partition, ...], StateDef["State"]]:
+    def partition(self, collection: str, *collections: str) -> tp.Tuple[Partition, ...]:
         ...
 
     def partition(
         self, *collections: str
-    ) -> tp.Tuple[
-        tp.Union[tp.Dict[str, Partition], tp.Tuple[Partition, ...], Partition],
-        StateDef["State"],
-    ]:
+    ) -> tp.Union[tp.Dict[str, Partition], tp.Tuple[Partition, ...], Partition]:
         ...
 
-    @tp.overload
-    def get_partition(self, collection: str) -> Partition:
-        ...
-
-    @tp.overload
-    def get_partition(
-        self, collection: str, *collections: str
-    ) -> tp.Tuple[Partition, ...]:
-        ...
-
-    def get_partition(
-        self, *collections: str
-    ) -> tp.Union[Partition, tp.Tuple[Partition, ...]]:
-        ...
-
-    def update_partition(self, partition: Partition, *partitions: Partition) -> "State":
+    def merge(self, partition: Partition, *partitions: Partition) -> "State":
         ...
 
     @tp.overload
@@ -107,3 +87,7 @@ def _state_flatten(state: State):
 jtu.register_pytree_with_keys(
     State, _state_flatten_with_keys, _state_unflatten, flatten_func=_state_flatten
 )
+
+
+def merge(partition: Partition, other: Partition, *rest: Partition) -> State:
+    ...

@@ -11,7 +11,11 @@ A = tp.TypeVar("A", contravariant=True)
 
 
 class InitFn(tp.Protocol, tp.Generic[A]):
-    def __call__(self, __key_or_stream: A, /, *args) -> tp.Any:
+    @tp.overload
+    def __call__(self, __key_or_stream: A) -> tp.Any:
+        ...
+
+    def __call__(self, __key_or_stream: A, *args: tp.Any) -> tp.Any:
         ...
 
 

@@ -102,21 +102,21 @@ def train_step(state: pure.State, key, batch):
     rngs = pure.Rngs(dropout=key)
 
     def loss(params):
-        _state = state.update_partition(params)
+        _state = state.merge(params)
         y_pred, _state = model(_state, rngs, x, train=True)
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss, _state
 
     grads, state = jax.grad(loss, has_aux=True)(params)
     params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
-    state = state.update_partition(params)
+    state = state.merge(params)
 
     return state
 
 
-# ----------------------
-# scan over layers
-# ----------------------
+# ----------------------------------------
+# scan over layers + shared batchnorm
+# ----------------------------------------
 
 model = MLP(10, 20, 10)
 n_layers = 10
@@ -124,22 +124,41 @@ params_keys = jax.random.PRNGKey(0)
 params_keys = jax.random.split(params_keys, n_layers)
 
 
-@partial(jax.vmap, in_axes=0)
-def create_state(params_key: jax.random.KeyArray) -> pure.State:
-    return model.create_state(pure.Rngs(params=params_key))
+@partial(jax.vmap, in_axes=0, out_axes=(0, None))
+def create_state(params_key: jax.random.KeyArray):
+    state = model.create_state(pure.Rngs(params=params_key))
+    params, batch_stats = state.partition("params", "batch_stats")
+    return params, batch_stats
 
 
-state = create_state(params_keys)
+params, batch_stats = create_state(params_keys)
 x = jax.numpy.zeros((32, 10))
 dropout_key = jax.random.PRNGKey(1)
 dropout_stream = pure.RngStream(jax.random.split(dropout_key, n_layers))
 
 
-def scan_fn(x, inputs):
-    state, dropout_stream = inputs
+def scan_fn(
+    carry: Tuple[jax.Array, pure.Partition],
+    inputs: Tuple[pure.Partition, pure.RngStream],
+):
+    # extract args
+    x, batch_stats = carry
+    params, dropout_stream = inputs
+
+    # create state and rngs
+    state = pure.merge(params, batch_stats)
     rngs = pure.Rngs(dropout=dropout_stream)
+
+    # forward pass
     x, state = model(state, rngs, x, train=True)
-    return x, state
+
+    # partition state
+    params, batch_stats = state.partition("params", "batch_stats")
+
+    return (x, batch_stats), params
 
 
-y, state = jax.lax.scan(scan_fn, x, (state, dropout_stream))
+(y, batch_stats), params = jax.lax.scan(
+    scan_fn, (x, batch_stats), (params, dropout_stream)
+)
+state = pure.merge(params, batch_stats)
