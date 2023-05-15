@@ -3,20 +3,25 @@ from functools import partial
 from typing import Tuple
 import jax
 import pure
+from pure.rngs import Rngs
+from pure.state import State
 
 
 @dataclass
-class Linear(pure.Module):
+class Linear:
     din: int
     dout: int
 
-    def __post_init__(self):
-        self.kernel = pure.Initializer(
-            lambda rngs: jax.random.uniform(
-                rngs.make_rng("params"), (self.din, self.dout)
-            )
+    # def __post_init__(self):
+    #     self.kernel = pure.Initializer(jax.random.uniform, (self.din, self.dout))
+    #     self.bias = pure.Initializer(lambda _: jax.numpy.zeros((self.dout,)))
+
+    def create_state(self, rngs: Rngs) -> State:
+        key = rngs.make_rng("params")
+        return State(
+            kernel=jax.random.uniform(key, (self.din, self.dout)),
+            bias=jax.numpy.zeros((self.dout,)),
         )
-        self.bias = pure.Initializer(lambda _: jax.numpy.zeros((self.dout,)))
 
     def __call__(self, state: pure.State, x):
         return x @ state.kernel + state.bias
@@ -28,7 +33,7 @@ class BatchNorm(pure.Module):
     mu: float = 0.95
 
     def __post_init__(self):
-        self.scale = pure.Initializer(lambda key: jax.random.uniform(key, (self.din,)))
+        self.scale = pure.Initializer(jax.random.uniform, (self.din,))
         self.bias = pure.Initializer(lambda _: jax.numpy.zeros((self.din,)))
         self.mean = pure.Initializer(
             lambda _: jax.numpy.zeros((self.din,)), collection="batch_stats"
@@ -62,7 +67,7 @@ class Dropout(pure.Module):
     def __init__(self, rate: float):
         raise NotImplementedError
 
-    def __call__(self, state, rngs, x, *, deterministic: bool) -> jax.Array:
+    def __call__(self, state, rngs: Rngs, x, *, deterministic: bool) -> jax.Array:
         key = rngs.make_rng("dropout")
         raise NotImplementedError
 
