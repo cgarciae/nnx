@@ -12,35 +12,28 @@ class Linear:
     din: int
     dout: int
 
-    def __post_init__(self):
-        self.kernel = pure.Initializer(jax.random.uniform, (self.din, self.dout))
-        self.bias = pure.Initializer(lambda _: jax.numpy.zeros((self.dout,)))
-
-    # def create_state(self, rngs: Rngs) -> State:
-    #     key = rngs.make_rng("params")
-    #     return State(
-    #         kernel=jax.random.uniform(key, (self.din, self.dout)),
-    #         bias=jax.numpy.zeros((self.dout,)),
-    #     )
+    def create_state(self, rngs: Rngs) -> State:
+        key = rngs.make_rng("params")
+        return State(
+            kernel=jax.random.uniform(key, (self.din, self.dout)),
+            bias=jax.numpy.zeros((self.dout,)),
+        )
 
     def __call__(self, state: pure.State, x):
         return x @ state.kernel + state.bias
 
 
-@dataclass
 class BatchNorm(pure.Module):
-    din: int
-    mu: float = 0.95
-
-    def __post_init__(self):
-        self.scale = pure.Initializer(jax.random.uniform, (self.din,))
-        self.bias = pure.Initializer(lambda _: jax.numpy.zeros((self.din,)))
+    def __init__(self, din: int, mu: float = 0.95):
+        self.scale = pure.Initializer(jax.random.uniform, (din,))
+        self.bias = pure.Initializer(lambda _: jax.numpy.zeros((din,)))
         self.mean = pure.Initializer(
-            lambda _: jax.numpy.zeros((self.din,)), collection="batch_stats"
+            lambda _: jax.numpy.zeros((din,)), collection="batch_stats"
         )
         self.var = pure.Initializer(
-            lambda _: jax.numpy.ones((self.din,)), collection="batch_stats"
+            lambda _: jax.numpy.ones((din,)), collection="batch_stats"
         )
+        self.mu = mu
 
     def __call__(
         self, state: pure.State, x, use_running_averages: bool
@@ -98,7 +91,7 @@ state = model.create_state(rngs)
 @jax.jit
 def train_step(state: pure.State, key, batch):
     x, y = batch
-    params = state.get_partition("params")
+    params = state.partition("params")
     rngs = pure.Rngs(dropout=key)
 
     def loss(params):

@@ -1,9 +1,12 @@
+from types import MappingProxyType
 import typing as tp
 import jax
 import hashlib
 
 from refx import tracers
 import jax.tree_util as jtu
+
+KeyArray = jax.Array
 
 
 def _stable_hash(data: tp.Tuple[int, ...]) -> int:
@@ -68,7 +71,7 @@ class RngStream:
         return RngStream(self._key, count_path=count_path)
 
 
-def _rng_flatten_with_keys(
+def _rng_stream_flatten_with_keys(
     rng: RngStream,
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[tp.Hashable, jax.random.KeyArray], ...],
@@ -77,7 +80,7 @@ def _rng_flatten_with_keys(
     return ((jtu.GetAttrKey("key"), rng.key),), (rng.count, rng.count_path)
 
 
-def _rng_unflatten(
+def _rng_stream_unflatten(
     aux_data: tp.Tuple[int, tp.Tuple[int, ...]],
     children: tp.Tuple[jax.random.KeyArray, ...],
 ) -> RngStream:
@@ -86,6 +89,63 @@ def _rng_unflatten(
     return RngStream(key, count, count_path)
 
 
+def _rng_stream_flatten(rng: RngStream):
+    return (rng.key,), (rng.count, rng.count_path)
+
+
 jax.tree_util.register_pytree_with_keys(
-    RngStream, _rng_flatten_with_keys, _rng_unflatten
+    RngStream,
+    _rng_stream_flatten_with_keys,
+    _rng_stream_unflatten,
+    flatten_func=_rng_stream_flatten,
+)
+
+
+class Rngs(tp.Mapping[str, RngStream]):
+    __slots__ = ("_streams",)
+
+    def __init__(self, streams: tp.Mapping[str, RngStream]):
+        self._streams = MappingProxyType(streams)
+
+    def __getitem__(self, key: str) -> RngStream:
+        return self._streams[key]
+
+    def __iter__(self):
+        return iter(self._streams)
+
+    def __len__(self):
+        return len(self._streams)
+
+    def __contains__(self, key):
+        return key in self._streams
+
+    def make_rng(self, name: str) -> KeyArray:
+        return self._streams[name].next()
+
+    def fork(self) -> "Rngs":
+        return Rngs({name: stream.fork() for name, stream in self._streams.items()})
+
+    def copy(self) -> "Rngs":
+        return Rngs(self._streams.copy())
+
+
+def _rngs_flatten_with_keys(rngs: Rngs):
+    nodes = tuple((jtu.GetAttrKey(name), stream) for name, stream in rngs.items())
+    names = tuple(rngs.keys())
+    return nodes, names
+
+
+def _rngs_unflatten(
+    names: tp.Tuple[str, ...],
+    nodes: tp.Tuple[RngStream, ...],
+) -> Rngs:
+    return Rngs({name: stream for name, stream in zip(names, nodes)})
+
+
+def _rngs_flatten(rngs: Rngs):
+    return tuple(rngs.values()), tuple(rngs.keys())
+
+
+jtu.register_pytree_with_keys(
+    Rngs, _rngs_flatten_with_keys, _rngs_unflatten, flatten_func=_rngs_flatten
 )

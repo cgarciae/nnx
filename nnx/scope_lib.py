@@ -10,20 +10,18 @@ import refx
 from refx import tracers
 
 from nnx import utils
-from nnx.rng_stream import RngStream
-
-KeyArray = jax.Array
+from nnx.rng_stream import KeyArray, RngStream, Rngs
 
 
 class Scope:
-    __slots__ = ("_rng_streams", "_flags")
+    __slots__ = ("_rngs", "_flags")
 
     def __init__(
         self,
-        rng_streams: tp.Mapping[str, RngStream],
+        rngs: tp.Mapping[str, RngStream],
         flags: tp.Mapping[str, tp.Hashable],
     ):
-        self._rng_streams = MappingProxyType(rng_streams)
+        self._rngs = rngs if isinstance(rngs, Rngs) else Rngs(rngs)
         self._flags = MappingProxyType(flags)
 
     @classmethod
@@ -42,28 +40,28 @@ class Scope:
         return Scope(rng_streams, flags)
 
     @property
-    def rng_streams(self) -> tp.Mapping[str, RngStream]:
-        return self._rng_streams
+    def rngs(self) -> Rngs:
+        return self._rngs
 
     @property
     def flags(self) -> tp.Mapping[str, tp.Hashable]:
         return self._flags
 
     def fork(self) -> "Scope":
-        rng_streams = {k: v.fork() for k, v in self._rng_streams.items()}
+        rng_streams = {k: v.fork() for k, v in self._rngs.items()}
         return Scope(rng_streams, self._flags)
 
     def unsafe_trace_update(self):
-        for rng_stream in self._rng_streams.values():
+        for rng_stream in self._rngs.values():
             rng_stream._jax_trace = tracers.current_jax_trace()
             rng_stream._refx_trace = tracers.current_refx_trace()
 
     def copy(self) -> "Scope":
-        return Scope(self._rng_streams, self._flags)
+        return Scope(self._rngs, self._flags)
 
 
 def _scope_flatten_with_keys(scope: Scope):
-    return ((jtu.GetAttrKey("rng_streams"), scope._rng_streams.copy()),), scope._flags
+    return ((jtu.GetAttrKey("rng_streams"), scope._rngs.copy()),), scope._flags
 
 
 def _scope_unflatten(flags, children):
@@ -89,12 +87,12 @@ def current_scope() -> Scope:
 
 @tp.overload
 def scope(
-    rngs: tp.Optional[tp.Mapping[tp.Hashable, KeyArray]] = None,
+    rngs: tp.Optional[tp.Mapping[str, KeyArray]] = None,
     /,
     *,
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
     trace: tp.Optional[tracers.MainTrace] = None,
-    mutable: tp.Optional[tp.Callable[[tp.Hashable], bool]] = None,
+    mutable: tp.Optional[tp.Callable[[str], bool]] = None,
 ) -> tp.ContextManager[None]:
     ...
 
@@ -105,7 +103,7 @@ def scope(
     /,
     *,
     trace: tp.Optional[tracers.MainTrace] = None,
-    mutable: tp.Optional[tp.Callable[[tp.Hashable], bool]] = None,
+    mutable: tp.Optional[tp.Callable[[str], bool]] = None,
 ) -> tp.ContextManager[None]:
     ...
 
@@ -119,7 +117,7 @@ def scope(
     *,
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
     trace: tp.Optional[tracers.MainTrace] = None,
-    mutable: tp.Optional[tp.Callable[[tp.Hashable], bool]] = None,
+    mutable: tp.Optional[tp.Callable[[str], bool]] = None,
 ):
     if isinstance(rngs_or_scope, Scope):
         if flags is not None:
@@ -129,7 +127,7 @@ def scope(
         if flags is None:
             flags = current_scope().flags
         if rngs_or_scope is None:
-            rngs_or_scope = current_scope().rng_streams
+            rngs_or_scope = current_scope().rngs
 
         scope = Scope.from_keys_and_flags(rngs_or_scope, flags)
     _CONTEXT.scope_stack.append(scope)
@@ -154,11 +152,11 @@ def fork_scope():
     return scope(current_scope().fork())
 
 
-def make_rng(collection: tp.Hashable) -> KeyArray:
+def make_rng(collection: str) -> KeyArray:
     scope = current_scope()
-    if collection not in scope.rng_streams:
+    if collection not in scope.rngs:
         raise ValueError(f"Unknown collection: {collection}")
-    return scope.rng_streams[collection].next()
+    return scope.rngs[collection].next()
 
 
 def get_flag(name: str, default: tp.Any = dataclasses.MISSING) -> tp.Hashable:
@@ -170,8 +168,8 @@ def get_flag(name: str, default: tp.Any = dataclasses.MISSING) -> tp.Hashable:
     return scope.flags[name]
 
 
-def get_rngs() -> tp.Mapping[str, RngStream]:
-    return current_scope().rng_streams
+def get_rngs() -> Rngs:
+    return current_scope().rngs
 
 
 def all_mutable(_):
@@ -200,10 +198,10 @@ def init(
 
 
 def apply(
-    rngs: tp.Union[KeyArray, tp.Dict[tp.Hashable, KeyArray], None] = None,
+    rngs: tp.Union[KeyArray, tp.Dict[str, KeyArray], None] = None,
     /,
     *,
-    mutable: tp.Callable[[tp.Hashable], bool] = all_mutable,
+    mutable: tp.Callable[[str], bool] = all_mutable,
     flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
     trace: tp.Optional[tracers.MainTrace] = None,
 ) -> tp.ContextManager[None]:
