@@ -120,6 +120,8 @@ class Rngs(tp.Mapping[str, RngStream]):
         return key in self._streams
 
     def make_rng(self, name: str) -> KeyArray:
+        if name not in self:
+            raise ValueError(f"Unknown Rng Stream: {name}")
         return self._streams[name].next()
 
     def fork(self) -> "Rngs":

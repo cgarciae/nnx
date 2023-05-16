@@ -154,9 +154,7 @@ def fork_scope():
 
 def make_rng(collection: str) -> KeyArray:
     scope = current_scope()
-    if collection not in scope.rngs:
-        raise ValueError(f"Unknown collection: {collection}")
-    return scope.rngs[collection].next()
+    return scope.rngs.make_rng(collection)
 
 
 def get_flag(name: str, default: tp.Any = dataclasses.MISSING) -> tp.Hashable:
