@@ -32,7 +32,7 @@ from .nn.activations import (
     swish,
     tanh,
 )
-from .rng_stream import RngStream
+from .rng_stream import RngStream, Rngs
 from .scope_lib import (
     Scope,
     apply,
@@ -45,3 +45,4 @@ from .scope_lib import (
     get_rngs,
 )
 from .transforms import grad, jit
+from .partitioning import tree_partition, get_partition

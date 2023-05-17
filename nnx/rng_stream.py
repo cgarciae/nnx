@@ -6,7 +6,7 @@ import hashlib
 from refx import tracers
 import jax.tree_util as jtu
 
-KeyArray = jax.Array
+KeyArray = tp.Union[jax.Array, jax.random.KeyArray]
 
 
 def _stable_hash(data: tp.Tuple[int, ...]) -> int:
@@ -28,7 +28,7 @@ class RngStream:
 
     def __init__(
         self,
-        key: jax.Array,
+        key: KeyArray,
         count: int = 0,
         count_path: tp.Tuple[int, ...] = (),
     ):
@@ -104,7 +104,23 @@ jax.tree_util.register_pytree_with_keys(
 class Rngs(tp.Mapping[str, RngStream]):
     __slots__ = ("_streams",)
 
-    def __init__(self, streams: tp.Mapping[str, RngStream]):
+    def __init__(
+        self,
+        streams: tp.Optional[tp.Mapping[str, tp.Union[RngStream, KeyArray]]] = None,
+        **kwargs: tp.Union[RngStream, KeyArray],
+    ):
+        if streams is None:
+            streams = {}
+        else:
+            streams = dict(streams)
+
+        streams.update(kwargs)
+
+        streams = {
+            name: RngStream(key) if isinstance(key, KeyArray) else key
+            for name, key in streams.items()
+        }
+
         self._streams = MappingProxyType(streams)
 
     def __getitem__(self, key: str) -> RngStream:

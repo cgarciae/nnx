@@ -71,7 +71,7 @@ class MLP(pure.Module):
         self, x: jax.Array, *, train: bool, rngs: pure.Rngs
     ) -> Tuple[jax.Array, "MLP"]:
         x = self.linear1(x)
-        x, bn1 = self.bn1(x, use_running_averages=False)
+        x, bn1 = self.bn1(x, use_running_averages=not train)
         x = self.dropout(x, deterministic=not train, rngs=rngs)
         x = jax.nn.relu(x)
         x = self.linear2(x)

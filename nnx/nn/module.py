@@ -45,8 +45,27 @@ class Module(Pytree):
     def get_flag(self, name: str, default: tp.Any = dataclasses.MISSING) -> tp.Any:
         return scope_lib.get_flag(name, default)
 
+    @tp.overload
     def __getitem__(self, collection: str) -> refx.Partition:
-        return partitioning.get_partition(self.deref()[0], collection)
+        ...
+
+    @tp.overload
+    def __getitem__(
+        self, collections: tp.Tuple[str, ...]
+    ) -> tp.Tuple[refx.Partition, ...]:
+        ...
+
+    def __getitem__(
+        self, collections: tp.Tuple[str, ...]
+    ) -> tp.Union[refx.Partition, tp.Tuple[refx.Partition, ...]]:
+        if len(collections) < 1:
+            raise ValueError("Must specify at least one collection")
+
+        partitions = partitioning.tree_partition(self.deref()[0], *collections)[0]
+        if len(partitions) == 1:
+            return partitions[0]
+        else:
+            return partitions
 
     def __setitem__(self, collection: str, value: refx.Partition):
         refx.update_refs(partitioning.get_partition(self, collection), value)
@@ -149,7 +168,7 @@ class Module(Pytree):
     def apply(
         self: M,
         *,
-        rngs: tp.Optional[tp.Dict[str, jax.random.KeyArray]] = None,
+        rngs: tp.Optional[tp.Mapping[str, jax.random.KeyArray]] = None,
         **flags: tp.Hashable,
     ) -> M:
         if rngs is None:
