@@ -120,13 +120,13 @@ It's important to note that `Ref` instances are created during the first call to
 ```python
 class Module(simple_pytree.Pytree):
     ...
-    def __getitem__(self, collection: str) -> refx.Partition:
-        derefed_module = refx.deref(self)[0]
+    def __getitem__(self, collection: str) -> nnx.Partition:
+        derefed_module = nnx.deref(self)[0]
         return nnx.get_partition(derefed_module, collection)
 
-    def __setitem__(self, collection: str, updates: refx.Partition):
+    def __setitem__(self, collection: str, updates: nnx.Partition):
         partition = nnx.get_partition(self, collection)
-        refx.update_refs(partition, updates)
+        nnx.update_refs(partition, updates)
 ```
 
 Sample usage might look like this:

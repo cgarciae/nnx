@@ -3,8 +3,7 @@ import jax
 from simple_pytree import Pytree
 from nnx import partitioning
 from nnx import scope_lib
-from nnx.ref import DagDef
-import refx
+from nnx.ref import DagDef, Partition, Referential, clone, deref, reref, update_refs
 import typing as tp
 import jax.tree_util as jtu
 
@@ -31,14 +30,14 @@ class CallableProxy:
 
 
 class Module(Pytree):
-    def deref(self: M) -> tp.Tuple[M, refx.DagDef]:
-        return refx.deref(self)
+    def deref(self: M) -> tp.Tuple[M, DagDef]:
+        return deref(self)
 
-    def reref(self: M, dagdef: refx.DagDef) -> M:
-        return refx.reref(self, dagdef)
+    def reref(self: M, dagdef: DagDef) -> M:
+        return reref(self, dagdef)
 
     def clone(self: M) -> M:
-        return refx.clone(self)
+        return clone(self)
 
     def make_rng(self, collection: str) -> jax.random.KeyArray:
         return scope_lib.make_rng(collection)
@@ -47,18 +46,16 @@ class Module(Pytree):
         return scope_lib.get_flag(name, default)
 
     @tp.overload
-    def __getitem__(self, collection: str) -> refx.Partition:
+    def __getitem__(self, collection: str) -> Partition:
         ...
 
     @tp.overload
-    def __getitem__(
-        self, collections: tp.Tuple[str, ...]
-    ) -> tp.Tuple[refx.Partition, ...]:
+    def __getitem__(self, collections: tp.Tuple[str, ...]) -> tp.Tuple[Partition, ...]:
         ...
 
     def __getitem__(
         self, collections: tp.Tuple[str, ...]
-    ) -> tp.Union[refx.Partition, tp.Tuple[refx.Partition, ...]]:
+    ) -> tp.Union[Partition, tp.Tuple[Partition, ...]]:
         if len(collections) < 1:
             raise ValueError("Must specify at least one collection")
 
@@ -68,17 +65,14 @@ class Module(Pytree):
         else:
             return partitions
 
-    def __setitem__(self, collection: str, value: refx.Partition):
-        refx.update_refs(partitioning.get_partition(self, collection), value)
+    def __setitem__(self, collection: str, value: Partition):
+        update_refs(partitioning.get_partition(self, collection), value)
 
     def collections(self) -> tp.FrozenSet[str]:
         return frozenset(
             x.collection
-            for x in jtu.tree_leaves(
-                self, is_leaf=lambda x: isinstance(x, refx.Referential)
-            )
-            if isinstance(x, refx.Referential)
-            if isinstance(x.collection, str)
+            for x in jtu.tree_leaves(self, is_leaf=lambda x: isinstance(x, Referential))
+            if isinstance(x, Referential)
         )
 
     @tp.overload
@@ -86,7 +80,7 @@ class Module(Pytree):
         self: M,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[tp.Dict[str, refx.Partition], "ModuleDef[M]"]:
+    ) -> tp.Tuple[tp.Dict[str, Partition], "ModuleDef[M]"]:
         ...
 
     @tp.overload
@@ -94,7 +88,7 @@ class Module(Pytree):
         self: M,
         collection: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[refx.Partition, "ModuleDef[M]",]:
+    ) -> tp.Tuple[Partition, "ModuleDef[M]",]:
         ...
 
     @tp.overload
@@ -103,7 +97,7 @@ class Module(Pytree):
         collection: str,
         *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[tp.Tuple[refx.Partition, ...], "ModuleDef[M]",]:
+    ) -> tp.Tuple[tp.Tuple[Partition, ...], "ModuleDef[M]",]:
         ...
 
     def partition(
@@ -111,14 +105,15 @@ class Module(Pytree):
         *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[
-        tp.Union[
-            tp.Dict[str, refx.Partition], tp.Tuple[refx.Partition, ...], refx.Partition
-        ],
+        tp.Union[tp.Dict[str, Partition], tp.Tuple[Partition, ...], Partition],
         "ModuleDef[M]",
     ]:
         partitions, dagdef = partitioning.collection_partition(
             self, *collections, is_leaf=is_leaf
         )
+        moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
+
+        return partitions, moduledef
 
     @classmethod
     def init(
@@ -163,21 +158,19 @@ class ApplyCaller(tp.Protocol):
     def __getattr__(self, __name) -> "ApplyCaller":
         ...
 
-    def __call__(
-        self, *args, **kwargs
-    ) -> tp.Tuple[tp.Any, tp.Dict[str, refx.Partition]]:
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
         ...
 
 
 class ModuleDefValue(tp.NamedTuple):
-    reref_dagdef: refx.DagDef
+    reref_dagdef: DagDef
     partition_treedef: jtu.PyTreeDef
 
 
 class ModuleDef(DagDef[M]):
     def apply(
         self,
-        partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
+        partitions: tp.Union[tp.Sequence[Partition], tp.Dict[str, Partition]],
         *,
         rngs: tp.Optional[tp.Mapping[str, tp.Union[jax.Array, RngStream]]] = None,
         flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,

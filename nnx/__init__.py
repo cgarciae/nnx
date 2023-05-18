@@ -1,8 +1,9 @@
 __version__ = "0.0.0"
 
 
-from .dataclass import dataclass, field, param, ref, static_field
-from .filters import jit_filter
+from .dataclasses import dataclass, field, param, ref, static_field
+
+# from .filters import jit_filter
 from .nn import BatchNorm, Conv, Dropout, Linear, Module, ModuleDef
 from .nn.activations import (
     celu,
@@ -43,12 +44,13 @@ from .scope_lib import (
     scope,
     get_rngs,
 )
-from .transforms import grad, jit
+
+# from .transforms import grad, jit
 from .partitioning import (
     tree_partition,
     get_partition,
-    Partition,
-    PartitionDef,
     merge_partitions,
     collection_partition,
 )
+from .ref import Ref, Value, Index, DagDef, deref, reref, clone, Referential, Deref
+from .ref_field import RefField

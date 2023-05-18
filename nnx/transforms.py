@@ -3,11 +3,10 @@ import typing as tp
 
 import jax
 import jax.stages
-import refx
-import refx.tracers
 from jax._src.interpreters import pxla
-from refx.partitioning import Partition
+from nnx.ref import DagDef, Partition, deref, reref, update_refs
 import jax.tree_util as jtu
+from nnx import tracers
 
 import nnx
 from nnx import partitioning, scope_lib
@@ -29,15 +28,13 @@ class JitTransform(jax.stages.Wrapped):
         **jit_kwargs,
     ):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(
-            pytree, scope: nnx.Scope, *args, _nnx__dagdef: refx.DagDef, **kwargs
-        ):
-            top_trace = refx.tracers.current_jax_trace()
+        def jitted_fn(pytree, scope: nnx.Scope, *args, _nnx__dagdef: DagDef, **kwargs):
+            top_trace = tracers.current_jax_trace()
             with scope_lib.scope(scope.fork(), trace=top_trace):
-                pytree = refx.reref(pytree, _nnx__dagdef)
+                pytree = reref(pytree, _nnx__dagdef)
                 out = fun(pytree, *args, **kwargs)
                 if self.stateful:
-                    out = (refx.deref(pytree), out)
+                    out = (deref(pytree), out)
                 return out
 
         self.jitted_fn = jitted_fn
@@ -45,12 +42,12 @@ class JitTransform(jax.stages.Wrapped):
 
     def __call__(self, pytree, *args, **kwargs):
         pytree_in = pytree
-        pytree, dagdef = refx.deref(pytree_in)
+        pytree, dagdef = deref(pytree_in)
         scope = nnx.current_scope()
         out = self.jitted_fn(pytree, scope, *args, _nnx__dagdef=dagdef, **kwargs)
         if self.stateful:
             (pytree_out, _), out = out
-            refx.update_refs(pytree_in, pytree_out)
+            update_refs(pytree_in, pytree_out)
         return out
 
     def __repr__(self):
@@ -127,18 +124,18 @@ class GradTransform:
         def grad_fn(
             diff: Partition,
             non_diff: Partition,
-            dagdef: refx.DagDef,
+            dagdef: DagDef,
             treedef: jtu.PyTreeDef,
             *args,
         ):
-            diff_trace = refx.tracers.get_top_trace(diff)
+            diff_trace = tracers.get_top_trace(diff)
             scope = scope_lib.current_scope()
             with scope_lib.scope(scope.fork(), trace=diff_trace):
-                pytree = refx.merge_partitions((diff, non_diff), treedef)
-                pytree = refx.reref(pytree, dagdef)
+                pytree = merge_partitions((diff, non_diff), treedef)
+                pytree = reref(pytree, dagdef)
                 out = fun(pytree, *args)
 
-                pytree = refx.deref(pytree)
+                pytree = deref(pytree)
                 if self.has_aux and self.stateful:
                     loss, aux = out
                     out = (loss, (pytree, aux))
@@ -154,20 +151,20 @@ class GradTransform:
 
     def __call__(self, pytree, *args):
         pytree_in = pytree
-        pytree, dagdef = refx.deref(pytree)
-        (diff, nondiff), treedef = refx.tree_partition(pytree, self.predicate)
-        # diff, nondiff = refx.deref((diff, nondiff))
+        pytree, dagdef = deref(pytree)
+        (diff, nondiff), treedef = tree_partition(pytree, self.predicate)
+        # diff, nondiff = deref((diff, nondiff))
         grads = self.grad_fn(diff, nondiff, dagdef, treedef, *args)
 
         if self.has_aux and self.stateful:
             grad, (pytree_dagdef, aux) = grads
-            pytree_out = refx.reref(*pytree_dagdef)
-            refx.update_refs(pytree_in, pytree_out)
+            pytree_out = reref(*pytree_dagdef)
+            update_refs(pytree_in, pytree_out)
             return grad, aux
         elif self.stateful:
             grad, pytree_dagdef = grads
-            pytree_out = refx.reref(*pytree_dagdef)
-            refx.update_refs(pytree_in, pytree_out)
+            pytree_out = reref(*pytree_dagdef)
+            update_refs(pytree_in, pytree_out)
             return grad
         else:
             return grads

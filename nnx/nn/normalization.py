@@ -6,7 +6,8 @@ from jax import lax
 
 from nnx.nn.module import Module
 from nnx.nn import initializers, dtypes
-from nnx import dataclass, utils
+from nnx import utils
+from nnx.dataclasses import dataclass, static_field, param, ref
 
 PRNGKey = jax.Array
 Array = jax.Array
@@ -147,7 +148,7 @@ def _normalize(
     return jnp.asarray(y, dtype)
 
 
-@dataclass.dataclass
+@dataclass
 class BatchNorm(Module):
     """BatchNorm Module.
 
@@ -202,28 +203,28 @@ class BatchNorm(Module):
         for more details.
     """
 
-    num_features: int = dataclass.static_field()
-    use_running_average: tp.Optional[bool] = dataclass.static_field(default=None)
-    axis: int = dataclass.static_field(default=-1)
-    momentum: float = dataclass.static_field(default=0.99)
-    epsilon: float = dataclass.static_field(default=1e-5)
-    dtype: tp.Optional[Dtype] = dataclass.static_field(default=None)
-    param_dtype: Dtype = dataclass.static_field(default=jnp.float32)
-    use_bias: bool = dataclass.static_field(default=True)
-    use_scale: bool = dataclass.static_field(default=True)
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = dataclass.static_field(
+    num_features: int = static_field()
+    use_running_average: tp.Optional[bool] = static_field(default=None)
+    axis: int = static_field(default=-1)
+    momentum: float = static_field(default=0.99)
+    epsilon: float = static_field(default=1e-5)
+    dtype: tp.Optional[Dtype] = static_field(default=None)
+    param_dtype: Dtype = static_field(default=jnp.float32)
+    use_bias: bool = static_field(default=True)
+    use_scale: bool = static_field(default=True)
+    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field(
         default=initializers.zeros()
     )
-    scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = dataclass.static_field(
+    scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field(
         default=initializers.ones()
     )
-    axis_name: tp.Optional[str] = dataclass.static_field(default=None)
-    axis_index_groups: tp.Any = dataclass.static_field(default=None)
+    axis_name: tp.Optional[str] = static_field(default=None)
+    axis_index_groups: tp.Any = static_field(default=None)
     # refs
-    mean: Array = dataclass.ref("batch_stats", init=False)
-    var: Array = dataclass.ref("batch_stats", init=False)
-    scale: tp.Optional[Array] = dataclass.param(init=False)
-    bias: tp.Optional[Array] = dataclass.param(init=False)
+    mean: Array = ref("batch_stats", init=False)
+    var: Array = ref("batch_stats", init=False)
+    scale: tp.Optional[Array] = param(init=False)
+    bias: tp.Optional[Array] = param(init=False)
 
     def __post_init__(self):
         feature_shape = (self.num_features,)

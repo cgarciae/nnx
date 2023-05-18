@@ -3,7 +3,7 @@ import typing as tp
 import jax
 import hashlib
 
-from refx import tracers
+from nnx import tracers
 import jax.tree_util as jtu
 
 KeyArray = tp.Union[jax.Array, jax.random.KeyArray]

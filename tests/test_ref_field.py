@@ -6,13 +6,13 @@ import jax
 import pytest
 from simple_pytree import Pytree
 
-import refx
+import nnx
 
 
 def ref(
     *, default: tp.Any = dataclasses.MISSING, collection: tp.Hashable = None, **kwargs
 ) -> tp.Any:
-    return refx.RefField(collection=collection, default=default, **kwargs)
+    return nnx.RefField(collection=collection, default=default, **kwargs)
 
 
 @tpe.dataclass_transform(field_specifiers=(ref,))
@@ -47,7 +47,7 @@ class TestRefField:
         foo1 = Foo(a=1)
 
         with pytest.raises(ValueError, match="Cannot change Ref"):
-            foo1.a = refx.Ref(2)
+            foo1.a = nnx.Ref(2)
 
     def test_ref_field_normal_class(self):
         class Foo(Pytree):
@@ -86,11 +86,11 @@ class TestRefField:
         foo1 = Foo(a=1)
 
         @jax.jit
-        def g(foo2: Foo, dagdef: refx.DagDef):
-            foo2 = refx.reref(foo2, dagdef)
+        def g(foo2: Foo, dagdef: nnx.DagDef):
+            foo2 = nnx.reref(foo2, dagdef)
             foo2.a += 1
-            return refx.deref(foo2)
+            return nnx.deref(foo2)
 
-        foo2 = refx.reref(*g(*refx.deref(foo1)))
+        foo2 = nnx.reref(*g(*nnx.deref(foo1)))
         assert foo1.a == 1
         assert foo2.a == 2

@@ -4,10 +4,11 @@ import jax.numpy as jnp
 from jax import lax, random
 
 from nnx.nn.module import Module
-from nnx import dataclass, utils
+from nnx import utils
+from nnx.dataclasses import dataclass, static_field
 
 
-@dataclass.dataclass
+@dataclass
 class Dropout(Module):
     """Create a dropout layer.
 
@@ -26,9 +27,9 @@ class Dropout(Module):
     """
 
     rate: float
-    broadcast_dims: Sequence[int] = ()
-    deterministic: Optional[bool] = None
-    rng_collection: str = "dropout"
+    broadcast_dims: Sequence[int] = static_field(default=())
+    deterministic: Optional[bool] = static_field(default=None)
+    rng_collection: str = static_field(default="dropout")
 
     def __call__(self, inputs, deterministic: Optional[bool] = None):
         """Applies a random dropout mask to the input.

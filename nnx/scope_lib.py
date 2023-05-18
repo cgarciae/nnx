@@ -6,10 +6,8 @@ from types import MappingProxyType
 
 import jax
 import jax.tree_util as jtu
-import refx
-from refx import tracers
 
-from nnx import utils
+from nnx import tracers, utils
 from nnx.rng_stream import KeyArray, RngStream, Rngs
 
 
@@ -116,8 +114,6 @@ def scope(
     /,
     *,
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
-    trace: tp.Optional[tracers.MainTrace] = None,
-    mutable: tp.Optional[tp.Callable[[str], bool]] = None,
 ):
     if isinstance(rngs_or_scope, Scope):
         if flags is not None:
@@ -133,12 +129,6 @@ def scope(
     _CONTEXT.scope_stack.append(scope)
 
     _contexts = []
-
-    if trace is not None:
-        _contexts.append(tracers.refx_trace(trace))
-
-    if mutable is not None:
-        _contexts.append(refx.mutable(mutable))
 
     try:
         with utils.contexts(*_contexts):

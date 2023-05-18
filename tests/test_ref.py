@@ -2,22 +2,22 @@ import jax
 import pytest
 import typing as tp
 
-import refx
+import nnx
 
 A = tp.TypeVar("A")
 
 
 class TestRef:
     def test_slots(self):
-        ref = refx.Ref(1)
+        ref = nnx.Ref(1)
         assert not hasattr(ref, "__dict__")
-        value = refx.Value(1, None)
+        value = nnx.Value(1, None)
         assert not hasattr(value, "__dict__")
-        index = refx.Index(None)
+        index = nnx.Index(None)
         assert not hasattr(index, "__dict__")
 
     def test_ref(self):
-        r1 = refx.Ref(1)
+        r1 = nnx.Ref(1)
         assert r1.value == 1
 
         def add_one(r):
@@ -36,14 +36,14 @@ class TestRef:
         assert r2.value == 3
 
     def test_value_and_index_are_deref(self):
-        value = refx.Value(1, None)
-        index = refx.Index(None)
+        value = nnx.Value(1, None)
+        index = nnx.Index(None)
 
-        assert isinstance(value, refx.Deref)
-        assert isinstance(index, refx.Deref)
+        assert isinstance(value, nnx.Deref)
+        assert isinstance(index, nnx.Deref)
 
     def test_ref_trace_level(self):
-        r1: refx.Ref[int] = refx.Ref(1)
+        r1: nnx.Ref[int] = nnx.Ref(1)
 
         @jax.jit
         def f():
@@ -57,15 +57,15 @@ class TestRef:
 
         @jax.jit
         def g(pytree, dagdef):
-            r2, r3 = refx.reref(pytree, dagdef)
+            r2, r3 = nnx.reref(pytree, dagdef)
             assert r2 is r3
 
             r2.value = 2
             assert r1 is not r2
             assert r3.value == 2
-            return refx.deref(r2)
+            return nnx.deref(r2)
 
-        r2 = refx.reref(*g(*refx.deref((r1, r1))))
+        r2 = nnx.reref(*g(*nnx.deref((r1, r1))))
 
         assert r1.value == 1
         assert r2.value == 2
@@ -74,13 +74,13 @@ class TestRef:
         assert r1.value == 1
         assert r2.value == 3
 
-        r3 = refx.reref(*g(*refx.deref((r1, r1))))
+        r3 = nnx.reref(*g(*nnx.deref((r1, r1))))
 
         assert r3 is not r2
         assert r3.value == 2
 
     def test_ref_trace_level_grad(self):
-        r1: refx.Ref[int] = refx.Ref(1)
+        r1: nnx.Ref[int] = nnx.Ref(1)
 
         @jax.grad
         def f(w):
@@ -94,22 +94,22 @@ class TestRef:
         f(3.0)
 
     def test_deref_through_jit(self):
-        r1 = refx.Ref(1)
-        r2 = refx.Ref(2)
+        r1 = nnx.Ref(1)
+        r2 = nnx.Ref(2)
 
         pytree = pytree0 = {"a": [r1, r2], "b": r1}
 
         @jax.jit
         def f(pytree, dagdef):
-            pytree = refx.reref(pytree, dagdef)
+            pytree = nnx.reref(pytree, dagdef)
 
             assert pytree["a"][0] is pytree["b"]
             assert pytree["a"][1] is not pytree["b"]
 
-            return refx.deref(pytree)
+            return nnx.deref(pytree)
 
-        pytree, dagdef = f(*refx.deref(pytree))
-        pytree = refx.reref(pytree, dagdef)
+        pytree, dagdef = f(*nnx.deref(pytree))
+        pytree = nnx.reref(pytree, dagdef)
 
         assert pytree["a"][0] is pytree["b"]
         assert pytree["a"][1] is not pytree["b"]
@@ -120,13 +120,13 @@ class TestRef:
         assert pytree["b"] is not pytree0["b"]
 
     def test_barrier_edge_case(self):
-        r1: tp.Optional[refx.Ref[tp.Any]] = None
+        r1: tp.Optional[nnx.Ref[tp.Any]] = None
 
         @jax.jit
         def f():
             nonlocal r1
             x = jax.numpy.empty(1)
-            r1 = refx.Ref(x)
+            r1 = nnx.Ref(x)
             return x
 
         x = f()
@@ -151,21 +151,21 @@ class TestRef:
         x = g()
 
     def test_cross_barrier(self):
-        r1: refx.Ref[int] = refx.Ref(1)
+        r1: nnx.Ref[int] = nnx.Ref(1)
 
         @jax.jit
         def g(r2, dagdef):
-            r2 = refx.reref(r2, dagdef)
+            r2 = nnx.reref(r2, dagdef)
             r2.value += 1
             assert r1 is not r2
-            return refx.deref(r2)
+            return nnx.deref(r2)
 
-        r2 = refx.reref(*g(*refx.deref(r1)))
+        r2 = nnx.reref(*g(*nnx.deref(r1)))
         assert r1 is not r2
         assert r1.value == 1
         assert r2.value == 2
 
-        r3 = refx.reref(*g(*refx.deref(r2)))
+        r3 = nnx.reref(*g(*nnx.deref(r2)))
         assert r1 is not r2
         assert r2 is not r3
         assert r1.value == 1
@@ -185,37 +185,37 @@ class TestRef:
 
     def test_no_rejit(self):
         n = 0
-        r1 = refx.Ref(1)
-        r2 = refx.Ref(2)
+        r1 = nnx.Ref(1)
+        r2 = nnx.Ref(2)
 
         @jax.jit
         def g(pytree, dagdef):
-            r3, r4, r5 = refx.reref(pytree, dagdef)
+            r3, r4, r5 = nnx.reref(pytree, dagdef)
             nonlocal n
             n += 1
             assert r3 is r4
             assert r4 is not r5
-            return refx.deref(r3)
+            return nnx.deref(r3)
 
-        r6 = refx.reref(*g(*refx.deref((r1, r1, r2))))
+        r6 = nnx.reref(*g(*nnx.deref((r1, r1, r2))))
         assert r6 is not r1
         assert r6.value == r1.value
         assert n == 1
 
-        g(*refx.deref((r1, r1, r2)))
+        g(*nnx.deref((r1, r1, r2)))
         assert n == 1
 
-        g(*refx.deref((r2, r2, r1)))
+        g(*nnx.deref((r2, r2, r1)))
         assert n == 1
 
         with pytest.raises(AssertionError):
-            g(*refx.deref((r1, r2, r1)))
+            g(*nnx.deref((r1, r2, r1)))
 
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = refx.Ref(1)
-        r2 = refx.Ref(2)
+        r1 = nnx.Ref(1)
+        r2 = nnx.Ref(2)
         v1 = 3
         pytree = {
             "a": [r1, r2, v1],
@@ -223,17 +223,17 @@ class TestRef:
         }
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
 
-        pytree, dagdef = refx.deref(pytree)
+        pytree, dagdef = nnx.deref(pytree)
         assert len(jax.tree_util.tree_leaves(pytree)) == 3
 
-        pytree = refx.reref(pytree, dagdef)
+        pytree = nnx.reref(pytree, dagdef)
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
 
     def test_mutable(self):
-        r1 = refx.Ref(1, collection="params")
-        r2 = refx.Ref(2, collection="batch_stats")
+        r1 = nnx.Ref(1, collection="params")
+        r2 = nnx.Ref(2, collection="batch_stats")
 
-        with refx.mutable(lambda c: c == "params"):
+        with nnx.mutable(lambda c: c == "params"):
             r1.value = 3
             with pytest.raises(
                 ValueError, match="Collection 'batch_stats' is not mutable"
@@ -241,17 +241,17 @@ class TestRef:
                 r2.value = 4
 
     def test_dag(self):
-        r1 = refx.Ref(1)
-        r2 = refx.Ref(2)
+        r1 = nnx.Ref(1)
+        r2 = nnx.Ref(2)
         v1 = 3
         pytree = {
             "a": [r1, r2, v1],
             "b": {"c": r1, "d": r2},
         }
-        dag = refx.Dag(pytree)
+        dag = nnx.Dag(pytree)
 
         @jax.jit
-        def f(dag: refx.Dag):
+        def f(dag: nnx.Dag):
             dag.value["a"][0].value = 4
             return dag
 
@@ -261,15 +261,15 @@ class TestRef:
         assert dag.value["b"]["c"].value == 4
 
     def test_clone(self):
-        r1 = refx.Ref(1)
-        r2 = refx.Ref(2)
+        r1 = nnx.Ref(1)
+        r2 = nnx.Ref(2)
         v1 = 3
         pytree = {
             "a": [r1, r2, v1],
             "b": {"c": r1, "d": r2},
         }
 
-        pytree2 = refx.clone(pytree)
+        pytree2 = nnx.clone(pytree)
 
         pytree["a"][0].value = 10
         assert pytree2["a"][0].value == 1

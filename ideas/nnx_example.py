@@ -48,7 +48,7 @@ class BatchNorm(nnx.Module):
         return x
 
 
-@nnx.dataclass
+@nnx.dataclasses
 class Dropout(nnx.Module):
     rate: float
 
