@@ -10,7 +10,7 @@ packages = [{ include = "nnx" }, { include = "pure" }]
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
 # refx = { path = "../refx", develop = true }
-refx = "*"
+# refx = "*"
 jax = "*"
 jaxlib = "*"
 

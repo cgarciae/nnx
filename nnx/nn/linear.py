@@ -7,7 +7,7 @@ import numpy as np
 
 from nnx.nn.module import Module
 from nnx.nn import initializers
-from nnx import fields
+from nnx import dataclass
 from nnx.nn import dtypes
 
 Array = jax.Array
@@ -59,7 +59,7 @@ def _conv_dimension_numbers(input_shape):
     return lax.ConvDimensionNumbers(lhs_spec, rhs_spec, out_spec)
 
 
-@fields.dataclass
+@dataclass.dataclass
 class Linear(Module):
     """A linear transformation applied over the last dimension of the input.
 
@@ -74,22 +74,22 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    in_features: int = fields.static_field()
-    out_features: int = fields.static_field()
-    use_bias: bool = fields.static_field(default=True)
-    dtype: tp.Optional[Dtype] = fields.static_field(default=None)
-    param_dtype: Dtype = fields.static_field(default=jnp.float32)
-    precision: PrecisionLike = fields.static_field(default=None)
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
+    in_features: int = dataclass.static_field()
+    out_features: int = dataclass.static_field()
+    use_bias: bool = dataclass.static_field(default=True)
+    dtype: tp.Optional[Dtype] = dataclass.static_field(default=None)
+    param_dtype: Dtype = dataclass.static_field(default=jnp.float32)
+    precision: PrecisionLike = dataclass.static_field(default=None)
+    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = dataclass.static_field(
         default=default_kernel_init
     )
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
+    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = dataclass.static_field(
         default=initializers.zeros()
     )
-    dot_general: DotGeneralT = fields.static_field(default=lax.dot_general)
+    dot_general: DotGeneralT = dataclass.static_field(default=lax.dot_general)
     # ref fields
-    kernel: Array = fields.param(init=False)
-    bias: tp.Optional[Array] = fields.param(init=False)
+    kernel: Array = dataclass.param(init=False)
+    bias: tp.Optional[Array] = dataclass.param(init=False)
 
     def __post_init__(self):
         kernel_key = self.make_rng("params")
@@ -128,7 +128,7 @@ class Linear(Module):
         return y
 
 
-@fields.dataclass
+@dataclass.dataclass
 class Conv(Module):
     """Convolution Module wrapping `lax.conv_general_dilated[_local]`.
 
@@ -167,37 +167,37 @@ class Conv(Module):
       bias_init: initializer for the bias.
     """
 
-    in_features: int = fields.static_field()
-    out_features: int = fields.static_field()
-    kernel_size: tp.Sequence[int] = fields.static_field()
-    strides: tp.Union[None, int, tp.Sequence[int]] = fields.static_field(default=1)
-    padding: PaddingLike = fields.static_field(default="SAME")
-    input_dilation: tp.Union[None, int, tp.Sequence[int]] = fields.static_field(
+    in_features: int = dataclass.static_field()
+    out_features: int = dataclass.static_field()
+    kernel_size: tp.Sequence[int] = dataclass.static_field()
+    strides: tp.Union[None, int, tp.Sequence[int]] = dataclass.static_field(default=1)
+    padding: PaddingLike = dataclass.static_field(default="SAME")
+    input_dilation: tp.Union[None, int, tp.Sequence[int]] = dataclass.static_field(
         default=1
     )
-    kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = fields.static_field(
+    kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = dataclass.static_field(
         default=1
     )
-    feature_group_count: int = fields.static_field(default=1)
-    use_bias: bool = fields.static_field(default=True)
-    mask_fn: tp.Optional[tp.Callable[[Array], Array]] = fields.static_field(
+    feature_group_count: int = dataclass.static_field(default=1)
+    use_bias: bool = dataclass.static_field(default=True)
+    mask_fn: tp.Optional[tp.Callable[[Array], Array]] = dataclass.static_field(
         default=None
     )
-    dtype: tp.Optional[Dtype] = fields.static_field(default=None)
-    param_dtype: Dtype = fields.static_field(default=jnp.float32)
-    precision: PrecisionLike = fields.static_field(default=None)
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
+    dtype: tp.Optional[Dtype] = dataclass.static_field(default=None)
+    param_dtype: Dtype = dataclass.static_field(default=jnp.float32)
+    precision: PrecisionLike = dataclass.static_field(default=None)
+    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = dataclass.static_field(
         default=default_kernel_init
     )
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
+    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = dataclass.static_field(
         default=initializers.zeros()
     )
-    conv_general_dilated: ConvGeneralDilatedT = fields.static_field(
+    conv_general_dilated: ConvGeneralDilatedT = dataclass.static_field(
         default=lax.conv_general_dilated
     )
     # ref fields
-    kernel: Array = fields.param(init=False)
-    bias: tp.Optional[Array] = fields.param(init=False)
+    kernel: Array = dataclass.param(init=False)
+    bias: tp.Optional[Array] = dataclass.param(init=False)
 
     def __post_init__(self):
         if isinstance(self.kernel_size, int):

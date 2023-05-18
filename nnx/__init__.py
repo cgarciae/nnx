@@ -1,8 +1,7 @@
 __version__ = "0.0.0"
 
-from refx import Partition
 
-from .fields import dataclass, field, param, ref, static_field
+from .dataclass import dataclass, field, param, ref, static_field
 from .filters import jit_filter
 from .nn import BatchNorm, Conv, Dropout, Linear, Module, ModuleDef
 from .nn.activations import (
@@ -45,4 +44,4 @@ from .scope_lib import (
     get_rngs,
 )
 from .transforms import grad, jit
-from .partitioning import tree_partition, get_partition
+from .partitioning import tree_partition, get_partition, Partition, PartitionDef

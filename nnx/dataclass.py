@@ -1,9 +1,10 @@
 import dataclasses
 from dataclasses import field
 from simple_pytree import static_field
-import refx
 import typing as tp
 import typing_extensions as tpe
+
+from nnx.ref_field import RefField
 
 A = tp.TypeVar("A")
 
@@ -24,7 +25,7 @@ def ref(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return refx.RefField(
+    return RefField(
         collection=collection,
         default=default,
         default_factory=default_factory,

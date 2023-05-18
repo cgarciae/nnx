@@ -4,10 +4,10 @@ import jax.numpy as jnp
 from jax import lax, random
 
 from nnx.nn.module import Module
-from nnx import fields, utils
+from nnx import dataclass, utils
 
 
-@fields.dataclass
+@dataclass.dataclass
 class Dropout(Module):
     """Create a dropout layer.
 
