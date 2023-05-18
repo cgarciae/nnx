@@ -2,21 +2,127 @@ from abc import ABC, abstractmethod
 import contextlib
 import dataclasses
 from functools import partial
+from types import MappingProxyType
 import typing as tp
 
 import jax
 import jax.tree_util as jtu
 
-from refx import tracers
+from nnx import tracers
 
 A = tp.TypeVar("A")
-A_cov = tp.TypeVar("A_cov", covariant=True)
-B = tp.TypeVar("B")
-F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
-K = tp.TypeVar("K", bound=tp.Hashable)
-MutablePredicate = tp.Callable[[tp.Hashable], bool]
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
+DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
+DagIndexesList = tp.List[tp.List[int]]
+LeafPredicate = tp.Callable[[tp.Any], bool]
+KeyPath = tp.Tuple[tp.Hashable, ...]
+
+
+class StrPath(tp.Tuple[str, ...]):
+    pass
+
+
+class Partition(tp.Mapping[StrPath, Leaf]):
+    def __init__(self, __mapping: tp.Mapping[StrPath, Leaf], /):
+        self._mapping = MappingProxyType(__mapping)
+
+    def __getitem__(self, __key: StrPath) -> Leaf:
+        return self._mapping[__key]
+
+    def __iter__(self) -> tp.Iterator[StrPath]:
+        return iter(self._mapping)
+
+    def __len__(self) -> int:
+        return len(self._mapping)
+
+
+def _partition_flatten_with_keys(
+    x: Partition,
+) -> tp.Tuple[
+    tp.Tuple[tp.Tuple[StrPath, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
+]:
+    children = tuple((StrPath(key), value) for key, value in x.items())
+    return children, tuple(x.keys())
+
+
+def _partition_unflatten(keys: tp.Tuple[StrPath, ...], leaves: tp.Tuple[Leaf, ...]):
+    return Partition(dict(zip(keys, leaves)))
+
+
+jax.tree_util.register_pytree_with_keys(
+    Partition, _partition_flatten_with_keys, _partition_unflatten
+)
+
+
+def _key_path_to_str_gen(key_path: KeyPath) -> tp.Generator[str, None, None]:
+    for key_entry in key_path:
+        if isinstance(key_entry, StrPath):
+            yield from key_entry
+        elif isinstance(key_entry, jtu.SequenceKey):
+            yield str(key_entry.idx)
+        elif isinstance(key_entry, jtu.DictKey):  # "['a']"
+            yield str(key_entry.key)
+        elif isinstance(key_entry, jtu.GetAttrKey):
+            yield str(key_entry.name)
+        elif isinstance(key_entry, jtu.FlattenedIndexKey):
+            yield str(key_entry.key)
+        elif hasattr(key_entry, "__dict__") and len(key_entry.__dict__) == 1:
+            yield str(next(iter(key_entry.__dict__.values())))
+        else:
+            yield str(key_entry)
+
+
+def _to_str_path(key_path: KeyPath) -> StrPath:
+    return StrPath(_key_path_to_str_gen(key_path))
+
+
+class DagDef(tp.Generic[A]):
+    __slots__ = ("_indexes", "_treedef")
+
+    def __init__(self, indexes: DagIndexes, treedef: jtu.PyTreeDef):
+        self._indexes = indexes
+        self._treedef = treedef
+
+    def unflatten(self, leaves: Leaves) -> A:
+        return self._treedef.unflatten(leaves)
+
+    def flatten_up_to(self, __pytree: tp.Any, /) -> Leaves:
+        return self.treedef.flatten_up_to(__pytree)
+
+    @property
+    def indexes(self) -> DagIndexes:
+        return self._indexes
+
+    @property
+    def treedef(self) -> jtu.PyTreeDef:
+        return self._treedef
+
+    def __hash__(self) -> int:
+        return hash((self._indexes, self._treedef))
+
+    def __eq__(self, other: tp.Any) -> bool:
+        if not isinstance(other, DagDef):
+            raise TypeError(f"Cannot compare DagDef with {type(other).__name__}")
+        return self._indexes == other._indexes and self._treedef == other._treedef
+
+    def reref(self, partition: Partition) -> A:
+        return reref(partition, self)
+
+
+def _dagdef_flatten(
+    x: DagDef[A],
+) -> tp.Tuple[tp.Tuple[()], tp.Tuple[DagIndexes, jtu.PyTreeDef]]:
+    return (), (x._indexes, x._treedef)
+
+
+def _dagdef_unflatten(
+    metadata: tp.Tuple[DagIndexes, jtu.PyTreeDef], _: tp.Tuple[()]
+) -> DagDef:
+    return DagDef(*metadata)
+
+
+jtu.register_pytree_node(DagDef, _dagdef_flatten, _dagdef_unflatten)
 
 
 class Nothing:
@@ -168,80 +274,6 @@ def _index_unflatten(colletion: tp.Hashable, children: tp.Tuple[()]) -> Index[A]
 jtu.register_pytree_node(Index, _index_flatten, _index_unflatten)
 
 
-class Static(tp.Generic[A]):
-    __slots__ = ("_value",)
-
-    def __init__(self, value: A):
-        self._value = value
-
-    @property
-    def value(self) -> A:
-        return self._value
-
-
-def _static_flatten(x: Static[A]) -> tp.Tuple[tp.Tuple[()], A]:
-    return (), x.value
-
-
-def _static_unflatten(aux_data: A, _: tp.Tuple[()]) -> Static[A]:
-    return Static(aux_data)
-
-
-jtu.register_pytree_node(Static, _static_flatten, _static_unflatten)
-
-
-DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
-DagIndexesList = tp.List[tp.List[int]]
-
-
-class DagDef(tp.Generic[A]):
-    __slots__ = ("_indexes", "_treedef")
-
-    def __init__(self, indexes: DagIndexes, treedef: jtu.PyTreeDef):
-        self._indexes = indexes
-        self._treedef = treedef
-
-    def unflatten(self, leaves: Leaves) -> A:
-        return self._treedef.unflatten(leaves)
-
-    def flatten_up_to(self, __pytree: tp.Any, /) -> Leaves:
-        return self.treedef.flatten_up_to(__pytree)
-
-    @property
-    def indexes(self) -> DagIndexes:
-        return self._indexes
-
-    @property
-    def treedef(self) -> jtu.PyTreeDef:
-        return self._treedef
-
-    def __hash__(self) -> int:
-        return hash((self._indexes, self._treedef))
-
-    def __eq__(self, other: tp.Any) -> bool:
-        if not isinstance(other, DagDef):
-            raise TypeError(f"Cannot compare DagDef with {type(other).__name__}")
-        return self._indexes == other._indexes and self._treedef == other._treedef
-
-    def reref(self, pytree: A) -> A:
-        return reref(pytree, self)
-
-
-def _dagdef_flatten(
-    x: DagDef,
-) -> tp.Tuple[tp.Tuple[()], tp.Tuple[DagIndexes, jtu.PyTreeDef]]:
-    return (), (x._indexes, x._treedef)
-
-
-def _dagdef_unflatten(
-    metadata: tp.Tuple[DagIndexes, jtu.PyTreeDef], _: tp.Tuple[()]
-) -> DagDef:
-    return DagDef(*metadata)
-
-
-jtu.register_pytree_node(DagDef, _dagdef_flatten, _dagdef_unflatten)
-
-
 class Dag(tp.Generic[A]):
     __slots__ = ("_value",)
 
@@ -258,7 +290,7 @@ def _dag_flatten(
     *,
     with_keys: bool,
 ) -> tp.Tuple[tp.Tuple[tp.Any], DagDef[A]]:
-    leaves, dagdef = deref_flatten(x.value)
+    leaves, dagdef = deref(x.value)
     if with_keys:
         node = (jtu.GetAttrKey("value"), leaves)
     else:
@@ -267,7 +299,7 @@ def _dag_flatten(
 
 
 def _dag_unflatten(dagdef: DagDef[A], nodes: tp.Tuple[Leaves]) -> Dag[A]:
-    return Dag(reref_unflatten(nodes[0], dagdef))
+    return Dag(reref(nodes[0], dagdef))
 
 
 jtu.register_pytree_with_keys(
@@ -278,59 +310,40 @@ jtu.register_pytree_with_keys(
 )
 
 
-def deref_leaves(
-    ref_index: tp.Dict[Ref[tp.Any], int],
-    indexes: DagIndexesList,
-    leaves: Leaves,
-) -> tp.Iterator[tp.Any]:
-    for leaf_idx, x in enumerate(leaves):
+def deref(
+    pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[Partition, DagDef[A]]:
+    ref_index: tp.Dict[Ref[tp.Any], int] = {}
+    indexes: tp.List[tp.List[int]] = []
+
+    leaves, treedef = jtu.tree_flatten_with_path(pytree, is_leaf=is_leaf)
+    partition: tp.Dict[StrPath, tp.Any] = {}
+
+    for i, (path, x) in enumerate(leaves):
+        path = _to_str_path(path)
         if isinstance(x, Ref):
             if x not in ref_index:
                 ref_index[x] = len(ref_index)
-                indexes.append([leaf_idx])
-                yield x.to_value()
+                indexes.append([i])
+                x = x.to_value()
             else:
-                indexes[ref_index[x]].append(leaf_idx)
-                yield x.to_index()
+                indexes[ref_index[x]].append(i)
+                x = x.to_index()
         elif isinstance(x, Deref):
             raise ValueError("Cannot 'deref' pytree containing Derefs")
-        else:
-            yield x
+
+        partition[path] = x
+
+    _indexes = tuple(map(tuple, indexes))
+    return Partition(partition), DagDef(_indexes, treedef)
 
 
-def deref_flatten(pytree: A) -> tp.Tuple[Leaves, DagDef[A]]:
-    ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    indexes = []
-    leaves, treedef = jtu.tree_flatten(pytree, is_leaf=lambda x: isinstance(x, Deref))
-    leaves = list(deref_leaves(ref_index, indexes, leaves))
-    indexes = tuple(map(tuple, indexes))
-    return leaves, DagDef(indexes, treedef)
+def reref(partition: Partition, dagdef: DagDef[A]) -> A:
+    leaves = list(partition.values())
 
-
-def deref_unflatten(treedef: jtu.PyTreeDef, leaves: Leaves) -> tp.Tuple[A, DagDef[A]]:
-    ref_index: tp.Dict[Ref[tp.Any], int] = {}
-    indexes = []
-    leaves = list(deref_leaves(ref_index, indexes, leaves))
-    indexes = tuple(map(tuple, indexes))
-    return jtu.tree_unflatten(treedef, leaves), DagDef(indexes, treedef)
-
-
-def deref(pytree: A) -> tp.Tuple[A, DagDef[A]]:
-    leaves, dagdef = deref_flatten(pytree)
-    return dagdef.unflatten(leaves), dagdef
-
-
-def _validate_reref(x: A) -> A:
-    if isinstance(x, Ref):
-        raise ValueError("Cannot 'reref' pytree containing Refs")
-
-    return x
-
-
-def reref_leaves(indexes: DagIndexes, leaves: Leaves) -> Leaves:
-    leaves_out = list(map(_validate_reref, leaves))
-
-    for leaf_indexes in indexes:
+    for leaf_indexes in dagdef.indexes:
         leaf_index = leaf_indexes[0]
         value = leaves[leaf_index]
 
@@ -340,7 +353,7 @@ def reref_leaves(indexes: DagIndexes, leaves: Leaves) -> Leaves:
             )
 
         ref = value.to_ref()
-        leaves_out[leaf_index] = ref
+        leaves[leaf_index] = ref
 
         for leaf_index in leaf_indexes[1:]:
             x = leaves[leaf_index]
@@ -348,39 +361,73 @@ def reref_leaves(indexes: DagIndexes, leaves: Leaves) -> Leaves:
             if not isinstance(x, Index):
                 raise ValueError(f"Expected 'Index' as leaf, got {type(x).__name__}")
 
-            leaves_out[leaf_index] = ref
+            leaves[leaf_index] = ref
 
-    return leaves_out
-
-
-def reref_flatten(pytree: A, dagdef: DagDef[A]) -> Leaves:
-    indexes = dagdef.indexes
-    leaves = dagdef.treedef.flatten_up_to(pytree)
-    return reref_leaves(indexes, leaves)
-
-
-def reref_unflatten(leaves: Leaves, dagdef: DagDef[A]) -> A:
-    leaves = reref_leaves(dagdef.indexes, leaves)
-    return dagdef.unflatten(leaves)
-
-
-def reref(pytree: A, dagdef: DagDef[A]) -> A:
-    leaves = reref_flatten(pytree, dagdef)
     return dagdef.unflatten(leaves)
 
 
 def clone(pytree: A) -> A:
-    return reref_unflatten(*deref_flatten(pytree))
+    return reref(*deref(pytree))
 
 
-def update_refs(target_tree: tp.Any, source_tree: tp.Any):
-    target_leaves = jtu.tree_leaves(
-        target_tree, is_leaf=lambda x: isinstance(x, Referential) or x is NOTHING
-    )
-    source_leaves = jtu.tree_leaves(
-        source_tree, is_leaf=lambda x: isinstance(x, Referential) or x is NOTHING
-    )
+def _get_non_nothing(
+    paths: tp.Tuple[tp.Tuple[str, ...], ...],
+    leaves: tp.Tuple[tp.Union[Leaf, Nothing], ...],
+    position: int,
+):
+    # check that all paths are the same
+    paths_set = set(paths)
+    if len(paths_set) != 1:
+        raise ValueError(
+            "All partitions must have the same paths, "
+            f" at position [{position}] got "
+            "".join(f"\n- {path}" for path in paths_set)
+        )
+    non_nothing = [option for option in leaves if option is not NOTHING]
+    if len(non_nothing) == 0:
+        raise ValueError(
+            f"Expected at least one non-null value for position [{position}]"
+        )
+    elif len(non_nothing) > 1:
+        raise ValueError(
+            f"Expected at most one non-null value for position [{position}]"
+        )
+    return non_nothing[0]
 
+
+def _merge_partitions(partitions: tp.Sequence[Partition]) -> Partition:
+    if len(partitions) == 0:
+        raise ValueError("Expected at least one partition")
+
+    lenghts = [len(partition) for partition in partitions]
+    if not all(length == lenghts[0] for length in lenghts):
+        raise ValueError(
+            "All partitions must have the same length, got "
+            f"{', '.join(str(length) for length in lenghts)}"
+        )
+
+    partition_paths = (list(partition.keys()) for partition in partitions)
+    partition_leaves = (list(partition.values()) for partition in partitions)
+
+    merged_leaves = [
+        _get_non_nothing(paths, leaves, i)
+        for i, (paths, leaves) in enumerate(
+            zip(zip(*partition_paths), zip(*partition_leaves))
+        )
+    ]
+
+    return Partition(dict(zip(partitions[0].keys(), merged_leaves)))
+
+
+def update_refs(pytree: tp.Any, partition: Partition, *partitions: Partition):
+    if len(partitions) > 0:
+        partition = _merge_partitions((partition, *partitions))
+    target_leaves = jtu.tree_leaves(pytree)
+    source_leaves = list(partition.values())
+    _update_refs(target_leaves, source_leaves)
+
+
+def _update_refs(target_leaves: tp.List[Leaf], source_leaves: tp.List[Leaf]):
     if len(target_leaves) != len(source_leaves):
         raise ValueError(
             f"Target and source leaves must have the same length, got "
@@ -388,42 +435,25 @@ def update_refs(target_tree: tp.Any, source_tree: tp.Any):
         )
 
     seen_target_refs: tp.Set[Ref[tp.Any]] = set()
-    seen_source_refs: tp.Set[Ref[tp.Any]] = set()
-    source_has_ref = False
-    source_has_deref = False
 
     for i, (target_leaf, source_leaf) in enumerate(zip(target_leaves, source_leaves)):
-        if isinstance(source_leaf, Deref):
-            source_has_deref = True
-        elif isinstance(source_leaf, Ref):
-            source_has_ref = True
-        if source_has_ref and source_has_deref:
-            raise ValueError("Got source with mixed Ref and Deref instances")
-
-        if isinstance(target_leaf, Ref):
-            if target_leaf in seen_target_refs:
-                if isinstance(source_leaf, Ref) and source_leaf not in seen_source_refs:
-                    raise ValueError()
-                if not isinstance(source_leaf, (Index, Ref)):
-                    raise ValueError()
-                continue
-            elif isinstance(source_leaf, (Value, Ref)):
-                target_leaf.value = source_leaf._value
-                seen_target_refs.add(target_leaf)
-                if isinstance(source_leaf, Ref):
-                    seen_source_refs.add(source_leaf)
+        if isinstance(source_leaf, (Value, Index)):
+            if not isinstance(target_leaf, Ref):
+                raise ValueError(
+                    f"Expected 'Ref' as target leaf at position [{i}], "
+                    f"got {type(target_leaf).__name__}"
+                )
             elif isinstance(source_leaf, Index):
-                raise ValueError(
-                    f"Unseen Ref '{type(target_leaf).__name__}' at position [{i}] "
-                    f"aligned with source '{source_leaf}'"
-                )
+                if target_leaf not in seen_target_refs:
+                    raise ValueError(
+                        f"Found source 'Index' at position [{i}] but 'Ref' "
+                        f"has not been seen before."
+                    )
             else:
-                raise ValueError(
-                    f"Unexpected source type '{type(source_leaf).__name__}' "
-                    f"at position [{i}]"
-                )
-        elif isinstance(target_leaf, Deref):
-            raise ValueError(
-                f"Target partition should not contain Deref instances, got "
-                f"'{type(target_leaf).__name__}' at position [{i}]"
-            )
+                if target_leaf in seen_target_refs:
+                    raise ValueError(
+                        f"Found source '{type(source_leaf).__name__}' at position [{i}] "
+                        f"but corresponding 'Ref' has been seen before."
+                    )
+                target_leaf.value = source_leaf.value
+                seen_target_refs.add(target_leaf)
