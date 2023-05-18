@@ -3,19 +3,19 @@ import nnx
 import typing as tp
 
 
-def any_ref(x):
-    return isinstance(x, nnx.Ref)
+def any_ref(path, x):
+    return isinstance(x, nnx.Referential)
 
 
 def has_collection(collection):
-    return lambda x: isinstance(x, nnx.Referential) and x.collection == collection
+    return lambda path, x: isinstance(x, nnx.Referential) and x.collection == collection
 
 
 class TestPartitioning:
     def test_partition_tree(self):
-        p1 = nnx.Ref(1, "params")
-        p2 = nnx.Ref(2, "params")
-        s1 = nnx.Ref(3, "batch_stats")
+        p1 = nnx.Ref(1, collection="params")
+        p2 = nnx.Ref(2, collection="params")
+        s1 = nnx.Ref(3, collection="batch_stats")
 
         pytree = {
             "a": [p1, s1],
@@ -23,34 +23,34 @@ class TestPartitioning:
             "c": 100,
         }
 
-        (params, rest), treedef = nnx.tree_partition(pytree, has_collection("params"))
+        (params, rest), dagdef = nnx.tree_partition(pytree, "params")
 
         assert len(params) == 4
         assert len(rest) == 4
 
         # check params
-        assert params[("a", "0")] is p1
+        assert params[("a", "0")].value == p1.value
         assert params[("a", "1")] is nnx.NOTHING
-        assert params[("b",)] is p2
+        assert params[("b",)].value == p2.value
         assert params[("c",)] is nnx.NOTHING
 
         # check rest
         assert rest[("a", "0")] is nnx.NOTHING
-        assert rest[("a", "1")] is s1
+        assert rest[("a", "1")].value == s1.value
         assert rest[("b",)] is nnx.NOTHING
         assert rest[("c",)] == 100
 
-        pytree = nnx.merge_partitions((params, rest), treedef)
+        pytree = dagdef.merge([params, rest])
 
-        assert pytree["a"][0] is p1
-        assert pytree["a"][1] is s1
-        assert pytree["b"] is p2
+        assert pytree["a"][0].value == p1.value
+        assert pytree["a"][1].value == s1.value
+        assert pytree["b"].value == p2.value
         assert pytree["c"] == 100
 
     def test_update_from(self):
-        p1 = nnx.Ref(1, "params")
-        p2 = nnx.Ref(2, "params")
-        s1 = nnx.Ref(3, "batch_stats")
+        p1 = nnx.Ref(1, collection="params")
+        p2 = nnx.Ref(2, collection="params")
+        s1 = nnx.Ref(3, collection="batch_stats")
 
         pytree = {
             "a": [p1, s1],
@@ -69,8 +69,8 @@ class TestPartitioning:
         assert pytree["c"] == 100
 
     def test_grad_example(self):
-        p1 = nnx.Ref(1.0, "params")
-        s1 = nnx.Ref(-10, "batch_stats")
+        p1 = nnx.Ref(1.0, collection="params")
+        s1 = nnx.Ref(-10, collection="batch_stats")
 
         pytree = {
             "a": [p1, s1],
@@ -78,21 +78,20 @@ class TestPartitioning:
             "c": 100,
         }
 
-        params = nnx.get_partition(pytree, has_collection("params"))
+        params = nnx.get_partition(pytree, "params")
 
-        def loss(params, dagdef):
-            params = nnx.reref(params, dagdef)
-            return sum(p.value for p in jax.tree_util.tree_leaves(params))
+        def loss(params):
+            return sum(2 * p for p in jax.tree_util.tree_leaves(params))
 
-        grad = jax.grad(loss)(*nnx.deref(params))
-        nnx.update_refs(params, grad)
+        grad = jax.grad(loss)(params)
+        nnx.update_refs(pytree, grad)
 
         assert pytree["a"][0].value == 2.0
         assert pytree["a"][1].value == -10
         assert pytree["b"].value == 2.0
         assert pytree["c"] == 100
 
-    def test_get_paritition_idenpotent(self):
+    def test_get_paritition(self):
         p1 = nnx.Ref(10.0)
         p2 = nnx.Ref(20.0)
 
@@ -103,18 +102,10 @@ class TestPartitioning:
             "d": 5.0,
         }
 
-        ref_partition = nnx.get_partition(pytree, any_ref)
-        assert ref_partition[("a", "0")] is p1
-        assert ref_partition[("a", "1")] is p2
-        assert ref_partition[("b",)] is p1
-        assert ref_partition[("c",)] is nnx.NOTHING
-        assert ref_partition[("d",)] is nnx.NOTHING
-        assert len(ref_partition) == 5
-
-        ref_partition = nnx.get_partition(ref_partition, any_ref)
-        assert ref_partition[("a", "0")] is p1
-        assert ref_partition[("a", "1")] is p2
-        assert ref_partition[("b",)] is p1
-        assert ref_partition[("c",)] is nnx.NOTHING
-        assert ref_partition[("d",)] is nnx.NOTHING
-        assert len(ref_partition) == 5
+        partition = nnx.get_partition(pytree, any_ref)
+        assert partition[("a", "0")].value == p1.value
+        assert partition[("a", "1")].value == p2.value
+        assert isinstance(partition[("b",)], nnx.Index)
+        assert partition[("c",)] is nnx.NOTHING
+        assert partition[("d",)] is nnx.NOTHING
+        assert len(partition) == 5

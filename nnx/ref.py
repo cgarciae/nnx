@@ -114,7 +114,7 @@ class DagDef(tp.Generic[A]):
     ) -> A:
         if isinstance(partitions, tp.Mapping):
             partitions = tuple(partitions.values())
-        return nnx.merge_partitions(partitions, self)
+        return nnx.merge(partitions, self)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()

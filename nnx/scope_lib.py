@@ -49,10 +49,10 @@ class Scope:
         rng_streams = {k: v.fork() for k, v in self._rngs.items()}
         return Scope(rng_streams, self._flags)
 
-    def unsafe_trace_update(self):
+    def unsafe_trace_update(self, context_trace: tp.Optional[tracers.MainTrace] = None):
         for rng_stream in self._rngs.values():
             rng_stream._jax_trace = tracers.current_jax_trace()
-            rng_stream._refx_trace = tracers.current_refx_trace()
+            rng_stream._context_trace = context_trace or rng_stream._jax_trace
 
     def copy(self) -> "Scope":
         return Scope(self._rngs, self._flags)

@@ -23,7 +23,7 @@ class RngStream:
         "_count",
         "_count_path",
         "_jax_trace",
-        "_refx_trace",
+        "_context_trace",
     )
 
     def __init__(
@@ -31,17 +31,19 @@ class RngStream:
         key: KeyArray,
         count: int = 0,
         count_path: tp.Tuple[int, ...] = (),
+        context_trace: tp.Optional[tracers.MainTrace] = None,
     ):
         self._key = key
         self._count = count
         self._count_path = count_path
         self._jax_trace = tracers.current_jax_trace()
-        self._refx_trace = tracers.current_refx_trace()
+        self._context_trace = context_trace or self._jax_trace
 
     def _validate_trace(self):
-        if (
-            self._jax_trace is not tracers.current_jax_trace()
-            or self._refx_trace is not tracers.current_refx_trace()
+        value_trace = tracers.get_top_trace(self._key)
+        if self._jax_trace is not tracers.current_jax_trace() or (
+            value_trace is not self._jax_trace
+            and value_trace is not self._context_trace
         ):
             raise ValueError("Rng used in a different trace")
 
@@ -117,7 +119,7 @@ class Rngs(tp.Mapping[str, RngStream]):
         streams.update(kwargs)
 
         streams = {
-            name: RngStream(key) if isinstance(key, KeyArray) else key
+            name: RngStream(key) if isinstance(key, jax.Array) else key
             for name, key in streams.items()
         }
 

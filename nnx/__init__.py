@@ -49,8 +49,21 @@ from .scope_lib import (
 from .partitioning import (
     tree_partition,
     get_partition,
-    merge_partitions,
-    collection_partition,
+    merge_partitions as merge,
+    collection_partition as partition,
 )
-from .ref import Ref, Value, Index, DagDef, deref, reref, clone, Referential, Deref
+from .ref import (
+    Ref,
+    Value,
+    Index,
+    DagDef,
+    deref,
+    reref,
+    clone,
+    Referential,
+    Deref,
+    Dag,
+    NOTHING,
+    update_refs,
+)
 from .ref_field import RefField

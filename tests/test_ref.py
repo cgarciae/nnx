@@ -229,6 +229,7 @@ class TestRef:
         pytree = nnx.reref(pytree, dagdef)
         assert len(jax.tree_util.tree_leaves(pytree)) == 5
 
+    @pytest.mark.skip(reason="TODO: removing support for now")
     def test_mutable(self):
         r1 = nnx.Ref(1, collection="params")
         r2 = nnx.Ref(2, collection="batch_stats")
