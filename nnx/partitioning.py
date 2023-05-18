@@ -35,9 +35,18 @@ def tree_partition(
     if len(filters) == 0:
         raise ValueError("Expected at least one predicate")
 
-    predicates = tuple(map(to_predicate, filters))
-
     partition, dagdef = deref(pytree, is_leaf=is_leaf)
+    partitions = split_partition(partition, dagdef, *filters)
+
+    return partitions, dagdef
+
+
+def split_partition(
+    partition: Partition,
+    dagdef: DagDef[tp.Any],
+    *filters: CollectionFilter,
+) -> tp.Tuple[Partition, ...]:
+    predicates = tuple(map(to_predicate, filters))
 
     # we have n + 1 partitions, where n is the number of predicates
     # the last partition is for values that don't match any predicate
@@ -57,6 +66,79 @@ def tree_partition(
     partitions = tuple(
         Partition(dict(zip(paths, partition))) for partition in partition_leaves
     )
+
+    return partitions
+
+
+@tp.overload
+def collection_partition(
+    pytree: A,
+    collection: str,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[Partition, DagDef[A]]:
+    ...
+
+
+@tp.overload
+def collection_partition(
+    pytree: A,
+    collection: str,
+    *collections: str,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[tp.Tuple[Partition, ...], DagDef[A]]:
+    ...
+
+
+@tp.overload
+def collection_partition(
+    pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[tp.Dict[str, Partition], DagDef[A]]:
+    ...
+
+
+def collection_partition(
+    pytree: A,
+    *collections: str,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[
+    tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]], DagDef[A]
+]:
+    partition, dagdef = deref(pytree, is_leaf=is_leaf)
+
+    num_collections = len(collections)
+
+    if num_collections == 0:
+        collections = tuple(
+            set(x.collection for x in partition.values() if isinstance(x, Deref))
+        )
+        if "rest" in collections:
+            raise ValueError("Found reserved 'rest' collection name in pytree Refs")
+
+    partitions = split_partition(partition, dagdef, *collections)
+
+    if all(x is NOTHING for x in partitions[-1].values()):
+        partitions = partitions[:-1]
+    else:
+        if num_collections == 0:
+            collections = (*collections, "rest")
+        elif "rest" not in collections:
+            raise ValueError(
+                f"Expected 'rest' collection to be in collections: {collections}"
+            )
+
+    if len(collections) != len(partitions):
+        raise ValueError(
+            f"Expected the number of collections ({len(collections)}) "
+            f"to be equal to the number of partitions ({len(partitions)})."
+        )
+
+    if num_collections == 0:
+        partitions = dict(zip(collections, partitions))
+    elif num_collections == 1:
+        partitions = partitions[0]
 
     return partitions, dagdef
 

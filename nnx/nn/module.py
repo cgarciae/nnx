@@ -3,6 +3,7 @@ import jax
 from simple_pytree import Pytree
 from nnx import partitioning
 from nnx import scope_lib
+from nnx.ref import DagDef
 import refx
 import typing as tp
 import jax.tree_util as jtu
@@ -100,14 +101,14 @@ class Module(Pytree):
     def partition(
         self: M,
         collection: str,
-        *extract_colelctions: str,
+        *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[tp.Tuple[refx.Partition, ...], "ModuleDef[M]",]:
         ...
 
     def partition(
         self: M,
-        *extract_collections: str,
+        *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[
         tp.Union[
@@ -115,34 +116,9 @@ class Module(Pytree):
         ],
         "ModuleDef[M]",
     ]:
-        collections = list(self.collections())
-        module, dagdef = self.deref()
-        partitions, treedef = partitioning.tree_partition(
-            module, *collections, is_leaf=is_leaf
+        partitions, dagdef = partitioning.collection_partition(
+            self, *collections, is_leaf=is_leaf
         )
-        moduledef = ModuleDef(dagdef, treedef)
-
-        if all(x is refx.NOTHING for x in partitions[-1].values()):
-            partitions = partitions[:-1]
-        else:
-            # add "rest" as a reserved name for the rest of the tree
-            collections.append("rest")
-
-        partitions = dict(zip(collections, partitions))
-
-        if extract_collections:
-            if set(extract_collections) != set(collections):
-                raise ValueError(
-                    f"extract_colelctions contain all collections: "
-                    f"{extract_collections} != {collections}"
-                )
-
-            if len(extract_collections) == 1:
-                partitions = partitions[extract_collections[0]]
-            else:
-                partitions = tuple(partitions[x] for x in extract_collections)
-
-        return partitions, moduledef
 
     @classmethod
     def init(
@@ -198,21 +174,7 @@ class ModuleDefValue(tp.NamedTuple):
     partition_treedef: jtu.PyTreeDef
 
 
-class ModuleDef(tp.Generic[M]):
-    __slots__ = ("_reref_dagdef", "_partition_treedef")
-
-    def __init__(self, reref_dagdef: refx.DagDef, partition_treedef: jtu.PyTreeDef):
-        self._reref_dagdef = reref_dagdef
-        self._partition_treedef = partition_treedef
-
-    @property
-    def reref_dagdef(self) -> refx.DagDef:
-        return self._reref_dagdef
-
-    @property
-    def partition_treedef(self) -> jtu.PyTreeDef:
-        return self._partition_treedef
-
+class ModuleDef(DagDef[M]):
     def apply(
         self,
         partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
@@ -236,27 +198,3 @@ class ModuleDef(tp.Generic[M]):
                 return out, partitions
 
         return CallableProxy(_context, module)  # type: ignore
-
-    def merge(
-        self,
-        partitions: tp.Union[tp.Sequence[refx.Partition], tp.Dict[str, refx.Partition]],
-    ) -> M:
-        if isinstance(partitions, dict):
-            partitions = tuple(partitions.values())
-        module: M = partitioning.merge_partitions(partitions, self.partition_treedef)
-        return module.reref(self.reref_dagdef)
-
-
-def _moduledef_flatten(
-    x: ModuleDef[M],
-) -> tp.Tuple[tp.Tuple[()], tp.Tuple[refx.DagDef, jtu.PyTreeDef]]:
-    return (), (x.reref_dagdef, x.partition_treedef)
-
-
-def _moduledef_unflatten(
-    aux_data: tp.Tuple[refx.DagDef, jtu.PyTreeDef], _: tp.Tuple[()]
-) -> ModuleDef[M]:
-    return ModuleDef(*aux_data)
-
-
-jtu.register_pytree_node(ModuleDef, _moduledef_flatten, _moduledef_unflatten)

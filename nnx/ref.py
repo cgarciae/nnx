@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
-import contextlib
-import dataclasses
 from functools import partial
 from types import MappingProxyType
 import typing as tp
+import nnx
 
 import jax
 import jax.tree_util as jtu
@@ -109,6 +108,18 @@ class DagDef(tp.Generic[A]):
     def reref(self, partition: Partition) -> A:
         return reref(partition, self)
 
+    def merge(
+        self,
+        partitions: tp.Union[tp.Sequence[Partition], tp.Mapping[str, Partition]],
+    ) -> A:
+        if isinstance(partitions, tp.Mapping):
+            partitions = tuple(partitions.values())
+        return nnx.merge_partitions(partitions, self)
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        jtu.register_pytree_node(cls, _dagdef_flatten, _dagdef_unflatten)
+
 
 def _dagdef_flatten(
     x: DagDef[A],
@@ -164,29 +175,37 @@ class Deref(Referential[A]):
 
 
 class Ref(Referential[A]):
-    __slots__ = ("_value", "_jax_trace", "_refx_trace", "_trace_set")
+    __slots__ = ("_value", "_jax_trace", "_context_trace", "_trace_set")
 
-    def __init__(self, value: A, collection: str = ""):
+    def __init__(
+        self,
+        value: A,
+        *,
+        collection: str = "",
+        context_trace: tp.Optional[tracers.MainTrace] = None,
+    ):
         self._value = value
         self._jax_trace = tracers.current_jax_trace()
-        self._refx_trace = tracers.current_refx_trace()
-        self._trace_set = frozenset((self._jax_trace, self._refx_trace))
+        self._context_trace = context_trace or self._jax_trace
+        self._trace_set = frozenset((self._jax_trace, self._context_trace))
         super().__init__(collection)
 
     @property
     def value(self) -> A:
-        if (
-            self._jax_trace is not tracers.current_jax_trace()
-            or self._refx_trace is not tracers.current_refx_trace()
+        value_trace = tracers.get_top_trace(self._value)
+        if self._jax_trace is not tracers.current_jax_trace() or (
+            value_trace is not self._jax_trace
+            and value_trace is not self._context_trace
         ):
             raise ValueError("Cannot access ref from different trace level")
         return self._value
 
     @value.setter
     def value(self, value: A):
-        if (
-            self._jax_trace is not tracers.current_jax_trace()
-            or self._refx_trace is not tracers.current_refx_trace()
+        value_trace = tracers.get_top_trace(self._value)
+        if self._jax_trace is not tracers.current_jax_trace() or (
+            value_trace is not self._jax_trace
+            and value_trace is not self._context_trace
         ):
             raise ValueError("Cannot mutate ref from different trace level")
 
@@ -209,7 +228,7 @@ class Ref(Referential[A]):
 class Value(Deref[A]):
     __slots__ = ("_value",)
 
-    def __init__(self, value: A, collection: tp.Hashable):
+    def __init__(self, value: A, collection: str):
         self._value = value
         super().__init__(collection)
 
@@ -218,7 +237,7 @@ class Value(Deref[A]):
         return self._value
 
     def to_ref(self) -> "Ref[A]":
-        return Ref(self._value, self.collection)
+        return Ref(self._value, collection=self.collection)
 
     def __repr__(self) -> str:
         return f"Value(collection={repr(self.collection)}, value={repr(self._value)})"
@@ -342,6 +361,7 @@ def deref(
 
 def reref(partition: Partition, dagdef: DagDef[A]) -> A:
     leaves = list(partition.values())
+    context_trace = tracers.get_top_trace(leaves)
 
     for leaf_indexes in dagdef.indexes:
         leaf_index = leaf_indexes[0]
@@ -352,7 +372,7 @@ def reref(partition: Partition, dagdef: DagDef[A]) -> A:
                 f"Expected 'Value' as first leaf, got {type(value).__name__}"
             )
 
-        ref = value.to_ref()
+        ref = Ref(value.value, collection=value.collection, context_trace=context_trace)
         leaves[leaf_index] = ref
 
         for leaf_index in leaf_indexes[1:]:

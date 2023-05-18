@@ -44,4 +44,11 @@ from .scope_lib import (
     get_rngs,
 )
 from .transforms import grad, jit
-from .partitioning import tree_partition, get_partition, Partition, PartitionDef
+from .partitioning import (
+    tree_partition,
+    get_partition,
+    Partition,
+    PartitionDef,
+    merge_partitions,
+    collection_partition,
+)
