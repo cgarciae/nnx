@@ -1,7 +1,7 @@
 import typing as tp
 import dataclasses
 
-from nnx.ref import Ref
+from nnx.reference import Ref
 
 
 A = tp.TypeVar("A")

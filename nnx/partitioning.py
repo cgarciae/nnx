@@ -4,7 +4,7 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx.ref import (
+from nnx.reference import (
     NOTHING,
     DagDef,
     Deref,

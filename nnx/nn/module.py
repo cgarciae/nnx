@@ -3,13 +3,27 @@ import jax
 from simple_pytree import Pytree
 from nnx import partitioning
 from nnx import scope_lib
-from nnx.ref import DagDef, Partition, Referential, clone, deref, reref, update_refs
+from nnx.reference import (
+    DagDef,
+    Partition,
+    Referential,
+    clone,
+    deref,
+    reref,
+    update_refs,
+)
 import typing as tp
 import jax.tree_util as jtu
+import builtins
 
 from nnx.rng_stream import RngStream
 
 M = tp.TypeVar("M", bound="Module")
+
+if tp.TYPE_CHECKING:
+    SetItemType = tp.Union[builtins.ellipsis, builtins.slice]
+else:
+    SetItemType = tp.Any
 
 
 class _ProxyContext(tp.Protocol):
@@ -54,19 +68,18 @@ class Module(Pytree):
         ...
 
     def __getitem__(
-        self, collections: tp.Tuple[str, ...]
+        self, collections: tp.Union[str, tp.Tuple[str, ...]]
     ) -> tp.Union[Partition, tp.Tuple[Partition, ...]]:
         if len(collections) < 1:
             raise ValueError("Must specify at least one collection")
 
-        partitions = partitioning.tree_partition(self.deref()[0], *collections)[0]
-        if len(partitions) == 1:
-            return partitions[0]
-        else:
-            return partitions
+        if isinstance(collections, str):
+            collections = (collections,)
 
-    def __setitem__(self, collection: str, value: Partition):
-        update_refs(partitioning.get_partition(self, collection), value)
+        return partitioning.get_partition(self, *collections)
+
+    def __setitem__(self, name: SetItemType, value: Partition):
+        update_refs(self, value)
 
     def collections(self) -> tp.FrozenSet[str]:
         return frozenset(

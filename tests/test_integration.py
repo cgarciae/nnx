@@ -34,9 +34,7 @@ class TestIntegration:
                 return jnp.mean((y - y_pred) ** 2)
 
             grad = loss_fn(model)
-            model["params"] = jax.tree_map(
-                lambda w, g: w - 0.1 * g, model["params"], grad
-            )
+            model[...] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
 
         model = Model.init(jax.random.PRNGKey(0))()
 
@@ -80,9 +78,7 @@ class TestIntegration:
                 return jnp.mean((y - y_pred) ** 2)
 
             grad = loss_fn(model)
-            model["params"] = jax.tree_map(
-                lambda w, g: w - 0.1 * g, model["params"], grad
-            )
+            model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
 
             return model
 

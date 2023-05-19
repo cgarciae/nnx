@@ -89,8 +89,6 @@ def scope(
     /,
     *,
     flags: tp.Optional[tp.Mapping[str, tp.Hashable]] = None,
-    trace: tp.Optional[tracers.MainTrace] = None,
-    mutable: tp.Optional[tp.Callable[[str], bool]] = None,
 ) -> tp.ContextManager[None]:
     ...
 
@@ -98,10 +96,6 @@ def scope(
 @tp.overload
 def scope(
     scope: Scope,
-    /,
-    *,
-    trace: tp.Optional[tracers.MainTrace] = None,
-    mutable: tp.Optional[tp.Callable[[str], bool]] = None,
 ) -> tp.ContextManager[None]:
     ...
 

@@ -22,14 +22,14 @@ class StrPath(tp.Tuple[str, ...]):
     pass
 
 
-class Partition(tp.Mapping[StrPath, Leaf]):
-    def __init__(self, __mapping: tp.Mapping[StrPath, Leaf], /):
+class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
+    def __init__(self, __mapping: tp.Mapping[tp.Tuple[str, ...], Leaf], /):
         self._mapping = MappingProxyType(__mapping)
 
-    def __getitem__(self, __key: StrPath) -> Leaf:
+    def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
 
-    def __iter__(self) -> tp.Iterator[StrPath]:
+    def __iter__(self) -> tp.Iterator[tp.Tuple[str, ...]]:
         return iter(self._mapping)
 
     def __len__(self) -> int:
@@ -359,8 +359,9 @@ def deref(
     return Partition(partition), DagDef(_indexes, treedef)
 
 
-def reref(partition: Partition, dagdef: DagDef[A]) -> A:
-    leaves = list(partition.values())
+def reref(leaves: tp.Union[Partition, Leaves], dagdef: DagDef[A]) -> A:
+    if isinstance(leaves, Partition):
+        leaves = list(leaves.values())
     context_trace = tracers.get_top_trace(leaves)
 
     for leaf_indexes in dagdef.indexes:

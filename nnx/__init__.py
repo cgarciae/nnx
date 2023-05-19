@@ -2,8 +2,6 @@ __version__ = "0.0.0"
 
 
 from .dataclasses import dataclass, field, param, ref, static_field
-
-# from .filters import jit_filter
 from .nn import BatchNorm, Conv, Dropout, Linear, Module, ModuleDef
 from .nn.activations import (
     celu,
@@ -32,38 +30,44 @@ from .nn.activations import (
     swish,
     tanh,
 )
-from .rng_stream import RngStream, Rngs
+from .partitioning import (
+    collection_partition as partition,
+)
+from .partitioning import (
+    get_partition,
+    tree_partition,
+)
+from .partitioning import (
+    merge_partitions as merge,
+)
+from .ref_field import RefField
+from .reference import (
+    NOTHING,
+    Dag,
+    DagDef,
+    Deref,
+    Index,
+    Partition,
+    Ref,
+    Referential,
+    Value,
+    clone,
+    deref,
+    reref,
+    update_refs,
+)
+from .rng_stream import Rngs, RngStream
 from .scope_lib import (
     Scope,
     apply,
     current_scope,
     fork_scope,
     get_flag,
+    get_rngs,
     init,
     make_rng,
     scope,
-    get_rngs,
 )
+from .transforms import grad, jit
 
-# from .transforms import grad, jit
-from .partitioning import (
-    tree_partition,
-    get_partition,
-    merge_partitions as merge,
-    collection_partition as partition,
-)
-from .ref import (
-    Ref,
-    Value,
-    Index,
-    DagDef,
-    deref,
-    reref,
-    clone,
-    Referential,
-    Deref,
-    Dag,
-    NOTHING,
-    update_refs,
-)
-from .ref_field import RefField
+from .filters import jit_filter

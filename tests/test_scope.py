@@ -18,7 +18,7 @@ class TestScope:
             assert not np.allclose(key1, key2)
 
     def test_make_rng_error(self):
-        with pytest.raises(ValueError, match="Unknown collection:"):
+        with pytest.raises(ValueError, match="Unknown Rng Stream:"):
             nnx.make_rng("a")
 
     def test_flags(self):

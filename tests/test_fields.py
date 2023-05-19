@@ -3,7 +3,7 @@ import nnx
 
 class TestFields:
     def test_dataclass(self):
-        @nnx.dataclasses
+        @nnx.dataclass
         class Foo:
             x: int
             y: int
