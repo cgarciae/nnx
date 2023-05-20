@@ -61,8 +61,7 @@ class JitTransform(jax.stages.Wrapped):
             **kwargs,
         ):
             with scope_lib.scope(scope_lib.Scope.empty()):
-                leaves = _nnx__dagdef.flatten_up_to((args, kwargs))
-                args, kwargs = reref(leaves, _nnx__dagdef)
+                args, kwargs = reref((args, kwargs), _nnx__dagdef)
                 out = fun(*args, **kwargs)
                 return deref(out)
 

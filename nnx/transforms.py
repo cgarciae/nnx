@@ -28,9 +28,15 @@ class JitTransform(jax.stages.Wrapped):
         **jit_kwargs,
     ):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(pytree, scope: nnx.Scope, *args, _nnx__dagdef: DagDef, **kwargs):
+        def jitted_fn(
+            partition: Partition,
+            scope: nnx.Scope,
+            *args,
+            _nnx__dagdef: DagDef[tp.Any],
+            **kwargs,
+        ):
             with scope_lib.scope(scope.fork()):
-                pytree = reref(pytree, _nnx__dagdef)
+                pytree = reref(partition, _nnx__dagdef)
                 out = fun(pytree, *args, **kwargs)
                 if self.stateful:
                     out = (deref(pytree), out)
@@ -41,12 +47,12 @@ class JitTransform(jax.stages.Wrapped):
 
     def __call__(self, pytree, *args, **kwargs):
         pytree_in = pytree
-        pytree, dagdef = deref(pytree_in)
+        partition, dagdef = deref(pytree_in)
         scope = nnx.current_scope()
-        out = self.jitted_fn(pytree, scope, *args, _nnx__dagdef=dagdef, **kwargs)
+        out = self.jitted_fn(partition, scope, *args, _nnx__dagdef=dagdef, **kwargs)
         if self.stateful:
-            (pytree_out, _), out = out
-            update_refs(pytree_in, pytree_out)
+            (partition_out, _), out = out
+            update_refs(pytree_in, partition_out)
         return out
 
     def __repr__(self):

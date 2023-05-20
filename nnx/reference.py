@@ -334,19 +334,68 @@ jtu.register_pytree_with_keys(
 )
 
 
+@tp.overload
 def deref(
     pytree: A,
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
 ) -> tp.Tuple[Partition, DagDef[A]]:
+    ...
+
+
+@tp.overload
+def deref(
+    pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+    unflatten: tp.Literal[False],
+) -> tp.Tuple[Partition, DagDef[A]]:
+    ...
+
+
+@tp.overload
+def deref(
+    pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+    unflatten: tp.Literal[True],
+) -> tp.Tuple[A, DagDef[A]]:
+    ...
+
+
+@tp.overload
+def deref(
+    pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+    unflatten: bool,
+) -> tp.Tuple[tp.Union[Partition, A], DagDef[A]]:
+    ...
+
+
+def deref(
+    pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+    unflatten: bool = False,
+) -> tp.Tuple[tp.Union[Partition, A], DagDef[A]]:
     ref_index: tp.Dict[Ref[tp.Any], int] = {}
     indexes: tp.List[tp.List[int]] = []
 
-    leaves, treedef = jtu.tree_flatten_with_path(pytree, is_leaf=is_leaf)
-    partition: tp.Dict[StrPath, tp.Any] = {}
+    if unflatten:
+        leaves, treedef = jtu.tree_flatten(pytree, is_leaf=is_leaf)
+    else:
+        leaves, treedef = jtu.tree_flatten_with_path(pytree, is_leaf=is_leaf)
 
-    for i, (path, x) in enumerate(leaves):
-        path = _to_str_path(path)
+    out_leaves: Leaves = []
+    out_paths: tp.List[tp.Tuple[str, ...]] = []
+
+    for i, leaf in enumerate(leaves):
+        if unflatten:
+            path, x = None, leaf
+        else:
+            path, x = leaf
+
         if isinstance(x, Ref):
             if x not in ref_index:
                 ref_index[x] = len(ref_index)
@@ -358,15 +407,27 @@ def deref(
         elif isinstance(x, Deref):
             raise ValueError("Cannot 'deref' pytree containing Derefs")
 
-        partition[path] = x
+        out_leaves.append(x)
+        if path is not None:
+            path = _to_str_path(path)
+            out_paths.append(path)
 
     _indexes = tuple(map(tuple, indexes))
-    return Partition(partition), DagDef(_indexes, treedef)
+    dagdef = DagDef[A](_indexes, treedef)
+
+    if unflatten:
+        out = dagdef.unflatten(out_leaves)
+    else:
+        out = Partition(dict(zip(out_paths, out_leaves)))
+
+    return out, dagdef
 
 
-def reref(leaves: tp.Union[Partition, Leaves], dagdef: DagDef[A]) -> A:
-    if isinstance(leaves, Partition):
-        leaves = list(leaves.values())
+def reref(__tree_or_partition: tp.Union[Partition, A], /, dagdef: DagDef[A]) -> A:
+    if isinstance(__tree_or_partition, Partition):
+        leaves = list(__tree_or_partition.values())
+    else:
+        leaves = dagdef.flatten_up_to(__tree_or_partition)
     context_trace = tracers.get_top_trace(leaves)
 
     for leaf_indexes in dagdef.indexes:

@@ -44,10 +44,32 @@ class CallableProxy:
 
 
 class Module(Pytree):
-    def deref(self: M) -> tp.Tuple[M, DagDef]:
-        return deref(self)
+    @tp.overload
+    def deref(self: M) -> tp.Tuple[Partition, DagDef[M]]:
+        ...
 
-    def reref(self: M, dagdef: DagDef) -> M:
+    @tp.overload
+    def deref(
+        self: M, *, unflatten: tp.Literal[False]
+    ) -> tp.Tuple[Partition, DagDef[M]]:
+        ...
+
+    @tp.overload
+    def deref(self: M, *, unflatten: tp.Literal[True]) -> tp.Tuple[M, DagDef[M]]:
+        ...
+
+    @tp.overload
+    def deref(
+        self: M, *, unflatten: bool
+    ) -> tp.Tuple[tp.Union[M, Partition], DagDef[M]]:
+        ...
+
+    def deref(
+        self: M, *, unflatten: bool = False
+    ) -> tp.Tuple[tp.Union[M, Partition], DagDef[M]]:
+        return deref(self, unflatten=unflatten)
+
+    def reref(self: M, dagdef: DagDef[M]) -> M:
         return reref(self, dagdef)
 
     def clone(self: M) -> M:
