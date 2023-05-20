@@ -10,6 +10,7 @@ import jax.tree_util as jtu
 from nnx import tracers
 
 A = tp.TypeVar("A")
+D = tp.TypeVar("D", bound="DagDef[tp.Any]")
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
 DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
@@ -118,7 +119,9 @@ class DagDef(tp.Generic[A]):
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
-        jtu.register_pytree_node(cls, _dagdef_flatten, _dagdef_unflatten)
+        jtu.register_pytree_node(
+            cls, _dagdef_flatten, partial(_dagdef_unflatten, cls=cls)
+        )
 
 
 def _dagdef_flatten(
@@ -128,12 +131,14 @@ def _dagdef_flatten(
 
 
 def _dagdef_unflatten(
-    metadata: tp.Tuple[DagIndexes, jtu.PyTreeDef], _: tp.Tuple[()]
-) -> DagDef:
-    return DagDef(*metadata)
+    metadata: tp.Tuple[DagIndexes, jtu.PyTreeDef], _: tp.Tuple[()], *, cls: tp.Type[D]
+) -> D:
+    return cls(*metadata)
 
 
-jtu.register_pytree_node(DagDef, _dagdef_flatten, _dagdef_unflatten)
+jtu.register_pytree_node(
+    DagDef, _dagdef_flatten, partial(_dagdef_unflatten, cls=DagDef)
+)
 
 
 class Nothing:

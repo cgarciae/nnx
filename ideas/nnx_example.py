@@ -92,7 +92,7 @@ def train_step(model: MLP, key, batch):
         return loss
 
     grads = nnx.grad(loss, wrt="params")(model)
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 
 # ----------------------------------------
