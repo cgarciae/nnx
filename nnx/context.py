@@ -146,7 +146,10 @@ class Context:
         return self._rngs[name].next()
 
     def fork(self) -> "Context":
-        return Context({name: stream.fork() for name, stream in self._rngs.items()})
+        return Context(
+            rngs={name: stream.fork() for name, stream in self._rngs.items()},
+            flags=self._flags,
+        )
 
     def copy(self) -> "Context":
         return Context(rngs=self._rngs, flags=self._flags)
