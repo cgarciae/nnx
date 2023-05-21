@@ -40,15 +40,16 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.param()
     b: jax.Array = nnx.param()
 
-    def __init__(self, din: int, dout: int):
-        key = self.make_rng("params")
+    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
+        key = rngs.make_rng("params")
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))
 
     def __call__(self, x):
         return x @ self.w + self.b
 
-model = Linear.init(jax.random.PRNGKey(0))(din=12, dout=2)
+rngs = nnx.Rngs(jax.random.PRNGKey(0))
+model = Linear(din=12, dout=2, rngs=rngs)
 
 @nnx.jit
 def train_step(model, x, y):
@@ -81,8 +82,8 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.ref("params")
     b: jax.Array = nnx.param() # shortcut for ref("params")
 
-    def __init__(self, din: int, dout: int):
-        key = self.make_rng("params") # request an RNG key
+    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
+        key = nnx.make_rng("params") # request an RNG key
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))
 
@@ -90,6 +91,7 @@ class Linear(nnx.Module):
         return x @ self.w + self.b
 ```
 
+TODO: update info on the `Rngs` class.
 `nnx` offers the same `make_rng` API as Flax to distribute RNG keys where they are needed. It does this by storing RNG keys in a global state and carefully handling them with context managers. The `init` and `apply` methods allow you to set the state for the RNG keys and other flags. These methods are similar to Flax's `init` and `apply` but are designed to be more compatible with static analysis tools.
 
 ```python

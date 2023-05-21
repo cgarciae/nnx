@@ -3,13 +3,12 @@ import typing as tp
 
 import jax
 import jax.stages
-from jax._src.interpreters import pxla
 from nnx.reference import DagDef, Partition, deref, reref, update_refs
 import jax.tree_util as jtu
-from nnx import tracers
+from nnx import rng_stream
 
 import nnx
-from nnx import partitioning, scope_lib
+from nnx import partitioning
 
 A = tp.TypeVar("A")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
@@ -30,26 +29,27 @@ class JitTransform(jax.stages.Wrapped):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(
             partition: Partition,
-            scope: nnx.Scope,
             *args,
             _nnx__dagdef: DagDef[tp.Any],
             **kwargs,
         ):
-            with scope_lib.scope(scope.fork()):
-                pytree = reref(partition, _nnx__dagdef)
-                out = fun(pytree, *args, **kwargs)
-                if self.stateful:
-                    out = (deref(pytree), out)
-                return out
+            pytree = reref(partition, _nnx__dagdef)
+            out = fun(pytree, *args, **kwargs)
+            if self.stateful:
+                out = (deref(pytree), out)
+            return out
 
         self.jitted_fn = jitted_fn
         self.stateful = stateful
 
     def __call__(self, pytree, *args, **kwargs):
         pytree_in = pytree
+
+        if "rngs" in kwargs and isinstance(kwargs["rngs"], rng_stream.Rngs):
+            kwargs["rngs"] = kwargs["rngs"].fork()
+
         partition, dagdef = deref(pytree_in)
-        scope = nnx.current_scope()
-        out = self.jitted_fn(partition, scope, *args, _nnx__dagdef=dagdef, **kwargs)
+        out = self.jitted_fn(partition, *args, _nnx__dagdef=dagdef, **kwargs)
         if self.stateful:
             (partition_out, _), out = out
             update_refs(pytree_in, partition_out)
@@ -142,20 +142,18 @@ class GradTransform:
             dagdef: DagDef[tp.Any],
             *args,
         ):
-            scope = scope_lib.current_scope()
-            with scope_lib.scope(scope.fork()):
-                pytree = dagdef.merge([diff, non_diff])
-                out = fun(pytree, *args)
+            pytree = dagdef.merge([diff, non_diff])
+            out = fun(pytree, *args)
 
-                if self.stateful:
-                    updates = deref(pytree)[0]
-                    if self.has_aux:
-                        loss, aux = out
-                        out = (loss, (updates, aux))
-                    else:
-                        out = (out, updates)
+            if self.stateful:
+                updates = deref(pytree)[0]
+                if self.has_aux:
+                    loss, aux = out
+                    out = (loss, (updates, aux))
+                else:
+                    out = (out, updates)
 
-                return out
+            return out
 
         self.grad_fn = grad_fn
         self.predicate = predicate

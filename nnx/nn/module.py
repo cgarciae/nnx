@@ -2,7 +2,6 @@ import dataclasses
 import jax
 from simple_pytree import Pytree
 from nnx import partitioning
-from nnx import scope_lib
 from nnx.reference import (
     DagDef,
     Partition,
@@ -17,6 +16,7 @@ import jax.tree_util as jtu
 import builtins
 
 from nnx.rng_stream import RngStream
+from nnx import utils
 
 M = tp.TypeVar("M", bound="Module")
 
@@ -74,12 +74,6 @@ class Module(Pytree):
 
     def clone(self: M) -> M:
         return clone(self)
-
-    def make_rng(self, collection: str) -> jax.random.KeyArray:
-        return scope_lib.make_rng(collection)
-
-    def get_flag(self, name: str, default: tp.Any = dataclasses.MISSING) -> tp.Any:
-        return scope_lib.get_flag(name, default)
 
     @tp.overload
     def __getitem__(self, collection: str) -> Partition:
@@ -150,44 +144,6 @@ class Module(Pytree):
 
         return partitions, moduledef
 
-    @classmethod
-    def init(
-        cls: tp.Type[M],
-        rngs: tp.Union[
-            tp.Dict[str, jax.random.KeyArray], jax.random.KeyArray, None
-        ] = None,
-        **flags: tp.Hashable,
-    ) -> tp.Type[M]:
-        if rngs is None:
-            rngs = {}
-        elif isinstance(rngs, jax.Array):
-            rngs = {"params": rngs}
-
-        scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
-
-        def _context(fn, *args, **kwargs):
-            with scope_lib.scope(scope):
-                return fn(*args, **kwargs)
-
-        return CallableProxy(_context, cls)  # type: ignore
-
-    def apply(
-        self: M,
-        *,
-        rngs: tp.Optional[tp.Mapping[str, jax.random.KeyArray]] = None,
-        **flags: tp.Hashable,
-    ) -> M:
-        if rngs is None:
-            rngs = {}
-
-        scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
-
-        def _context(fn, *args, **kwargs):
-            with scope_lib.scope(scope):
-                return fn(*args, **kwargs)
-
-        return CallableProxy(_context, self)  # type: ignore
-
 
 class ApplyCaller(tp.Protocol):
     def __getattr__(self, __name) -> "ApplyCaller":
@@ -199,25 +155,15 @@ class ApplyCaller(tp.Protocol):
 
 class ModuleDef(DagDef[M]):
     def apply(
-        self,
-        partitions: tp.Union[tp.Sequence[Partition], tp.Dict[str, Partition]],
-        *,
-        rngs: tp.Optional[tp.Mapping[str, tp.Union[jax.Array, RngStream]]] = None,
-        flags: tp.Optional[tp.Dict[str, tp.Hashable]] = None,
+        self, partitions: tp.Union[tp.Sequence[Partition], tp.Dict[str, Partition]]
     ) -> ApplyCaller:
-        if flags is None:
-            flags = {}
-        if rngs is None:
-            rngs = {}
         if isinstance(partitions, dict):
             partitions = tuple(partitions.values())
         module: M = self.merge(partitions)
-        scope = scope_lib.Scope.from_keys_and_flags(rngs, flags)
 
         def _context(fn, *args, **kwargs):
-            with scope_lib.scope(scope):
-                out = fn(*args, **kwargs)
-                partitions, _ = module.partition()
-                return out, partitions
+            out = fn(*args, **kwargs)
+            partitions, _ = module.partition()
+            return out, partitions
 
         return CallableProxy(_context, module)  # type: ignore

@@ -21,14 +21,8 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.param()
     b: jax.Array = nnx.param()
 
-    def __init__(
-        self,
-        din: int,
-        dout: int,
-        kernel_init: initializers.Initializer = initializers.kaiming_normal(),
-    ):
-        w_key = self.make_rng("params")
-        self.w = kernel_init(w_key, (din, dout))
+    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
+        self.w = jax.random.uniform(rngs.make_rng("params"), (din, dout))
         self.b = jnp.zeros((dout,))
 
     def __call__(self, x):
@@ -38,10 +32,10 @@ class Linear(nnx.Module):
 class MLP(nnx.Module):
     count: jax.Array = nnx.ref("state")
 
-    def __init__(self, din, dhidden, dout):
+    def __init__(self, din, dhidden, dout, *, rngs: nnx.Rngs):
         self.count = jnp.array(0)
-        self.linear1 = Linear(din, dhidden)
-        self.linear2 = Linear(dhidden, dout)
+        self.linear1 = Linear(din, dhidden, rngs=rngs)
+        self.linear2 = Linear(dhidden, dout, rngs=rngs)
 
     def __call__(self, x):
         self.count += 1
@@ -66,7 +60,7 @@ def train_step(model: MLP, batch):
     #                                      |--default--|
     grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
     #                              |-------- sgd ---------|
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
 
     return model
 
@@ -79,7 +73,8 @@ def test_step(model: MLP, batch):
     return {"loss": loss}
 
 
-model = MLP.init(jax.random.PRNGKey(0))(din=1, dhidden=32, dout=1)
+rngs = nnx.Rngs(jax.random.PRNGKey(0))
+model = MLP(din=1, dhidden=32, dout=1, rngs=rngs)
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):

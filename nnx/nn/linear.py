@@ -1,9 +1,11 @@
+import dataclasses
 import typing as tp
 
 import jax
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
+from nnx import rng_stream
 
 from nnx.nn.module import Module
 from nnx.nn import initializers
@@ -59,7 +61,6 @@ def _conv_dimension_numbers(input_shape):
     return lax.ConvDimensionNumbers(lhs_spec, rhs_spec, out_spec)
 
 
-@dataclass
 class Linear(Module):
     """A linear transformation applied over the last dimension of the input.
 
@@ -76,31 +77,48 @@ class Linear(Module):
 
     in_features: int = static_field()
     out_features: int = static_field()
-    use_bias: bool = static_field(default=True)
-    dtype: tp.Optional[Dtype] = static_field(default=None)
-    param_dtype: Dtype = static_field(default=jnp.float32)
-    precision: PrecisionLike = static_field(default=None)
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field(
-        default=default_kernel_init
-    )
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field(
-        default=initializers.zeros()
-    )
-    dot_general: DotGeneralT = static_field(default=lax.dot_general)
+    use_bias: bool = static_field()
+    dtype: tp.Optional[Dtype] = static_field()
+    param_dtype: Dtype = static_field()
+    precision: PrecisionLike = static_field()
+    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
+    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
+    dot_general: DotGeneralT = static_field()
     # ref fields
-    kernel: Array = param(init=False)
-    bias: tp.Optional[Array] = param(init=False)
+    kernel: Array = param()
+    bias: tp.Optional[Array] = param()
 
-    def __post_init__(self):
-        kernel_key = self.make_rng("params")
-        self.kernel = self.kernel_init(
-            kernel_key, (self.in_features, self.out_features), self.param_dtype
-        )
-        if self.use_bias:
-            bias_key = self.make_rng("params")
-            self.bias = self.bias_init(bias_key, (self.out_features,), self.param_dtype)
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        *,
+        use_bias: bool = True,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        precision: PrecisionLike = None,
+        kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        dot_general: DotGeneralT = lax.dot_general,
+        rngs: rng_stream.Rngs,
+    ):
+        kernel_key = rngs.make_rng("params")
+        self.kernel = kernel_init(kernel_key, (in_features, out_features), param_dtype)
+        if use_bias:
+            bias_key = rngs.make_rng("params")
+            self.bias = bias_init(bias_key, (out_features,), param_dtype)
         else:
             self.bias = None
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.use_bias = use_bias
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.precision = precision
+        self.kernel_init = kernel_init
+        self.bias_init = bias_init
+        self.dot_general = dot_general
 
     def __call__(self, inputs: Array) -> Array:
         """Applies a linear transformation to the inputs along the last dimension.
@@ -128,7 +146,6 @@ class Linear(Module):
         return y
 
 
-@dataclass
 class Conv(Module):
     """Convolution Module wrapping `lax.conv_general_dilated[_local]`.
 
@@ -170,52 +187,83 @@ class Conv(Module):
     in_features: int = static_field()
     out_features: int = static_field()
     kernel_size: tp.Sequence[int] = static_field()
-    strides: tp.Union[None, int, tp.Sequence[int]] = static_field(default=1)
-    padding: PaddingLike = static_field(default="SAME")
-    input_dilation: tp.Union[None, int, tp.Sequence[int]] = static_field(default=1)
-    kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = static_field(default=1)
-    feature_group_count: int = static_field(default=1)
-    use_bias: bool = static_field(default=True)
-    mask_fn: tp.Optional[tp.Callable[[Array], Array]] = static_field(default=None)
-    dtype: tp.Optional[Dtype] = static_field(default=None)
-    param_dtype: Dtype = static_field(default=jnp.float32)
-    precision: PrecisionLike = static_field(default=None)
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field(
-        default=default_kernel_init
-    )
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field(
-        default=initializers.zeros()
-    )
-    conv_general_dilated: ConvGeneralDilatedT = static_field(
-        default=lax.conv_general_dilated
-    )
+    strides: tp.Union[None, int, tp.Sequence[int]] = static_field()
+    padding: PaddingLike = static_field()
+    input_dilation: tp.Union[None, int, tp.Sequence[int]] = static_field()
+    kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = static_field()
+    feature_group_count: int = static_field()
+    use_bias: bool = static_field()
+    mask_fn: tp.Optional[tp.Callable[[Array], Array]] = static_field()
+    dtype: tp.Optional[Dtype] = static_field()
+    param_dtype: Dtype = static_field()
+    precision: PrecisionLike = static_field()
+    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
+    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
+    conv_general_dilated: ConvGeneralDilatedT = static_field()
     # ref fields
-    kernel: Array = param(init=False)
-    bias: tp.Optional[Array] = param(init=False)
+    kernel: Array = param()
+    bias: tp.Optional[Array] = param()
 
-    def __post_init__(self):
-        if isinstance(self.kernel_size, int):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        kernel_size: tp.Sequence[int],
+        strides: tp.Union[None, int, tp.Sequence[int]] = 1,
+        *,
+        padding: PaddingLike = "SAME",
+        input_dilation: tp.Union[None, int, tp.Sequence[int]] = 1,
+        kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = 1,
+        feature_group_count: int = 1,
+        use_bias: bool = True,
+        mask_fn: tp.Optional[tp.Callable[[Array], Array]] = None,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        precision: PrecisionLike = None,
+        kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        conv_general_dilated: ConvGeneralDilatedT = lax.conv_general_dilated,
+        rngs: rng_stream.Rngs,
+    ):
+        if isinstance(kernel_size, int):
             raise TypeError(
                 "Expected Conv kernel_size to be a"
                 " tuple/list of integers (eg.: [3, 3]) but got"
-                f" {self.kernel_size}."
+                f" {kernel_size}."
             )
         else:
-            self.kernel_size = tuple(self.kernel_size)
+            kernel_size = tuple(kernel_size)
 
-        kernel_shape = self.kernel_size + (
-            self.in_features // self.feature_group_count,
-            self.out_features,
+        kernel_shape = kernel_size + (
+            in_features // feature_group_count,
+            out_features,
         )
-        kernel_key = self.make_rng("params")
-        self.kernel = self.kernel_init(kernel_key, kernel_shape, self.param_dtype)
+        kernel_key = rngs.make_rng("params")
+        self.kernel = kernel_init(kernel_key, kernel_shape, param_dtype)
 
-        if self.use_bias:
-            bias_shape = (self.out_features,)
-            bias_key = self.make_rng("params")
-            self.bias = self.bias_init(bias_key, bias_shape, self.param_dtype)
+        if use_bias:
+            bias_shape = (out_features,)
+            bias_key = rngs.make_rng("params")
+            self.bias = bias_init(bias_key, bias_shape, param_dtype)
         else:
             self.bias = None
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel_size = kernel_size
+        self.strides = strides
+        self.padding = padding
+        self.input_dilation = input_dilation
+        self.kernel_dilation = kernel_dilation
+        self.feature_group_count = feature_group_count
+        self.use_bias = use_bias
+        self.mask_fn = mask_fn
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.precision = precision
+        self.kernel_init = kernel_init
+        self.bias_init = bias_init
+        self.conv_general_dilated = conv_general_dilated
 
     def __call__(self, inputs: Array) -> Array:
         """Applies a (potentially unshared) convolution to the inputs.

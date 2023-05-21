@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import lax, random
 
 from nnx.nn.module import Module
-from nnx import utils
+from nnx import rng_stream, utils
 from nnx.dataclasses import dataclass, static_field
 
 
@@ -31,7 +31,13 @@ class Dropout(Module):
     deterministic: Optional[bool] = static_field(default=None)
     rng_collection: str = static_field(default="dropout")
 
-    def __call__(self, inputs, deterministic: Optional[bool] = None):
+    def __call__(
+        self,
+        inputs,
+        *,
+        deterministic: Optional[bool] = None,
+        rngs: Optional[rng_stream.Rngs],
+    ):
         """Applies a random dropout mask to the input.
 
         Args:
@@ -46,7 +52,6 @@ class Dropout(Module):
         deterministic = utils.first_from(
             deterministic,
             self.deterministic,
-            self.get_flag("deterministic", None),
         )
 
         if (self.rate == 0.0) or deterministic:
@@ -56,8 +61,13 @@ class Dropout(Module):
         if self.rate == 1.0:
             return jnp.zeros_like(inputs)
 
+        if rngs is None:
+            raise ValueError(
+                "Dropout needs to generate a random mask but no 'rngs' were provided."
+            )
+
         keep_prob = 1.0 - self.rate
-        rng = self.make_rng(self.rng_collection)
+        rng = rngs.make_rng(self.rng_collection)
         broadcast_shape = list(inputs.shape)
         for dim in self.broadcast_dims:
             broadcast_shape[dim] = 1

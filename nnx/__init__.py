@@ -57,17 +57,6 @@ from .reference import (
     update_refs,
 )
 from .rng_stream import Rngs, RngStream
-from .scope_lib import (
-    Scope,
-    apply,
-    current_scope,
-    fork_scope,
-    get_flag,
-    get_rngs,
-    init,
-    make_rng,
-    scope,
-)
 from .transforms import grad, jit
 
 from .filters import jit_filter

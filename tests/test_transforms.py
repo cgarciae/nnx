@@ -179,15 +179,15 @@ class TestGrad:
             "c": 7,
             "d": 5.0,
         }
+        rngs = nnx.Rngs(a=jax.random.PRNGKey(0))
 
         @nnx.grad
         def f(pytree):
             # sum all params
-            noise = jax.random.normal(nnx.make_rng("a"), shape=())
+            noise = jax.random.normal(rngs.make_rng("a"), shape=())
             return (
                 pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value + noise
             )
 
-        with nnx.scope({"a": jax.random.PRNGKey(0)}, flags={}):
-            grad = f(pytree)
+        grad = f(pytree)
         assert isinstance(grad, nnx.Partition)

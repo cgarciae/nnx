@@ -4,22 +4,24 @@ import jax
 
 
 class TestModule:
-    def test_apply(self):
+    def test_call(self):
         class Foo(nnx.Module):
             w: jax.Array = nnx.param()
 
-            def __init__(self, c: float):
-                key = nnx.make_rng("params")
+            def __init__(self, c: float, *, rngs: nnx.Rngs):
+                key = rngs.make_rng("params")
                 self.w = jax.random.uniform(key, ())
                 self.c = c
 
-            def __call__(self, x):
-                key = nnx.make_rng("e")
+            def __call__(self, x, *, rngs: nnx.Rngs):
+                key = rngs.make_rng("e")
                 return self.w * x + jax.random.normal(key, ()) + self.c
 
-        foo = Foo.init(rngs={"params": jax.random.PRNGKey(0)})(c=1.0)
+        rngs = nnx.Rngs(jax.random.PRNGKey(0))
+        foo = Foo(c=1.0, rngs=rngs)
 
-        y = foo.apply(rngs={"e": jax.random.PRNGKey(1)})(x=2.0)
+        rngs = nnx.Rngs(e=jax.random.PRNGKey(1))
+        y = foo(x=2.0, rngs=rngs)
 
         assert isinstance(y, jax.Array)
 
@@ -29,24 +31,23 @@ class TestModuleDef:
         class Foo(nnx.Module):
             w: jax.Array = nnx.param()
 
-            def __init__(self, c: float):
-                key = nnx.make_rng("params")
-                self.w = jax.random.uniform(key, ())
+            def __init__(self, c: float, *, rngs: nnx.Rngs):
+                self.w = jax.random.uniform(rngs.make_rng("params"), ())
                 self.c = c
 
-            def __call__(self, x):
-                e = nnx.make_rng("e")
-                return self.w * x + jax.random.normal(e, ()) + self.c
+            def __call__(self, x, *, rngs: nnx.Rngs):
+                key = rngs.make_rng("e")
+                return self.w * x + jax.random.normal(key, ()) + self.c
 
-        foo = Foo.init(rngs={"params": jax.random.PRNGKey(0)})(c=1.0)
+        rngs = nnx.Rngs(jax.random.PRNGKey(0))
+        foo = Foo(c=1.0, rngs=rngs)
 
         partitions, moduledef = foo.partition()
 
         assert "params" in partitions
         assert "rest" in partitions
 
-        y, partitions = moduledef.apply(partitions, rngs={"e": jax.random.PRNGKey(1)})(
-            x=2.0
-        )
+        rngs = nnx.Rngs(e=jax.random.PRNGKey(1))
+        y, partitions = moduledef.apply(partitions)(x=2.0, rngs=rngs)
 
         assert isinstance(y, jax.Array)

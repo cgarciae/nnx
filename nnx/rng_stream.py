@@ -108,6 +108,8 @@ class Rngs(tp.Mapping[str, RngStream]):
 
     def __init__(
         self,
+        key: tp.Optional[KeyArray] = None,
+        /,
         streams: tp.Optional[tp.Mapping[str, tp.Union[RngStream, KeyArray]]] = None,
         **kwargs: tp.Union[RngStream, KeyArray],
     ):
@@ -117,6 +119,12 @@ class Rngs(tp.Mapping[str, RngStream]):
             streams = dict(streams)
 
         streams.update(kwargs)
+
+        if key is not None:
+            if "params" in streams:
+                raise ValueError("Cannot pass 'key' if 'params' stream is present")
+            
+            streams["params"] = RngStream(key)
 
         streams = {
             name: RngStream(key) if isinstance(key, jax.Array) else key

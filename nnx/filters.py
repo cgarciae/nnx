@@ -2,10 +2,7 @@ import functools
 import typing as tp
 
 import jax
-from jax._src.interpreters import pxla
-
-from nnx import scope_lib
-from nnx import tracers
+from nnx import rng_stream
 from nnx.reference import DagDef, deref, reref
 from nnx.transforms import UNSPECIFIED
 
@@ -16,36 +13,6 @@ G = tp.TypeVar("G", bound=tp.Callable[..., tp.Any])
 AxisName = tp.Hashable
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
-
-
-# def dagify(decorator: A, **deco_kwargs) -> A:
-#     """Wraps a decorator to make it compatible with """
-
-#     @functools.wraps(decorator)
-#     def decorator_wrapper(fun: F) -> F:
-#         """"""
-
-#         @functools.wraps(fun)
-#         def inner_wrapper(*args, **kwargs) -> tp.Any:
-#             trace = tracers.get_top_trace((args, kwargs))
-#             with scope_lib.scope(scope_lib.Scope.empty(), trace=trace):
-#                 args, kwargs = reref((args, kwargs))
-#                 out = fun(*args, **kwargs)
-#                 out = deref(out)
-#             return out
-
-#         decorated_fun = decorator(inner_wrapper, **deco_kwargs)
-
-#         @functools.wraps(fun)
-#         def outer_wrapper(*args_in, **kwargs_in) -> tp.Any:
-#             (args, kwargs), dagdef = deref((args_in, kwargs_in))
-#             out = decorated_fun(*args, **kwargs)
-#             out = reref(out)
-#             return out
-
-#         return outer_wrapper
-
-#     return decorator_wrapper
 
 
 class JitTransform(jax.stages.Wrapped):
@@ -60,14 +27,16 @@ class JitTransform(jax.stages.Wrapped):
             _nnx__dagdef: DagDef[tp.Tuple[tp.Tuple[tp.Any, ...], tp.Dict[str, tp.Any]]],
             **kwargs,
         ):
-            with scope_lib.scope(scope_lib.Scope.empty()):
-                args, kwargs = reref((args, kwargs), _nnx__dagdef)
-                out = fun(*args, **kwargs)
-                return deref(out)
+            args, kwargs = reref((args, kwargs), _nnx__dagdef)
+            out = fun(*args, **kwargs)
+            return deref(out)
 
         self.jitted_fn = jitted_fn
 
     def __call__(self, *args, **kwargs):
+        if "rngs" in kwargs and isinstance(kwargs["rngs"], rng_stream.Rngs):
+            kwargs["rngs"] = kwargs["rngs"].fork()
+
         partition, dagdef = deref((args, kwargs))
         args, kwargs = dagdef.unflatten(list(partition.values()))
         out, dagdef = self.jitted_fn(*args, _nnx__dagdef=dagdef, **kwargs)

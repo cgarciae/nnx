@@ -6,7 +6,7 @@ from jax import lax
 
 from nnx.nn.module import Module
 from nnx.nn import initializers, dtypes
-from nnx import utils
+from nnx import rng_stream, utils
 from nnx.dataclasses import dataclass, static_field, param, ref
 
 PRNGKey = jax.Array
@@ -148,36 +148,8 @@ def _normalize(
     return jnp.asarray(y, dtype)
 
 
-@dataclass
 class BatchNorm(Module):
     """BatchNorm Module.
-
-    Usage Note:
-    If we define a model with BatchNorm, for example::
-
-      BN = nn.BatchNorm(use_running_average=False, momentum=0.9, epsilon=1e-5,
-                        dtype=jnp.float32)
-
-    The initialized variables dict will contain in addition to a 'params'
-    collection a separate 'batch_stats' collection that will contain all the
-    running statistics for all the BatchNorm layers in a model::
-
-      vars_initialized = BN.init(key, x)  # {'params': ..., 'batch_stats': ...}
-
-    We then update the batch_stats during training by specifying that the
-    `batch_stats` collection is mutable in the `apply` method for our module.::
-
-      vars_in = {'params': params, 'batch_stats': old_batch_stats}
-      y, mutated_vars = BN.apply(vars_in, x, mutable=['batch_stats'])
-      new_batch_stats = mutated_vars['batch_stats']
-
-    During eval we would define BN with `use_running_average=True` and use the
-    batch_stats collection from training to set the statistics.  In this case
-    we are not mutating the batch statistics collection, and needn't mark it
-    mutable::
-
-      vars_in = {'params': params, 'batch_stats': training_batch_stats}
-      y = BN.apply(vars_in, x)
 
     Attributes:
       use_running_average: if True, the statistics stored in batch_stats
@@ -226,22 +198,53 @@ class BatchNorm(Module):
     scale: tp.Optional[Array] = param(init=False)
     bias: tp.Optional[Array] = param(init=False)
 
-    def __post_init__(self):
-        feature_shape = (self.num_features,)
+    def __init__(
+        self,
+        num_features: int,
+        *,
+        use_running_average: tp.Optional[bool] = None,
+        axis: int = -1,
+        momentum: float = 0.99,
+        epsilon: float = 1e-5,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        use_bias: bool = True,
+        use_scale: bool = True,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.ones(),
+        axis_name: tp.Optional[str] = None,
+        axis_index_groups: tp.Any = None,
+        rngs: rng_stream.Rngs,
+    ):
+        feature_shape = (num_features,)
         self.mean = jnp.zeros(feature_shape, jnp.float32)
         self.var = jnp.ones(feature_shape, jnp.float32)
 
         if self.use_scale:
-            key = self.make_rng("params")
-            self.scale = self.scale_init(key, feature_shape, self.param_dtype)
+            key = rngs.make_rng("params")
+            self.scale = scale_init(key, feature_shape, param_dtype)
         else:
             self.scale = None
 
         if self.use_bias:
-            key = self.make_rng("params")
-            self.bias = self.bias_init(key, feature_shape, self.param_dtype)
+            key = rngs.make_rng("params")
+            self.bias = bias_init(key, feature_shape, param_dtype)
         else:
             self.bias = None
+
+        self.num_features = num_features
+        self.use_running_average = use_running_average
+        self.axis = axis
+        self.momentum = momentum
+        self.epsilon = epsilon
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.use_bias = use_bias
+        self.use_scale = use_scale
+        self.bias_init = bias_init
+        self.scale_init = scale_init
+        self.axis_name = axis_name
+        self.axis_index_groups = axis_index_groups
 
     def __call__(self, x, use_running_average: tp.Optional[bool] = None):
         """Normalizes the input using batch statistics.
@@ -258,7 +261,6 @@ class BatchNorm(Module):
         use_running_average = utils.first_from(
             use_running_average,
             self.use_running_average,
-            self.get_flag("use_running_average", None),
         )
         feature_axes = _canonicalize_axes(x.ndim, self.axis)
         reduction_axes = tuple(i for i in range(x.ndim) if i not in feature_axes)
