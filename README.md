@@ -2,18 +2,20 @@
 
 _**N**eural **N**etworks for JA**X**_
 
-`nnx` is a lightweight module system for JAX designed to offer the same capabilities as `flax` but with a simpler mental model and implementation, inspired by `equinox`.
+`nnx` is a Neural Networks library for JAX that uses Pytree-based Modules and a novel 
+a **Ref**erence system to enable:
 
-#### Features
-
-* **Simplicity**: Easy-to-understand mental model and implementation.
-* **Shared state**: Supports shared state and controlled mutability for efficient model design.
-* **Semantic partitioning**: Effectively manage and manipulate model sections.
+* **Simplicity**: Provides an easy-to-understand mental model and implementation.
+* **Shared refereces**: Supports **safe** mutable shared state thanks to its **Ref**erence system.
+* **Leaf Metadata**: Enables semantic splitting a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
 * **Stateful transformations**: Seamless integration with JAX's native transformation capabilities.
+
+NNX was designed to have the same capabilities as Flax with the simplicity of Equinox.
 
 ## Status
 
-`nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module system for JAX based on Refx. It is not intended for production use.
+`nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module 
+system for JAX based on Refx. It is not intended for production use.
 
 ## Installation
 
@@ -21,6 +23,11 @@ To get started with `nnx`, first install the package using pip:
 
 ```
 pip install nnx
+```
+To get the latest version, install directly from GitHub:
+
+```
+pip install git+https://github.com/cgarciae/nnx
 ```
 
 ## Usage
@@ -49,8 +56,10 @@ def train_step(model, x, y):
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
     
-    grad = nnx.grad(loss_fn, wrt="params")(model)
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    # compute gradient
+    grads = nnx.grad(loss_fn, wrt="params")(model)
+    # SGD update
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 # yes... there's no return :)
 train_step(model, x, y)
@@ -121,25 +130,21 @@ It's important to note that `Ref` instances are created during the first call to
 class Module(simple_pytree.Pytree):
     ...
     def __getitem__(self, collection: str) -> nnx.Partition:
-        derefed_module = nnx.deref(self)[0]
-        return nnx.get_partition(derefed_module, collection)
+        return nnx.get_partition(self, collection)
 
-    def __setitem__(self, collection: str, updates: nnx.Partition):
-        partition = nnx.get_partition(self, collection)
-        nnx.update_refs(partition, updates)
+    def __setitem__(self, _: SetItemType, value: nnx.Partition):
+        nnx.update_refs(self, value)
 ```
 
 Sample usage might look like this:
 
 ```python
-model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+# SGD update
+model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 ```
 
-In this example, `model["params"]` is a `Partition` that contains all the references in the `params` collection. `grad` is a `Partition` with the same structure as `model["params"]`, but with gradients instead of parameters. The expression `model["params"] = ...` updates the values of the references in `model["params"]` with the values of the stochastic gradient descent (SGD) update.
+In this example, `model["params"]` returns a `Partition` that contains all the references in the `params` collection. `grads` is a `Partition` with the same structure as `model["params"]`, but with gradients instead of parameters. The statement `model[:] = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
-Of course! I've made some adjustments to the text to improve clarity and readability. Here's the revised version:
-
----
 ### Transformations
 
 Currently, NNX offers three types of transformations: stateful, filtered, and the partition API. As it is unclear which API is the best, all three will be maintained for now.
@@ -217,24 +222,24 @@ Filtered transformations must output any state they want to propagate but have m
 
 #### Partition API
 
-The partition API mimics Flax's `variables` and `apply` API. It splits a Pytree of references into all its `Partition`s and creates a `ModuleDef` object that knows how to reconstruct the original Pytree from the `Partition`s. Since each `Partition` is a flat dictionary, this API works with regular JAX transformations.
+The partition API enables splitting a Module's state into sets of reference-less `Partition`s, this provides a general way of interacting with vanilla JAX transformations.
 
-Here's a diagram illustrating how the partition API works:
 
 ![partition-api](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/partition-api.png)
 
-Here's an example of using the partition API:
+Here's an example of how a `train_step` function can be implemented using the partition API:
 
 ```python
-model: ModuleDef
-partitions, model = model.partition()
+modeldef: ModuleDef[Linear]
+partitions, modeldef = model.partition()
 params = partitions["params"]
 
 @jax.jit
 def train_step(params, x, y):
 
-    def loss_fn(params):  #    |----merge----|
-        y_pred, updates = model.apply([params])(x)
+    def loss_fn(params):
+        model: Linear = modeldef.merge(params)
+        y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
@@ -247,7 +252,7 @@ def train_step(params, x, y):
 params = train_step(params, x, y)
 ```
 
-The main benefit of the partition API is its compatibility with other JAX tools, as the training step can be written using regular JAX transformations. The main drawback is that it's more verbose, and users must manually keep track of all the partitions. This overhead often makes `flax` and `haiku` a bit harder to learn than other frameworks like `pytorch` and `keras`.
+The main benefit of the partition API is its compatibility with other JAX tools, as the training step can be written using regular JAX transformations. The main drawback is that it's more verbose.
 
 ### Case Studies
 

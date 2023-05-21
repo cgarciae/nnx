@@ -197,11 +197,6 @@ class ApplyCaller(tp.Protocol):
         ...
 
 
-class ModuleDefValue(tp.NamedTuple):
-    reref_dagdef: DagDef
-    partition_treedef: jtu.PyTreeDef
-
-
 class ModuleDef(DagDef[M]):
     def apply(
         self,
