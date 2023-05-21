@@ -5,7 +5,7 @@ import jax
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
-from nnx import rng_stream
+from nnx import context
 
 from nnx.nn.module import Module
 from nnx.nn import initializers
@@ -100,12 +100,12 @@ class Linear(Module):
         kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
         bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
         dot_general: DotGeneralT = lax.dot_general,
-        rngs: rng_stream.Rngs,
+        ctx: context.Context,
     ):
-        kernel_key = rngs.make_rng("params")
+        kernel_key = ctx.make_rng("params")
         self.kernel = kernel_init(kernel_key, (in_features, out_features), param_dtype)
         if use_bias:
-            bias_key = rngs.make_rng("params")
+            bias_key = ctx.make_rng("params")
             self.bias = bias_init(bias_key, (out_features,), param_dtype)
         else:
             self.bias = None
@@ -223,7 +223,7 @@ class Conv(Module):
         kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
         bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
         conv_general_dilated: ConvGeneralDilatedT = lax.conv_general_dilated,
-        rngs: rng_stream.Rngs,
+        ctx: context.Context,
     ):
         if isinstance(kernel_size, int):
             raise TypeError(
@@ -238,12 +238,12 @@ class Conv(Module):
             in_features // feature_group_count,
             out_features,
         )
-        kernel_key = rngs.make_rng("params")
+        kernel_key = ctx.make_rng("params")
         self.kernel = kernel_init(kernel_key, kernel_shape, param_dtype)
 
         if use_bias:
             bias_shape = (out_features,)
-            bias_key = rngs.make_rng("params")
+            bias_key = ctx.make_rng("params")
             self.bias = bias_init(bias_key, bias_shape, param_dtype)
         else:
             self.bias = None

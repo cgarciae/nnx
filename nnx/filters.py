@@ -2,7 +2,7 @@ import functools
 import typing as tp
 
 import jax
-from nnx import rng_stream
+from nnx import context
 from nnx.reference import DagDef, deref, reref
 from nnx.transforms import UNSPECIFIED
 
@@ -34,8 +34,8 @@ class JitTransform(jax.stages.Wrapped):
         self.jitted_fn = jitted_fn
 
     def __call__(self, *args, **kwargs):
-        if "rngs" in kwargs and isinstance(kwargs["rngs"], rng_stream.Rngs):
-            kwargs["rngs"] = kwargs["rngs"].fork()
+        if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
+            kwargs["ctx"] = kwargs["ctx"].fork()
 
         partition, dagdef = deref((args, kwargs))
         args, kwargs = dagdef.unflatten(list(partition.values()))

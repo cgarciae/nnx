@@ -103,77 +103,81 @@ jax.tree_util.register_pytree_with_keys(
 )
 
 
-class Rngs(tp.Mapping[str, RngStream]):
-    __slots__ = ("_streams",)
+class Context:
+    __slots__ = ("_rngs", "_flags")
 
     def __init__(
         self,
-        key: tp.Optional[KeyArray] = None,
-        /,
-        streams: tp.Optional[tp.Mapping[str, tp.Union[RngStream, KeyArray]]] = None,
-        **kwargs: tp.Union[RngStream, KeyArray],
+        rngs: tp.Union[
+            tp.Mapping[str, tp.Union[RngStream, KeyArray]], RngStream, KeyArray, None
+        ] = None,
+        *,
+        flags: tp.Optional[tp.Mapping[str, bool]] = None,
     ):
-        if streams is None:
-            streams = {}
+        if rngs is None:
+            _rngs = {}
+        elif isinstance(rngs, tp.Mapping):
+            _rngs = {
+                name: RngStream(key) if not isinstance(key, RngStream) else key
+                for name, key in rngs.items()
+            }
+        elif isinstance(rngs, RngStream):
+            _rngs = dict(params=rngs)
         else:
-            streams = dict(streams)
+            _rngs = dict(params=RngStream(rngs))
 
-        streams.update(kwargs)
+        self._rngs = _rngs
+        self._flags = MappingProxyType(flags or {})
 
-        if key is not None:
-            if "params" in streams:
-                raise ValueError("Cannot pass 'key' if 'params' stream is present")
-            
-            streams["params"] = RngStream(key)
+    @property
+    def rngs(self) -> tp.Mapping[str, RngStream]:
+        return MappingProxyType(self._rngs)
 
-        streams = {
-            name: RngStream(key) if isinstance(key, jax.Array) else key
-            for name, key in streams.items()
-        }
+    @property
+    def flags(self) -> tp.Mapping[str, bool]:
+        return self._flags
 
-        self._streams = MappingProxyType(streams)
-
-    def __getitem__(self, key: str) -> RngStream:
-        return self._streams[key]
-
-    def __iter__(self):
-        return iter(self._streams)
-
-    def __len__(self):
-        return len(self._streams)
-
-    def __contains__(self, key):
-        return key in self._streams
+    def has_rng(self, name: str) -> bool:
+        return name in self._rngs
 
     def make_rng(self, name: str) -> KeyArray:
-        if name not in self:
+        if name not in self._rngs:
             raise ValueError(f"Unknown Rng Stream: {name}")
-        return self._streams[name].next()
+        return self._rngs[name].next()
 
-    def fork(self) -> "Rngs":
-        return Rngs({name: stream.fork() for name, stream in self._streams.items()})
+    def fork(self) -> "Context":
+        return Context({name: stream.fork() for name, stream in self._rngs.items()})
 
-    def copy(self) -> "Rngs":
-        return Rngs(self._streams.copy())
+    def copy(self) -> "Context":
+        return Context(rngs=self._rngs, flags=self._flags)
 
+    def has_flag(self, name: str) -> bool:
+        return name in self._flags
 
-def _rngs_flatten_with_keys(rngs: Rngs):
-    nodes = tuple((jtu.GetAttrKey(name), stream) for name, stream in rngs.items())
-    names = tuple(rngs.keys())
-    return nodes, names
-
-
-def _rngs_unflatten(
-    names: tp.Tuple[str, ...],
-    nodes: tp.Tuple[RngStream, ...],
-) -> Rngs:
-    return Rngs({name: stream for name, stream in zip(names, nodes)})
+    def get_flag(self, name: str) -> tp.Optional[bool]:
+        return self._flags.get(name, None)
 
 
-def _rngs_flatten(rngs: Rngs):
-    return tuple(rngs.values()), tuple(rngs.keys())
+def _context_flatten_with_keys(ctx: Context):
+    nodes = (jtu.GetAttrKey("rngs"), ctx._rngs)
+    metadata = tuple(ctx._flags.items())
+    return nodes, metadata
+
+
+def _context_unflatten(
+    metadata: tp.Tuple[tp.Tuple[str, bool], ...],
+    nodes: tp.Dict[str, RngStream],
+) -> Context:
+    return Context(rngs=nodes, flags=dict(metadata))
+
+
+def _context_flatten(ctx: Context):
+    return ctx._rngs, tuple(ctx._flags.items())
 
 
 jtu.register_pytree_with_keys(
-    Rngs, _rngs_flatten_with_keys, _rngs_unflatten, flatten_func=_rngs_flatten
+    Context,
+    _context_flatten_with_keys,
+    _context_unflatten,
+    flatten_func=_context_flatten,
 )

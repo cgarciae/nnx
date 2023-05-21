@@ -179,12 +179,12 @@ class TestGrad:
             "c": 7,
             "d": 5.0,
         }
-        rngs = nnx.Rngs(a=jax.random.PRNGKey(0))
+        ctx = nnx.Context(dict(a=jax.random.PRNGKey(0)))
 
         @nnx.grad
         def f(pytree):
             # sum all params
-            noise = jax.random.normal(rngs.make_rng("a"), shape=())
+            noise = jax.random.normal(ctx.make_rng("a"), shape=())
             return (
                 pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value + noise
             )

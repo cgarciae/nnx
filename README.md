@@ -40,16 +40,16 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.param()
     b: jax.Array = nnx.param()
 
-    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
-        key = rngs.make_rng("params")
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        key = ctx.make_rng("params")
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))
 
     def __call__(self, x):
         return x @ self.w + self.b
 
-rngs = nnx.Rngs(jax.random.PRNGKey(0))
-model = Linear(din=12, dout=2, rngs=rngs)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = Linear(din=12, dout=2, ctx=ctx)
 
 @nnx.jit
 def train_step(model, x, y):
@@ -82,7 +82,7 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.ref("params")
     b: jax.Array = nnx.param() # shortcut for ref("params")
 
-    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = nnx.make_rng("params") # request an RNG key
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))

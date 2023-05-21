@@ -6,7 +6,7 @@ from jax import lax
 
 from nnx.nn.module import Module
 from nnx.nn import initializers, dtypes
-from nnx import rng_stream, utils
+from nnx import context, utils
 from nnx.dataclasses import dataclass, static_field, param, ref
 
 PRNGKey = jax.Array
@@ -214,20 +214,20 @@ class BatchNorm(Module):
         scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.ones(),
         axis_name: tp.Optional[str] = None,
         axis_index_groups: tp.Any = None,
-        rngs: rng_stream.Rngs,
+        ctx: context.Context,
     ):
         feature_shape = (num_features,)
         self.mean = jnp.zeros(feature_shape, jnp.float32)
         self.var = jnp.ones(feature_shape, jnp.float32)
 
         if self.use_scale:
-            key = rngs.make_rng("params")
+            key = ctx.make_rng("params")
             self.scale = scale_init(key, feature_shape, param_dtype)
         else:
             self.scale = None
 
         if self.use_bias:
-            key = rngs.make_rng("params")
+            key = ctx.make_rng("params")
             self.bias = bias_init(key, feature_shape, param_dtype)
         else:
             self.bias = None
@@ -246,7 +246,13 @@ class BatchNorm(Module):
         self.axis_name = axis_name
         self.axis_index_groups = axis_index_groups
 
-    def __call__(self, x, use_running_average: tp.Optional[bool] = None):
+    def __call__(
+        self,
+        x,
+        use_running_average: tp.Optional[bool] = None,
+        *,
+        ctx: tp.Optional[context.Context] = None,
+    ):
         """Normalizes the input using batch statistics.
 
         Args:
@@ -261,6 +267,7 @@ class BatchNorm(Module):
         use_running_average = utils.first_from(
             use_running_average,
             self.use_running_average,
+            ctx and ctx.get_flag("use_running_average"),
         )
         feature_axes = _canonicalize_axes(x.ndim, self.axis)
         reduction_axes = tuple(i for i in range(x.ndim) if i not in feature_axes)

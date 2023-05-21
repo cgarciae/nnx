@@ -5,7 +5,7 @@ import jax
 import jax.stages
 from nnx.reference import DagDef, Partition, deref, reref, update_refs
 import jax.tree_util as jtu
-from nnx import rng_stream
+from nnx import context
 
 import nnx
 from nnx import partitioning
@@ -45,8 +45,8 @@ class JitTransform(jax.stages.Wrapped):
     def __call__(self, pytree, *args, **kwargs):
         pytree_in = pytree
 
-        if "rngs" in kwargs and isinstance(kwargs["rngs"], rng_stream.Rngs):
-            kwargs["rngs"] = kwargs["rngs"].fork()
+        if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
+            kwargs["ctx"] = kwargs["ctx"].fork()
 
         partition, dagdef = deref(pytree_in)
         out = self.jitted_fn(partition, *args, _nnx__dagdef=dagdef, **kwargs)

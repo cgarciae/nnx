@@ -56,7 +56,7 @@ from .reference import (
     reref,
     update_refs,
 )
-from .rng_stream import Rngs, RngStream
+from .context import Context, RngStream
 from .transforms import grad, jit
 
 from .filters import jit_filter

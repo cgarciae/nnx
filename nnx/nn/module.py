@@ -15,7 +15,7 @@ import typing as tp
 import jax.tree_util as jtu
 import builtins
 
-from nnx.rng_stream import RngStream
+from nnx.context import RngStream
 from nnx import utils
 
 M = tp.TypeVar("M", bound="Module")

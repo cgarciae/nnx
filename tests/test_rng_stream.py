@@ -2,7 +2,7 @@ import jax
 import numpy as np
 import pytest
 import nnx
-from nnx.rng_stream import _stable_hash
+from nnx.context import _stable_hash
 
 
 class TestRngStream:

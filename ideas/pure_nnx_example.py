@@ -9,7 +9,7 @@ class Linear(nnx.Module):
     kernel: jax.Array = nnx.param()
     bias: jax.Array = nnx.param()
 
-    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
+    def __init__(self, din: int, dout: int, *, rngs: nnx.Context):
         self.kernel = jax.random.uniform(rngs.make_rng("params"), (din, dout))
         self.bias = jax.numpy.zeros((dout,))
 
@@ -24,7 +24,7 @@ class BatchNorm(nnx.Module):
     var: jax.Array = nnx.ref("batch_stats")
     mu: float = nnx.static_field()
 
-    def __init__(self, din: int, mu: float = 0.95, *, rngs: nnx.Rngs):
+    def __init__(self, din: int, mu: float = 0.95, *, rngs: nnx.Context):
         self.scale = jax.random.uniform(rngs.make_rng("params"), (din,))
         self.bias = jax.numpy.zeros((din,))
         self.mean = jax.numpy.zeros((din,))
@@ -52,7 +52,7 @@ class BatchNorm(nnx.Module):
 class Dropout(nnx.Module):
     rate: float
 
-    def __call__(self, inputs, *, deterministic: bool, rngs: nnx.Rngs):
+    def __call__(self, inputs, *, deterministic: bool, rngs: nnx.Context):
         if (self.rate == 0.0) or deterministic:
             return inputs
         rng = rngs.make_rng("dropout")
@@ -62,13 +62,13 @@ class Dropout(nnx.Module):
 
 
 class MLP(nnx.Module):
-    def __init__(self, din: int, dmid: int, dout: int, *, rngs: nnx.Rngs):
+    def __init__(self, din: int, dmid: int, dout: int, *, rngs: nnx.Context):
         self.linear1 = Linear(din, dmid, rngs=rngs)
         self.bn1 = BatchNorm(dmid, rngs=rngs)
         self.dropout = Dropout(0.5)
         self.linear2 = Linear(dmid, dout, rngs=rngs)
 
-    def __call__(self, x: jax.Array, *, train: bool, rngs: nnx.Rngs) -> jax.Array:
+    def __call__(self, x: jax.Array, *, train: bool, rngs: nnx.Context) -> jax.Array:
         x = self.linear1(x)
         x = self.bn1(x, use_running_averages=not train)
         x = self.dropout(x, deterministic=not train, rngs=rngs)
@@ -77,7 +77,7 @@ class MLP(nnx.Module):
         return x
 
 
-rngs = nnx.Rngs(params=jax.random.PRNGKey(0))
+rngs = nnx.Context(params=jax.random.PRNGKey(0))
 model = MLP(10, 20, 30, rngs=rngs)
 
 
@@ -86,7 +86,7 @@ def train_step(model: MLP, key, batch):
     x, y = batch
 
     def loss(model: MLP):
-        rngs = nnx.Rngs(dropout=key)
+        rngs = nnx.Context(dropout=key)
         y_pred = model(x, train=True, rngs=rngs)
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
@@ -106,7 +106,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 
 @partial(jax.vmap, in_axes=0, out_axes=(0, None, None))
 def create_state(params_key: jax.random.KeyArray):
-    rngs = nnx.Rngs(params=params_key)
+    rngs = nnx.Context(params=params_key)
     model = MLP(10, 20, 10, rngs=rngs)
     (params, batch_stats), modeldef = model.partition("params", "batch_stats")
     return params, batch_stats, modeldef
@@ -128,7 +128,7 @@ def scan_fn(
 
     # create state and rngs
     model = modeldef.merge([params, batch_stats])
-    rngs = nnx.Rngs(dropout=dropout_stream)
+    rngs = nnx.Context(dropout=dropout_stream)
 
     # forward pass
     x = model(x, train=True, rngs=rngs)
