@@ -102,7 +102,7 @@ If global state is not needed, you can simply use the constructor directly.
 
 #### RefField Descriptor
 
-`nnx.ref` and `nnx.param` are descriptors that create `RefField` instances. A `RefField` is a descriptor that stores a `Ref` instance in a separate `{attribute_name}__ref` attribute. It handles retrieving and setting the value of the reference automatically, so the user doesn't have to manipulate references directly. Additionally, `RefField` inherits from `dataclasses.Field` to ensure compatibility with `dataclasses` when needed.
+`nnx.ref` and `nnx.param` are descriptors that create `RefField` instances. A `RefField` is a descriptor that stores a `Ref` instance in a separate `{attribute_name}__ref` attribute. It handles retrieving and setting the value of the reference automatically, so the user doesn't have to manipulate references directly. Additionally, `RefField` inherits from `dataclasses.Field` to ensure compatibility with `nnx.dataclass` when needed.
 
 Here's a simplified version of the `RefField` implementation:
 
