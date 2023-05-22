@@ -109,3 +109,23 @@ class TestPartitioning:
         assert partition[("c",)] is nnx.NOTHING
         assert partition[("d",)] is nnx.NOTHING
         assert len(partition) == 5
+
+    def test_nested_partition(self):
+        p1 = nnx.Ref(10.0)
+        p2 = nnx.Ref(20.0)
+
+        pytree: tp.Dict[str, tp.Any] = {
+            "a": [p1, p2],
+        }
+
+        partition = nnx.get_partition(pytree, any_ref)
+        assert partition[("a", "0")].value == p1.value
+        assert partition[("a", "1")].value == p2.value
+        assert len(partition) == 2
+
+        pytree = {"x": partition}
+
+        partition = nnx.get_partition(pytree, any_ref)
+        assert ("x", "a", "0", "value") in partition
+        assert ("x", "a", "1", "value") in partition
+        assert len(partition) == 2

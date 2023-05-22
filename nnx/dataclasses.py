@@ -64,6 +64,37 @@ def node_field(
     )
 
 
+def static_field(
+    *,
+    default: tp.Any = dataclasses.MISSING,
+    default_factory: tp.Any = dataclasses.MISSING,
+    init: bool = True,
+    repr: bool = True,
+    hash: tp.Optional[bool] = None,
+    compare: bool = True,
+    metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
+):
+    if metadata is None:
+        metadata = {}
+    else:
+        metadata = dict(metadata)
+
+    if "pytree_node" in metadata:
+        raise ValueError("'pytree_node' found in metadata")
+
+    metadata["pytree_node"] = False
+
+    return field(
+        default=default,
+        default_factory=default_factory,
+        init=init,
+        repr=repr,
+        hash=hash,
+        compare=compare,
+        metadata=metadata,
+    )
+
+
 def ref(
     collection: str,
     default: tp.Any = dataclasses.MISSING,
@@ -127,7 +158,7 @@ def dataclass(
     ...
 
 
-@tpe.dataclass_transform(field_specifiers=(ref, param, field, node_field))
+@tpe.dataclass_transform(field_specifiers=(ref, param, field, node_field, static_field))
 def dataclass(
     cls: tp.Optional[tp.Type[A]] = None,
     init: bool = True,

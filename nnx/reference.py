@@ -19,8 +19,7 @@ LeafPredicate = tp.Callable[[tp.Any], bool]
 KeyPath = tp.Tuple[tp.Hashable, ...]
 
 
-class StrPath(tp.Tuple[str, ...]):
-    pass
+StrPath = tp.Tuple[str, ...]
 
 
 class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
@@ -57,9 +56,9 @@ class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
 def _partition_flatten_with_keys(
     x: Partition,
 ) -> tp.Tuple[
-    tp.Tuple[tp.Tuple[StrPath, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
+    tp.Tuple[tp.Tuple[jtu.DictKey, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
 ]:
-    children = tuple((StrPath(key), value) for key, value in x.items())
+    children = tuple((jtu.DictKey(key), value) for key, value in x.items())
     return children, tuple(x.keys())
 
 
@@ -74,12 +73,15 @@ jax.tree_util.register_pytree_with_keys(
 
 def _to_str_path_gen(key_path: KeyPath) -> tp.Iterator[str]:
     for key_entry in key_path:
-        if isinstance(key_entry, StrPath):
-            yield from key_entry
+        if isinstance(key_entry, str):
+            yield key_entry
         elif isinstance(key_entry, jtu.SequenceKey):
             yield str(key_entry.idx)
         elif isinstance(key_entry, jtu.DictKey):  # "['a']"
-            yield str(key_entry.key)
+            if isinstance(key_entry.key, tuple):
+                yield from _to_str_path_gen(key_entry.key)
+            else:
+                yield str(key_entry.key)
         elif isinstance(key_entry, jtu.GetAttrKey):
             yield str(key_entry.name)
         elif isinstance(key_entry, jtu.FlattenedIndexKey):
@@ -442,7 +444,7 @@ def deref(
 
         out_leaves.append(x)
         if path is not None:
-            path = StrPath(_remove_last_ref(_to_str_path_gen(path)))
+            path = _to_str_path(path)
             out_paths.append(path)
 
     _indexes = tuple(map(tuple, indexes))

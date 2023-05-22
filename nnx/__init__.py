@@ -2,7 +2,7 @@ __version__ = "0.0.0"
 
 
 from .context import Context, RngStream
-from .dataclasses import dataclass, field, node_field, param, ref
+from .dataclasses import dataclass, field, node_field, param, ref, static_field
 from .filters import jit_filter
 from .module import Module, ModuleDef
 from .nn.activations import (
@@ -53,7 +53,7 @@ from .nn.initializers import (
     xavier_uniform,
     zeros,
 )
-from .nn.linear import Conv, Linear, Embed
+from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .partitioning import collection_partition as partition
