@@ -9,6 +9,7 @@ from nnx.reference import (
     deref,
     reref,
     update_refs,
+    _to_str_path,
 )
 import typing as tp
 import jax.tree_util as jtu
@@ -140,6 +141,34 @@ class Module(Pytree):
         moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
 
         return partitions, moduledef
+
+    @tp.overload
+    def ref_dict(self) -> tp.Tuple[tp.Dict[tp.Tuple[str, ...], tp.Any], jtu.PyTreeDef]:
+        ...
+
+    @tp.overload
+    def ref_dict(self, sep: str) -> tp.Tuple[tp.Dict[str, tp.Any], jtu.PyTreeDef]:
+        ...
+
+    def ref_dict(
+        self, sep: tp.Optional[str] = None
+    ) -> tp.Tuple[
+        tp.Union[tp.Dict[tp.Tuple[str, ...], tp.Any], tp.Dict[str, tp.Any]],
+        jtu.PyTreeDef,
+    ]:
+        path_leaves, treedef = jtu.tree_flatten_with_path(self)
+        partition = ((_to_str_path(path), leaf) for path, leaf in path_leaves)
+        partition = (
+            (path[-1][:-5] if path[-1].endswith("__ref") else path, leaf)
+            for path, leaf in partition
+        )
+        if sep is None:
+            partition = {_to_str_path(path): leaf for path, leaf in path_leaves}
+        else:
+            partition = {
+                sep.join(_to_str_path(path)): leaf for path, leaf in path_leaves
+            }
+        return partition, treedef
 
 
 class ApplyCaller(tp.Protocol):

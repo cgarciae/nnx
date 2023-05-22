@@ -24,8 +24,25 @@ class StrPath(tp.Tuple[str, ...]):
 
 
 class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
+    @tp.overload
     def __init__(self, __mapping: tp.Mapping[tp.Tuple[str, ...], Leaf], /):
-        self._mapping = MappingProxyType(__mapping)
+        ...
+
+    @tp.overload
+    def __init__(self, __iterable: tp.Iterable[tp.Tuple[tp.Tuple[str, ...], Leaf]], /):
+        ...
+
+    def __init__(
+        self,
+        __input: tp.Union[
+            tp.Mapping[tp.Tuple[str, ...], Leaf],
+            tp.Iterable[tp.Tuple[tp.Tuple[str, ...], Leaf]],
+        ],
+        /,
+    ):
+        if not isinstance(__input, tp.Mapping):
+            __input = dict(__input)
+        self._mapping = MappingProxyType(__input)
 
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
@@ -55,7 +72,7 @@ jax.tree_util.register_pytree_with_keys(
 )
 
 
-def _key_path_to_str_gen(key_path: KeyPath) -> tp.Generator[str, None, None]:
+def _to_str_path_gen(key_path: KeyPath) -> tp.Iterator[str]:
     for key_entry in key_path:
         if isinstance(key_entry, StrPath):
             yield from key_entry
@@ -73,8 +90,21 @@ def _key_path_to_str_gen(key_path: KeyPath) -> tp.Generator[str, None, None]:
             yield str(key_entry)
 
 
-def _to_str_path(key_path: KeyPath) -> StrPath:
-    return StrPath(_key_path_to_str_gen(key_path))
+def _remove_last_ref(iterator: tp.Iterator[str]) -> tp.Iterator[str]:
+    last: tp.Optional[str] = None
+    for key in iterator:
+        if isinstance(last, str):
+            yield last
+        last = key
+
+    if isinstance(last, str):
+        if last.endswith("__ref"):
+            last = last[:-5]
+        yield last
+
+
+def _to_str_path(key_path: KeyPath) -> tp.Tuple[str, ...]:
+    return tuple(_remove_last_ref(_to_str_path_gen(key_path)))
 
 
 class DagDef(tp.Generic[A]):
@@ -197,12 +227,15 @@ class Ref(Referential[A]):
 
     @property
     def value(self) -> A:
-        value_trace = tracers.get_top_trace(self._value)
-        if self._jax_trace is not tracers.current_jax_trace() or (
-            value_trace is not self._jax_trace
-            and value_trace is not self._context_trace
-        ):
-            raise ValueError("Cannot access ref from different trace level")
+        # TODO: passing references as a constant to a function as a capture should be allowed
+        # maybe access should always be allowed? Commenting out for now.
+
+        # value_trace = tracers.get_top_trace(self._value)
+        # if self._jax_trace is not tracers.current_jax_trace() or (
+        #     value_trace is not self._jax_trace
+        #     and value_trace is not self._context_trace
+        # ):
+        #     raise ValueError("Cannot access ref from different trace level")
         return self._value
 
     @value.setter
@@ -409,7 +442,7 @@ def deref(
 
         out_leaves.append(x)
         if path is not None:
-            path = _to_str_path(path)
+            path = StrPath(_remove_last_ref(_to_str_path_gen(path)))
             out_paths.append(path)
 
     _indexes = tuple(map(tuple, indexes))

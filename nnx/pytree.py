@@ -16,7 +16,12 @@ P = tp.TypeVar("P", bound="Pytree")
 
 
 class PytreeMeta(ABCMeta):
-    def __call__(cls: tp.Type[P], *args: tp.Any, **kwargs: tp.Any) -> P:
+    if not tp.TYPE_CHECKING:
+
+        def __call__(cls: tp.Type[P], *args: tp.Any, **kwargs: tp.Any) -> P:
+            return cls.call(*args, **kwargs)
+
+    def call(cls: tp.Type[P], *args: tp.Any, **kwargs: tp.Any) -> P:
         obj: P = cls.__new__(cls, *args, **kwargs)
         obj.__dict__["_pytree__initializing"] = True
         try:

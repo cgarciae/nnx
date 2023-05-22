@@ -421,4 +421,4 @@ class Embed(Module):
           in NLP models.
         """
         query, embedding = dtypes.promote_dtype(query, self.embedding, dtype=self.dtype)
-        return jnp.dot(query, embedding.T)w3
+        return jnp.dot(query, embedding.T)
