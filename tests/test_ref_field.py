@@ -4,7 +4,7 @@ import typing_extensions as tpe
 
 import jax
 import pytest
-from simple_pytree import Pytree
+from nnx.pytree import Pytree
 
 import nnx
 

@@ -7,9 +7,9 @@ import jax.numpy as jnp
 import numpy as np
 from nnx import context
 
-from nnx.nn.module import Module
+from nnx.module import Module
 from nnx.nn import initializers
-from nnx.dataclasses import dataclass, static_field, param
+from nnx.dataclasses import dataclass, param
 from nnx.nn import dtypes
 
 Array = jax.Array
@@ -75,15 +75,6 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    in_features: int = static_field()
-    out_features: int = static_field()
-    use_bias: bool = static_field()
-    dtype: tp.Optional[Dtype] = static_field()
-    param_dtype: Dtype = static_field()
-    precision: PrecisionLike = static_field()
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
-    dot_general: DotGeneralT = static_field()
     # ref fields
     kernel: Array = param()
     bias: tp.Optional[Array] = param()
@@ -184,23 +175,6 @@ class Conv(Module):
       bias_init: initializer for the bias.
     """
 
-    in_features: int = static_field()
-    out_features: int = static_field()
-    kernel_size: tp.Sequence[int] = static_field()
-    strides: tp.Union[None, int, tp.Sequence[int]] = static_field()
-    padding: PaddingLike = static_field()
-    input_dilation: tp.Union[None, int, tp.Sequence[int]] = static_field()
-    kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = static_field()
-    feature_group_count: int = static_field()
-    use_bias: bool = static_field()
-    mask_fn: tp.Optional[tp.Callable[[Array], Array]] = static_field()
-    dtype: tp.Optional[Dtype] = static_field()
-    param_dtype: Dtype = static_field()
-    precision: PrecisionLike = static_field()
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = static_field()
-    conv_general_dilated: ConvGeneralDilatedT = static_field()
-    # ref fields
     kernel: Array = param()
     bias: tp.Optional[Array] = param()
 
@@ -371,3 +345,80 @@ class Conv(Module):
             output_shape = input_batch_shape + y.shape[1:]
             y = jnp.reshape(y, output_shape)
         return y
+
+
+default_embed_init = initializers.variance_scaling(1.0, "fan_in", "normal", out_axis=0)
+
+
+class Embed(Module):
+    """Embedding Module.
+
+    A parameterized function from integers [0, n) to d-dimensional vectors.
+
+    Attributes:
+      num_embeddings: number of embeddings.
+      features: number of feature dimensions for each embedding.
+      dtype: the dtype of the embedding vectors (default: same as embedding).
+      param_dtype: the dtype passed to parameter initializers (default: float32).
+      embedding_init: embedding initializer.
+    """
+
+    embedding: Array = param()
+
+    def __init__(
+        self,
+        num_embeddings: int,
+        features: int,
+        *,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        embedding_init: tp.Callable[
+            [PRNGKey, Shape, Dtype], Array
+        ] = default_embed_init,
+        ctx: context.Context,
+    ):
+        self.embedding = embedding_init(
+            ctx.make_rng("params"),
+            (num_embeddings, features),
+            param_dtype,
+        )
+
+        self.num_embeddings = num_embeddings
+        self.features = features
+        self.dtype = dtype or self.embedding.dtype
+        self.param_dtype = param_dtype
+        self.embedding_init = embedding_init
+
+    def __call__(self, inputs: Array) -> Array:
+        """Embeds the inputs along the last dimension.
+
+        Args:
+          inputs: input data, all dimensions are considered batch dimensions.
+
+        Returns:
+          Output which is embedded input data.  The output shape follows the input,
+          with an additional `features` dimension appended.
+        """
+        if not jnp.issubdtype(inputs.dtype, jnp.integer):
+            raise ValueError("Input type must be an integer or unsigned integer.")
+        # Use take because fancy indexing numpy arrays with JAX indices does not
+        # work correctly.
+        (embedding,) = dtypes.promote_dtype(
+            self.embedding, dtype=self.dtype, inexact=False
+        )
+        return jnp.take(embedding, inputs, axis=0)
+
+    def attend(self, query: Array) -> Array:
+        """Attend over the embedding using a query array.
+
+        Args:
+          query: array with last dimension equal the feature depth `features` of the
+            embedding.
+        Returns:
+          An array with final dim `num_embeddings` corresponding to the batched
+          inner-product of the array of query vectors against each embedding.
+          Commonly used for weight-sharing between embeddings and logit transform
+          in NLP models.
+        """
+        query, embedding = dtypes.promote_dtype(query, self.embedding, dtype=self.dtype)
+        return jnp.dot(query, embedding.T)w3

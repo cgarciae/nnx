@@ -1,6 +1,5 @@
 import dataclasses
-import jax
-from simple_pytree import Pytree
+from nnx.pytree import Pytree
 from nnx import partitioning
 from nnx.reference import (
     DagDef,
@@ -15,8 +14,6 @@ import typing as tp
 import jax.tree_util as jtu
 import builtins
 
-from nnx.context import RngStream
-from nnx import utils
 
 M = tp.TypeVar("M", bound="Module")
 

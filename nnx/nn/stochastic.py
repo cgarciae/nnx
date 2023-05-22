@@ -3,9 +3,9 @@ from typing import Optional, Sequence
 import jax.numpy as jnp
 from jax import lax, random
 
-from nnx.nn.module import Module
+from nnx.module import Module
 from nnx import context, utils
-from nnx.dataclasses import dataclass, static_field
+from nnx.dataclasses import dataclass
 
 
 @dataclass
@@ -22,9 +22,9 @@ class Dropout(Module):
     """
 
     rate: float
-    broadcast_dims: Sequence[int] = static_field(default=())
-    deterministic: Optional[bool] = static_field(default=None)
-    rng_collection: str = static_field(default="dropout")
+    broadcast_dims: Sequence[int] = ()
+    deterministic: Optional[bool] = None
+    rng_collection: str = "dropout"
 
     def __call__(
         self,

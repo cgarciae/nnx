@@ -1,8 +1,10 @@
 __version__ = "0.0.0"
 
 
-from .dataclasses import dataclass, field, param, ref, static_field
-from .nn import BatchNorm, Conv, Dropout, Linear, Module, ModuleDef
+from .context import Context, RngStream
+from .dataclasses import dataclass, field, node_field, param, ref
+from .filters import jit_filter
+from .module import Module, ModuleDef
 from .nn.activations import (
     celu,
     elu,
@@ -30,16 +32,35 @@ from .nn.activations import (
     swish,
     tanh,
 )
-from .partitioning import (
-    collection_partition as partition,
+from .nn.initializers import (
+    Initializer,
+    constant,
+    delta_orthogonal,
+    glorot_normal,
+    glorot_uniform,
+    he_normal,
+    he_uniform,
+    kaiming_normal,
+    kaiming_uniform,
+    lecun_normal,
+    lecun_uniform,
+    normal,
+    ones,
+    orthogonal,
+    uniform,
+    variance_scaling,
+    xavier_normal,
+    xavier_uniform,
+    zeros,
 )
-from .partitioning import (
-    get_partition,
-    tree_partition,
-)
-from .partitioning import (
-    merge_partitions as merge,
-)
+from .nn.linear import Conv, Linear, Embed
+from .nn.normalization import BatchNorm, LayerNorm
+from .nn.stochastic import Dropout
+from .partitioning import collection_partition as partition
+from .partitioning import get_partition
+from .partitioning import merge_partitions as merge
+from .partitioning import tree_partition
+from .pytree import Pytree, PytreeMeta
 from .ref_field import RefField
 from .reference import (
     NOTHING,
@@ -56,7 +77,4 @@ from .reference import (
     reref,
     update_refs,
 )
-from .context import Context, RngStream
 from .transforms import grad, jit
-
-from .filters import jit_filter

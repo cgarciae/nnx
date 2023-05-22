@@ -30,6 +30,7 @@ class TestModuleDef:
     def test_apply(self):
         class Foo(nnx.Module):
             w: jax.Array = nnx.param()
+            c: float = nnx.node_field()
 
             def __init__(self, c: float, *, ctx: nnx.Context):
                 self.w = jax.random.uniform(ctx.make_rng("params"), ())
