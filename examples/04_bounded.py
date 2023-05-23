@@ -56,7 +56,7 @@ def train_step(model: nnx.Bounded[MLP], batch) -> nnx.Bounded[MLP]:
         return loss, model
 
     grad, model = jax.grad(loss_fn, has_aux=True)(model["params"])
-    #                          |-------- sgd ---------|
+    #                              |-------- sgd ---------|
     model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
 
     return model

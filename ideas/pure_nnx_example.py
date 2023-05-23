@@ -36,7 +36,7 @@ class BatchNorm(nnx.Module):
         if use_running_averages:
             mean, var = self.mean, self.var
         else:
-            axis = tuple(range(1, x.ndim - 1))
+            axis = tuple(range(0, x.ndim - 1))
             mean = jax.numpy.mean(x, axis=axis)
             var = jax.numpy.var(x, axis=axis)
             # ema update
@@ -86,7 +86,7 @@ def train_step(model: MLP, key, batch):
     x, y = batch
 
     def loss(model: MLP):
-        ctx = nnx.Context(dropout=key)
+        ctx = nnx.Context(rngs=dict(dropout=key))
         y_pred = model(x, train=True, ctx=ctx)
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
@@ -106,7 +106,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 
 @partial(jax.vmap, in_axes=0, out_axes=(0, None, None))
 def create_state(params_key: jax.random.KeyArray):
-    ctx = nnx.Context(params=params_key)
+    ctx = nnx.Context(rngs=dict(params=params_key))
     model = MLP(10, 20, 10, ctx=ctx)
     (params, batch_stats), modeldef = model.partition("params", "batch_stats")
     return params, batch_stats, modeldef
@@ -128,7 +128,7 @@ def scan_fn(
 
     # create state and ctx
     model = modeldef.merge([params, batch_stats])
-    ctx = nnx.Context(dropout=dropout_stream)
+    ctx = nnx.Context(rngs=dict(dropout=dropout_stream))
 
     # forward pass
     x = model(x, train=True, ctx=ctx)
@@ -143,3 +143,4 @@ def scan_fn(
     scan_fn, (x, batch_stats), (params, dropout_stream)
 )
 model = modeldef.merge([params, batch_stats])
+model

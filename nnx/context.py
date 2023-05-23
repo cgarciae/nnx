@@ -31,6 +31,7 @@ class RngStream:
         key: KeyArray,
         count: int = 0,
         count_path: tp.Tuple[int, ...] = (),
+        *,
         context_trace: tp.Optional[tracers.MainTrace] = None,
     ):
         self._key = key
@@ -114,17 +115,21 @@ class Context:
         *,
         flags: tp.Optional[tp.Mapping[str, bool]] = None,
     ):
+        context_trace = tracers.get_top_trace(rngs)
+
         if rngs is None:
             _rngs = {}
         elif isinstance(rngs, tp.Mapping):
             _rngs = {
-                name: RngStream(key) if not isinstance(key, RngStream) else key
+                name: RngStream(key, context_trace=context_trace)
+                if not isinstance(key, RngStream)
+                else key
                 for name, key in rngs.items()
             }
         elif isinstance(rngs, RngStream):
             _rngs = dict(params=rngs)
         else:
-            _rngs = dict(params=RngStream(rngs))
+            _rngs = dict(params=RngStream(rngs, context_trace=context_trace))
 
         self._rngs = _rngs
         self._flags = MappingProxyType(flags or {})
@@ -162,20 +167,20 @@ class Context:
 
 
 def _context_flatten_with_keys(ctx: Context):
-    nodes = (jtu.GetAttrKey("rngs"), ctx._rngs)
-    metadata = tuple(ctx._flags.items())
-    return nodes, metadata
+    node = (jtu.GetAttrKey("rngs"), ctx._rngs)
+    return (node,), tuple(ctx._flags.items())
 
 
 def _context_unflatten(
     metadata: tp.Tuple[tp.Tuple[str, bool], ...],
-    nodes: tp.Dict[str, RngStream],
+    nodes: tp.Tuple[tp.Dict[str, RngStream]],
 ) -> Context:
-    return Context(rngs=nodes, flags=dict(metadata))
+    return Context(rngs=nodes[0], flags=dict(metadata))
 
 
 def _context_flatten(ctx: Context):
-    return ctx._rngs, tuple(ctx._flags.items())
+    node = ctx._rngs
+    return (node,), tuple(ctx._flags.items())
 
 
 jtu.register_pytree_with_keys(
