@@ -73,6 +73,15 @@ def split_partition(
 @tp.overload
 def collection_partition(
     pytree: A,
+    *,
+    is_leaf: tp.Optional[LeafPredicate] = None,
+) -> tp.Tuple[tp.Dict[str, Partition], DagDef[A]]:
+    ...
+
+
+@tp.overload
+def collection_partition(
+    pytree: A,
     collection: str,
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
@@ -87,15 +96,6 @@ def collection_partition(
     *collections: str,
     is_leaf: tp.Optional[LeafPredicate] = None,
 ) -> tp.Tuple[tp.Tuple[Partition, ...], DagDef[A]]:
-    ...
-
-
-@tp.overload
-def collection_partition(
-    pytree: A,
-    *,
-    is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[tp.Dict[str, Partition], DagDef[A]]:
     ...
 
 

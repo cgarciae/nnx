@@ -107,7 +107,7 @@ class Module(Pytree):
         self: M,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[tp.Dict[str, Partition], "ModuleDef[M]"]:
+    ) -> "Bounded[M]":
         ...
 
     @tp.overload
@@ -131,14 +131,30 @@ class Module(Pytree):
         self: M,
         *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[
-        tp.Union[tp.Dict[str, Partition], tp.Tuple[Partition, ...], Partition],
-        "ModuleDef[M]",
+    ) -> tp.Union[
+        "Bounded[M]",
+        tp.Tuple[
+            tp.Union[tp.Tuple[Partition, ...], Partition],
+            "ModuleDef[M]",
+        ],
     ]:
-        partitions, dagdef = partitioning.collection_partition(
-            self, *collections, is_leaf=is_leaf
-        )
+        if len(collections) == 0:
+            partitions, dagdef = partitioning.collection_partition(
+                self, is_leaf=is_leaf
+            )
+        elif len(collections) == 1:
+            partitions, dagdef = partitioning.collection_partition(
+                self, collections[0], is_leaf=is_leaf
+            )
+        else:
+            partitions, dagdef = partitioning.collection_partition(
+                self, collections[0], *collections[1:], is_leaf=is_leaf
+            )
+
         moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
+
+        if isinstance(partitions, tp.Dict):
+            return Bounded(partitions, moduledef)
 
         return partitions, moduledef
 
@@ -193,3 +209,17 @@ class ModuleDef(DagDef[M]):
             return out, partitions
 
         return CallableProxy(_context, module)  # type: ignore
+
+
+class Bounded(tp.NamedTuple, tp.Generic[M]):
+    partitions: tp.Dict[str, Partition]
+    moduledef: ModuleDef[M]
+
+    @property
+    def module(self) -> M:
+        def _context(apply, *args, **kwargs):
+            out, updates = apply(*args, **kwargs)
+            self.partitions.update(updates)
+            return out
+
+        return CallableProxy(_context, self.moduledef.apply)  # type: ignore

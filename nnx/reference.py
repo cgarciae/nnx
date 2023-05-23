@@ -231,7 +231,6 @@ class Ref(Referential[A]):
     def value(self) -> A:
         # TODO: passing references as a constant to a function as a capture should be allowed
         # maybe access should always be allowed? Commenting out for now.
-
         # value_trace = tracers.get_top_trace(self._value)
         # if self._jax_trace is not tracers.current_jax_trace() or (
         #     value_trace is not self._jax_trace
@@ -259,10 +258,10 @@ class Ref(Referential[A]):
         self._value = value
 
     def to_value(self) -> "Value[A]":
-        return Value(self.value, self.collection)
+        return Value(self._value, self._collection)
 
     def to_index(self) -> "Index[A]":
-        return Index(self.collection)
+        return Index(self._collection)
 
 
 class Value(Deref[A]):
