@@ -4,7 +4,7 @@ __version__ = "0.0.0"
 from .context import Context, RngStream
 from .dataclasses import dataclass, field, node_field, param, ref, static_field
 from .filters import jit_filter
-from .module import Module, ModuleDef
+from .module import Module, ModuleDef, Bounded
 from .nn.activations import (
     celu,
     elu,

@@ -93,7 +93,8 @@ def collection_partition(
 def collection_partition(
     pytree: A,
     collection: str,
-    *collections: str,
+    second: str,
+    *rest: str,
     is_leaf: tp.Optional[LeafPredicate] = None,
 ) -> tp.Tuple[tp.Tuple[Partition, ...], DagDef[A]]:
     ...

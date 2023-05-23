@@ -114,6 +114,7 @@ class Module(Pytree):
     def partition(
         self: M,
         collection: str,
+        *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[Partition, "ModuleDef[M]",]:
         ...
@@ -122,7 +123,8 @@ class Module(Pytree):
     def partition(
         self: M,
         collection: str,
-        *collections: str,
+        second: str,
+        *rest: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Tuple[tp.Tuple[Partition, ...], "ModuleDef[M]",]:
         ...
@@ -148,13 +150,13 @@ class Module(Pytree):
             )
         else:
             partitions, dagdef = partitioning.collection_partition(
-                self, collections[0], *collections[1:], is_leaf=is_leaf
+                self, collections[0], collections[1], *collections[2:], is_leaf=is_leaf
             )
 
         moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
 
         if isinstance(partitions, tp.Dict):
-            return Bounded(partitions, moduledef)
+            return Bounded((partitions, moduledef))
 
         return partitions, moduledef
 
@@ -211,15 +213,60 @@ class ModuleDef(DagDef[M]):
         return CallableProxy(_context, module)  # type: ignore
 
 
-class Bounded(tp.NamedTuple, tp.Generic[M]):
-    partitions: tp.Dict[str, Partition]
-    moduledef: ModuleDef[M]
-
+class Bounded(tp.Tuple[tp.Dict[str, Partition], ModuleDef[M]]):
     @property
     def module(self) -> M:
         def _context(apply, *args, **kwargs):
-            out, updates = apply(*args, **kwargs)
+            out, updates = apply(self.partitions)(*args, **kwargs)
             self.partitions.update(updates)
             return out
 
         return CallableProxy(_context, self.moduledef.apply)  # type: ignore
+
+    @property
+    def partitions(self) -> tp.Dict[str, Partition]:
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def moduledef(self) -> ModuleDef[M]:
+        return tuple.__getitem__(self, 1)
+
+    @tp.overload
+    def __getitem__(self, key: str) -> Partition:
+        ...
+
+    @tp.overload
+    def __getitem__(self, key: tp.Literal[0]) -> tp.Dict[str, Partition]:
+        ...
+
+    @tp.overload
+    def __getitem__(self, key: tp.Literal[1]) -> ModuleDef[M]:
+        ...
+
+    @tp.overload
+    def __getitem__(self, key: int) -> tp.Union[tp.Dict[str, Partition], ModuleDef[M]]:
+        ...
+
+    def __getitem__(
+        self, key: tp.Union[str, int]
+    ) -> tp.Union[Partition, tp.Dict[str, Partition], ModuleDef[M]]:
+        if isinstance(key, str):
+            return self.partitions[key]
+        return tuple.__getitem__(self, key)
+
+    def __setitem__(self, key: str, value: Partition):
+        self.partitions[key] = value
+
+    def merge(self) -> M:
+        return self.moduledef.merge(self.partitions)
+
+
+def _flatten_bounded(bounded: Bounded[M]):
+    return tuple(bounded), None
+
+
+def _unflatten_bounded(_, values):
+    return Bounded(values)
+
+
+jtu.register_pytree_node(Bounded, _flatten_bounded, _unflatten_bounded)
