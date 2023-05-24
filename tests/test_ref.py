@@ -11,9 +11,9 @@ class TestRef:
     def test_slots(self):
         ref = nnx.Ref(1)
         assert not hasattr(ref, "__dict__")
-        value = nnx.Value(1, None)
+        value = nnx.Value(1, "", None)
         assert not hasattr(value, "__dict__")
-        index = nnx.Index(None)
+        index = nnx.Index("", None)
         assert not hasattr(index, "__dict__")
 
     def test_ref(self):
@@ -36,8 +36,8 @@ class TestRef:
         assert r2.value == 3
 
     def test_value_and_index_are_deref(self):
-        value = nnx.Value(1, None)
-        index = nnx.Index(None)
+        value = nnx.Value(1, "", None)
+        index = nnx.Index("", None)
 
         assert isinstance(value, nnx.Deref)
         assert isinstance(index, nnx.Deref)

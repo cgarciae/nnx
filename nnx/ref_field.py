@@ -1,6 +1,8 @@
 import typing as tp
 import dataclasses
 
+import jax
+
 from nnx.reference import Ref
 
 
@@ -59,3 +61,9 @@ class RefField(dataclasses.Field, tp.Generic[A]):
             obj.__dict__[self.object_field_name] = Ref(
                 value, collection=self.collection
             )
+
+
+@dataclasses.dataclass
+class RefMetadata(tp.Generic[A]):
+    value: A
+    sharding: jax.sharding.PartitionSpec

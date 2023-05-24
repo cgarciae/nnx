@@ -3,7 +3,6 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from jax.nn import initializers
 
 import nnx
 
@@ -46,26 +45,27 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(model: nnx.Bounded[MLP], batch) -> nnx.Bounded[MLP]:
+def train_step(unbound: nnx.Unbound[MLP], batch) -> nnx.Unbound[MLP]:
     x, y = batch
+    model = unbound.merge()
 
-    def loss_fn(params):
-        model["params"] = params
-        y_pred = model.module(x)
+    def loss_fn(model: MLP):
+        y_pred = model(x)
         loss = jnp.mean((y - y_pred) ** 2)
-        return loss, model
+        return loss
 
-    grad, model = jax.grad(loss_fn, has_aux=True)(model["params"])
-    #                              |-------- sgd ---------|
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    grad = nnx.grad(loss_fn)(model)
+    #                       |-------- sgd ---------|
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
 
-    return model
+    return model.partition()
 
 
 @jax.jit
-def test_step(model: nnx.Bounded[MLP], batch):
+def test_step(unbound: nnx.Unbound[MLP], batch):
     x, y = batch
-    y_pred = model.module(x)
+    model = unbound.merge()
+    y_pred = model(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
@@ -86,7 +86,6 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-assert isinstance(bounded, nnx.Bounded)
 model = bounded.merge()
 print("times called:", model.count)
 

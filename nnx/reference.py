@@ -20,6 +20,7 @@ KeyPath = tp.Tuple[tp.Hashable, ...]
 
 
 StrPath = tp.Tuple[str, ...]
+Sharding = jax.sharding.PartitionSpec
 
 
 class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
@@ -192,10 +193,11 @@ jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
 
 
 class Referential(tp.Generic[A], ABC):
-    __slots__ = ("_collection",)
+    __slots__ = ("_collection", "_sharding")
 
-    def __init__(self, collection: str):
+    def __init__(self, collection: str, sharding: tp.Optional[Sharding]):
         self._collection = collection
+        self._sharding = sharding
 
     @property
     @abstractmethod
@@ -205,6 +207,10 @@ class Referential(tp.Generic[A], ABC):
     @property
     def collection(self) -> str:
         return self._collection
+
+    @property
+    def sharding(self) -> tp.Optional[Sharding]:
+        return self._sharding
 
 
 class Deref(Referential[A]):
@@ -219,13 +225,14 @@ class Ref(Referential[A]):
         value: A,
         *,
         collection: str = "",
+        sharding: tp.Optional[Sharding] = None,
         context_trace: tp.Optional[tracers.MainTrace] = None,
     ):
         self._value = value
         self._jax_trace = tracers.current_jax_trace()
         self._context_trace = context_trace or self._jax_trace
         self._trace_set = frozenset((self._jax_trace, self._context_trace))
-        super().__init__(collection)
+        super().__init__(collection, sharding)
 
     @property
     def value(self) -> A:
@@ -258,45 +265,55 @@ class Ref(Referential[A]):
         self._value = value
 
     def to_value(self) -> "Value[A]":
-        return Value(self._value, self._collection)
+        return Value(self._value, self._collection, self._sharding)
 
     def to_index(self) -> "Index[A]":
-        return Index(self._collection)
+        return Index(self._collection, self._sharding)
 
 
 class Value(Deref[A]):
     __slots__ = ("_value",)
 
-    def __init__(self, value: A, collection: str):
+    def __init__(
+        self,
+        value: A,
+        collection: str,
+        sharding: tp.Optional[Sharding],
+    ):
         self._value = value
-        super().__init__(collection)
+        super().__init__(collection, sharding)
 
     @property
     def value(self) -> A:
         return self._value
 
     def to_ref(self) -> "Ref[A]":
-        return Ref(self._value, collection=self.collection)
+        return Ref(self._value, collection=self.collection, sharding=self.sharding)
 
     def __repr__(self) -> str:
-        return f"Value(collection={repr(self.collection)}, value={repr(self._value)})"
+        return (
+            f"Value(collection={repr(self.collection)}, value={repr(self._value)}, "
+            f"sharding={repr(self.sharding)})"
+        )
 
 
 def _value_flatten(
     x: Value[A],
     *,
     with_keys: bool,
-) -> tp.Tuple[tp.Tuple[tp.Any], tp.Hashable]:
+):
     if with_keys:
         node = (jtu.GetAttrKey("value"), x._value)
     else:
         node = x._value
 
-    return (node,), x.collection
+    return (node,), (x._collection, x._sharding)
 
 
-def _value_unflatten(collection: tp.Hashable, children: tp.Tuple[A]) -> Value[A]:
-    return Value(children[0], collection)
+def _value_unflatten(
+    metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
+) -> Value[A]:
+    return Value(children[0], *metadata)
 
 
 jtu.register_pytree_with_keys(
@@ -310,8 +327,8 @@ jtu.register_pytree_with_keys(
 class Index(Deref[A]):
     __slots__ = ()
 
-    def __init__(self, collection: tp.Hashable):
-        self._collection = collection
+    def __init__(self, collection: str, sharding: tp.Optional[Sharding]):
+        super().__init__(collection, sharding)
 
     @property
     def value(self) -> A:
@@ -321,12 +338,14 @@ class Index(Deref[A]):
         return f"Index(collection={self.collection})"
 
 
-def _index_flatten(x: Index[A]) -> tp.Tuple[tp.Tuple[()], tp.Hashable]:
-    return (), x.collection
+def _index_flatten(x: Index[A]):
+    return (), (x._collection, x._sharding)
 
 
-def _index_unflatten(colletion: tp.Hashable, children: tp.Tuple[()]) -> Index[A]:
-    return Index(colletion)
+def _index_unflatten(
+    metadata: tp.Tuple[str, tp.Optional[Sharding]], _: tp.Tuple[()]
+) -> Index[A]:
+    return Index(*metadata)
 
 
 jtu.register_pytree_node(Index, _index_flatten, _index_unflatten)

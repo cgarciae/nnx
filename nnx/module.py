@@ -107,7 +107,7 @@ class Module(Pytree):
         self: M,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> "Bounded[M]":
+    ) -> "Unbound[M]":
         ...
 
     @tp.overload
@@ -134,7 +134,7 @@ class Module(Pytree):
         *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> tp.Union[
-        "Bounded[M]",
+        "Unbound[M]",
         tp.Tuple[
             tp.Union[tp.Tuple[Partition, ...], Partition],
             "ModuleDef[M]",
@@ -156,7 +156,7 @@ class Module(Pytree):
         moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
 
         if isinstance(partitions, tp.Dict):
-            return Bounded((partitions, moduledef))
+            return Unbound((partitions, moduledef))
 
         return partitions, moduledef
 
@@ -213,7 +213,7 @@ class ModuleDef(DagDef[M]):
         return CallableProxy(_context, module)  # type: ignore
 
 
-class Bounded(tp.Tuple[tp.Dict[str, Partition], ModuleDef[M]]):
+class Unbound(tp.Tuple[tp.Dict[str, Partition], ModuleDef[M]]):
     @property
     def module(self) -> M:
         def _context(apply, *args, **kwargs):
@@ -261,12 +261,12 @@ class Bounded(tp.Tuple[tp.Dict[str, Partition], ModuleDef[M]]):
         return self.moduledef.merge(self.partitions)
 
 
-def _flatten_bounded(bounded: Bounded[M]):
+def _flatten_bounded(bounded: Unbound[M]):
     return tuple(bounded), None
 
 
 def _unflatten_bounded(_, values):
-    return Bounded(values)
+    return Unbound(values)
 
 
-jtu.register_pytree_node(Bounded, _flatten_bounded, _unflatten_bounded)
+jtu.register_pytree_node(Unbound, _flatten_bounded, _unflatten_bounded)
