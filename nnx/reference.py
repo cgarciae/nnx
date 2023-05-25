@@ -114,12 +114,19 @@ def _to_str_path(key_path: KeyPath) -> tp.Tuple[str, ...]:
     return tuple(_remove_last_ref(_to_str_path_gen(key_path)))
 
 
+D = tp.TypeVar("D", bound="DagDef[tp.Any]")
+
+
 class DagDef(tp.Generic[A]):
     __slots__ = ("_indexes", "_treedef")
 
     def __init__(self, indexes: DagIndexes, treedef: jtu.PyTreeDef):
         self._indexes = indexes
         self._treedef = treedef
+
+    @classmethod
+    def from_value(cls: tp.Type[D], value: "DagDef[tp.Any]", /) -> D:
+        return cls(value._indexes, value._treedef)
 
     def unflatten(self, leaves: Leaves) -> A:
         return self._treedef.unflatten(leaves)
@@ -220,11 +227,11 @@ jtu.register_pytree_node(
 class Derefed(tp.Tuple[P, DagDef[A]]):
     @property
     def partitions(self) -> P:
-        return tuple.__getitem__(self, 0)
+        return self[0]
 
     @property
     def dagdef(self) -> DagDef[A]:
-        return tuple.__getitem__(self, 1)
+        return self[1]
 
     def reref(self) -> A:
         return reref(self.partitions, self.dagdef)
@@ -680,9 +687,20 @@ def _merge_partitions(partitions: tp.Sequence[Partition]) -> Partition:
     return Partition(dict(zip(partitions[0].keys(), merged_leaves)))
 
 
-def update_refs(pytree: tp.Any, partition: Partition, *partitions: Partition):
-    if len(partitions) > 0:
-        partition = _merge_partitions((partition, *partitions))
+def update_refs(
+    pytree: tp.Any,
+    value: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+):
+    if isinstance(value, Partition):
+        partition = value
+    else:
+        if isinstance(value, dict):
+            partitions = tuple(value.values())
+        else:
+            partitions = value
+
+        partition = _merge_partitions(partitions)
+
     target_leaves = jtu.tree_leaves(pytree)
     source_leaves = list(partition.values())
     _update_refs(target_leaves, source_leaves)

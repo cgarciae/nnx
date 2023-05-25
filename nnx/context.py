@@ -114,22 +114,27 @@ class Context:
         ] = None,
         *,
         flags: tp.Optional[tp.Mapping[str, bool]] = None,
+        **rng_updates: tp.Union[RngStream, KeyArray],
     ):
         context_trace = tracers.get_top_trace(rngs)
 
         if rngs is None:
             _rngs = {}
         elif isinstance(rngs, tp.Mapping):
-            _rngs = {
-                name: RngStream(key, context_trace=context_trace)
-                if not isinstance(key, RngStream)
-                else key
-                for name, key in rngs.items()
-            }
+            _rngs = dict(rngs)
         elif isinstance(rngs, RngStream):
             _rngs = dict(params=rngs)
         else:
             _rngs = dict(params=RngStream(rngs, context_trace=context_trace))
+
+        _rngs.update(**rng_updates)
+
+        _rngs = {
+            name: RngStream(key, context_trace=context_trace)
+            if not isinstance(key, RngStream)
+            else key
+            for name, key in _rngs.items()
+        }
 
         self._rngs = _rngs
         self._flags = MappingProxyType(flags or {})

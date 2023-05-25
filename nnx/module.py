@@ -1,4 +1,5 @@
 import dataclasses
+from ideas.pure import module
 from nnx.pytree import Pytree
 from nnx import partitioning
 from nnx.reference import (
@@ -12,6 +13,7 @@ from nnx.reference import (
     reref,
     update_refs,
     _to_str_path,
+    _merge_partitions,
 )
 import typing as tp
 import jax.tree_util as jtu
@@ -29,11 +31,36 @@ class ApplyCaller(tp.Protocol):
         ...
 
 
-class DerefedMod(Derefed[P, M]):
-    @property
-    def moduledef(self) -> "ModuleDef[M]":
-        return tuple.__getitem__(self, 1)
+class ModuleDef(DagDef[M]):
+    def apply(
+        self,
+        partitions: tp.Union[
+            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+        ],
+    ) -> ApplyCaller:
+        module: M = self.reref(partitions)
 
+        def _context(fn, *args, **kwargs):
+            out = fn(*args, **kwargs)
+            partitions, _ = module.partition()
+            return out, partitions
+
+        return CallableProxy(_context, module)  # type: ignore
+
+
+class DerefedMod(tp.Tuple[P, ModuleDef[M]]):
+    @property
+    def partitions(self) -> P:
+        return self[0]
+
+    @property
+    def moduledef(self) -> ModuleDef[M]:
+        return self[1]
+
+    def reref(self) -> M:
+        return reref(self.partitions, self.moduledef)
+
+    @property
     def apply(self) -> ApplyCaller:
         return self.moduledef.apply(self.partitions)
 
@@ -74,17 +101,24 @@ class CallableProxy:
 
 class Module(Pytree):
     def deref(self: M) -> DerefedMod[Partition, M]:
-        return DerefedMod(deref(self))
+        partition, dagdef = deref(self)
+        return DerefedMod((partition, ModuleDef.from_value(dagdef)))
 
     def clone(self: M) -> M:
         return clone(self)
 
     @tp.overload
-    def __getitem__(self, collection: str) -> Partition:
+    def __getitem__(self, collections: str) -> Partition:
         ...
 
     @tp.overload
     def __getitem__(self, collections: tp.Tuple[str, ...]) -> tp.Tuple[Partition, ...]:
+        ...
+
+    @tp.overload
+    def __getitem__(
+        self, collections: tp.Union[str, tp.Tuple[str, ...]]
+    ) -> tp.Union[Partition, tp.Tuple[Partition, ...]]:
         ...
 
     def __getitem__(
@@ -98,7 +132,11 @@ class Module(Pytree):
 
         return partitioning.get_partition(self, *collections)
 
-    def __setitem__(self, name: SetItemType, value: Partition):
+    def __setitem__(
+        self,
+        _: SetItemType,
+        value: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    ):
         update_refs(self, value)
 
     def collections(self) -> tp.Set[str]:
@@ -155,7 +193,7 @@ class Module(Pytree):
                 self, collections[0], collections[1], *collections[2:], is_leaf=is_leaf
             )
 
-        moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
+        moduledef = ModuleDef.from_value(dagdef)
 
         return DerefedMod((partitions, moduledef))
 
@@ -186,20 +224,3 @@ class Module(Pytree):
                 sep.join(_to_str_path(path)): leaf for path, leaf in path_leaves
             }
         return partition, treedef
-
-
-class ModuleDef(DagDef[M]):
-    def apply(
-        self,
-        partitions: tp.Union[
-            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
-        ],
-    ) -> ApplyCaller:
-        module: M = self.reref(partitions)
-
-        def _context(fn, *args, **kwargs):
-            out = fn(*args, **kwargs)
-            partitions, _ = module.partition()
-            return out, partitions
-
-        return CallableProxy(_context, module)  # type: ignore
