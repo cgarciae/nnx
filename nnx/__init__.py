@@ -57,11 +57,10 @@ from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .partitioning import collection_partition as partition
-from .partitioning import get_partition
+from .partitioning import get_partition, tree_partition
 from .partitioning import merge_partitions as merge
-from .partitioning import tree_partition
 from .pytree import Pytree, PytreeMeta
-from .ref_field import RefField
+from .ref_field import RefField, RefMetadata, ref_metadata, with_partitioning
 from .reference import (
     NOTHING,
     Dag,

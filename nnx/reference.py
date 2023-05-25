@@ -144,9 +144,13 @@ class DagDef(tp.Generic[A]):
 
     def merge(
         self,
-        partitions: tp.Union[tp.Sequence[Partition], tp.Mapping[str, Partition]],
+        partitions: tp.Union[
+            Partition, tp.Sequence[Partition], tp.Mapping[str, Partition]
+        ],
     ) -> A:
-        if isinstance(partitions, tp.Mapping):
+        if isinstance(partitions, Partition):
+            partitions = (partitions,)
+        elif isinstance(partitions, tp.Mapping):
             partitions = tuple(partitions.values())
         return nnx.merge(partitions, self)
 
@@ -385,6 +389,34 @@ jtu.register_pytree_with_keys(
     _dag_unflatten,
     flatten_func=partial(_dag_flatten, with_keys=False),
 )
+
+P = tp.TypeVar(
+    "P", bound=tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]]
+)
+
+
+class Derefed(tp.Tuple[P, DagDef[A]]):
+    @property
+    def partition(self) -> P:
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def dagdef(self) -> DagDef[A]:
+        return tuple.__getitem__(self, 1)
+
+    def reref(self) -> M:
+        return self.dagdef.merge(self.partition)
+
+
+def _flatten_bounded(bounded: Unbound[M]):
+    return tuple(bounded), None
+
+
+def _unflatten_bounded(_, values):
+    return Unbound(values)
+
+
+jtu.register_pytree_node(Unbound, _flatten_bounded, _unflatten_bounded)
 
 
 @tp.overload

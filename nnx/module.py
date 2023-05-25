@@ -231,32 +231,6 @@ class Unbound(tp.Tuple[tp.Dict[str, Partition], ModuleDef[M]]):
     def moduledef(self) -> ModuleDef[M]:
         return tuple.__getitem__(self, 1)
 
-    @tp.overload
-    def __getitem__(self, key: str) -> Partition:
-        ...
-
-    @tp.overload
-    def __getitem__(self, key: tp.Literal[0]) -> tp.Dict[str, Partition]:
-        ...
-
-    @tp.overload
-    def __getitem__(self, key: tp.Literal[1]) -> ModuleDef[M]:
-        ...
-
-    @tp.overload
-    def __getitem__(self, key: int) -> tp.Union[tp.Dict[str, Partition], ModuleDef[M]]:
-        ...
-
-    def __getitem__(
-        self, key: tp.Union[str, int]
-    ) -> tp.Union[Partition, tp.Dict[str, Partition], ModuleDef[M]]:
-        if isinstance(key, str):
-            return self.partitions[key]
-        return tuple.__getitem__(self, key)
-
-    def __setitem__(self, key: str, value: Partition):
-        self.partitions[key] = value
-
     def merge(self) -> M:
         return self.moduledef.merge(self.partitions)
 
