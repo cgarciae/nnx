@@ -142,7 +142,7 @@ class GradTransform:
             dagdef: DagDef[tp.Any],
             *args,
         ):
-            pytree = dagdef.merge([diff, non_diff])
+            pytree = dagdef.reref([diff, non_diff])
             out = fun(pytree, *args)
 
             if self.stateful:

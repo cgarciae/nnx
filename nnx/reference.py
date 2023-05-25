@@ -11,6 +11,10 @@ from nnx import tracers
 
 A = tp.TypeVar("A")
 D = tp.TypeVar("D", bound="DagDef[tp.Any]")
+P = tp.TypeVar(
+    "P",
+    bound=tp.Union["Partition", tp.Tuple["Partition", ...], tp.Dict[str, "Partition"]],
+)
 Leaf = tp.Any
 Leaves = tp.List[Leaf]
 DagIndexes = tp.Tuple[tp.Tuple[int, ...], ...]
@@ -139,20 +143,55 @@ class DagDef(tp.Generic[A]):
             raise TypeError(f"Cannot compare DagDef with {type(other).__name__}")
         return self._indexes == other._indexes and self._treedef == other._treedef
 
-    def reref(self, partition: Partition) -> A:
-        return reref(partition, self)
-
-    def merge(
+    @tp.overload
+    def reref(
         self,
         partitions: tp.Union[
-            Partition, tp.Sequence[Partition], tp.Mapping[str, Partition]
+            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
         ],
     ) -> A:
-        if isinstance(partitions, Partition):
-            partitions = (partitions,)
-        elif isinstance(partitions, tp.Mapping):
-            partitions = tuple(partitions.values())
-        return nnx.merge(partitions, self)
+        ...
+
+    @tp.overload
+    def reref(
+        self,
+        partitions: A,
+        *,
+        from_tree: tp.Literal[True],
+    ) -> A:
+        ...
+
+    @tp.overload
+    def reref(
+        self,
+        partitions: tp.Union[
+            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+        ],
+        *,
+        from_tree: tp.Literal[False],
+    ) -> A:
+        ...
+
+    @tp.overload
+    def reref(
+        self,
+        partitions: tp.Union[
+            A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+        ],
+        *,
+        from_tree: bool,
+    ) -> A:
+        ...
+
+    def reref(
+        self,
+        partitions: tp.Union[
+            A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+        ],
+        *,
+        from_tree: bool = False,
+    ) -> A:
+        return reref(partitions, self, from_tree=from_tree)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -176,6 +215,30 @@ def _dagdef_unflatten(
 jtu.register_pytree_node(
     DagDef, _dagdef_flatten, partial(_dagdef_unflatten, cls=DagDef)
 )
+
+
+class Derefed(tp.Tuple[P, DagDef[A]]):
+    @property
+    def partitions(self) -> P:
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def dagdef(self) -> DagDef[A]:
+        return tuple.__getitem__(self, 1)
+
+    def reref(self) -> A:
+        return reref(self.partitions, self.dagdef)
+
+
+def _flatten_derefed(bounded: Derefed[P, A]):
+    return tuple(bounded), None
+
+
+def _unflatten_derered(_, values: tp.Tuple[P, DagDef[A]]) -> Derefed[P, A]:
+    return Derefed(values)
+
+
+jtu.register_pytree_node(Derefed, _flatten_derefed, _unflatten_derered)
 
 
 class Nothing:
@@ -390,41 +453,13 @@ jtu.register_pytree_with_keys(
     flatten_func=partial(_dag_flatten, with_keys=False),
 )
 
-P = tp.TypeVar(
-    "P", bound=tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]]
-)
-
-
-class Derefed(tp.Tuple[P, DagDef[A]]):
-    @property
-    def partition(self) -> P:
-        return tuple.__getitem__(self, 0)
-
-    @property
-    def dagdef(self) -> DagDef[A]:
-        return tuple.__getitem__(self, 1)
-
-    def reref(self) -> M:
-        return self.dagdef.merge(self.partition)
-
-
-def _flatten_bounded(bounded: Unbound[M]):
-    return tuple(bounded), None
-
-
-def _unflatten_bounded(_, values):
-    return Unbound(values)
-
-
-jtu.register_pytree_node(Unbound, _flatten_bounded, _unflatten_bounded)
-
 
 @tp.overload
 def deref(
     pytree: A,
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[Partition, DagDef[A]]:
+) -> Derefed[Partition, A]:
     ...
 
 
@@ -434,7 +469,7 @@ def deref(
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
     unflatten: tp.Literal[False],
-) -> tp.Tuple[Partition, DagDef[A]]:
+) -> Derefed[Partition, A]:
     ...
 
 
@@ -454,7 +489,7 @@ def deref(
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
     unflatten: bool,
-) -> tp.Tuple[tp.Union[Partition, A], DagDef[A]]:
+) -> tp.Union[Derefed[Partition, A], tp.Tuple[A, DagDef[A]]]:
     ...
 
 
@@ -502,17 +537,71 @@ def deref(
 
     if unflatten:
         out = dagdef.unflatten(out_leaves)
+        return out, dagdef
     else:
         out = Partition(dict(zip(out_paths, out_leaves)))
+        return Derefed((out, dagdef))
 
-    return out, dagdef
+
+@tp.overload
+def reref(
+    partitions: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    dagdef: DagDef[A],
+) -> A:
+    ...
 
 
-def reref(__tree_or_partition: tp.Union[Partition, A], /, dagdef: DagDef[A]) -> A:
-    if isinstance(__tree_or_partition, Partition):
-        leaves = list(__tree_or_partition.values())
+@tp.overload
+def reref(
+    partitions: A,
+    dagdef: DagDef[A],
+    *,
+    from_tree: tp.Literal[True],
+) -> A:
+    ...
+
+
+@tp.overload
+def reref(
+    partitions: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    dagdef: DagDef[A],
+    *,
+    from_tree: tp.Literal[False],
+) -> A:
+    ...
+
+
+@tp.overload
+def reref(
+    partitions: tp.Union[A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    dagdef: DagDef[A],
+    *,
+    from_tree: bool,
+) -> A:
+    ...
+
+
+def reref(
+    partitions: tp.Union[A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    dagdef: DagDef[A],
+    *,
+    from_tree: bool = False,
+) -> A:
+    if from_tree:
+        leaves = dagdef.flatten_up_to(partitions)
     else:
-        leaves = dagdef.flatten_up_to(__tree_or_partition)
+        if not isinstance(partitions, Partition):
+            if isinstance(partitions, dict):
+                partitions_seq = tuple(partitions.values())
+            else:
+                partitions_seq = partitions
+
+            assert isinstance(partitions_seq, tp.Sequence)
+            partition = _merge_partitions(partitions_seq)
+        else:
+            partition = partitions
+
+        leaves = list(partition.values())
     context_trace = tracers.get_top_trace(leaves)
 
     for leaf_indexes in dagdef.indexes:

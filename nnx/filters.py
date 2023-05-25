@@ -27,7 +27,7 @@ class JitTransform(jax.stages.Wrapped):
             _nnx__dagdef: DagDef[tp.Tuple[tp.Tuple[tp.Any, ...], tp.Dict[str, tp.Any]]],
             **kwargs,
         ):
-            args, kwargs = reref((args, kwargs), _nnx__dagdef)
+            args, kwargs = reref((args, kwargs), _nnx__dagdef, from_tree=True)
             out = fun(*args, **kwargs)
             return deref(out)
 

@@ -408,8 +408,8 @@ class Decoder(nnx.Module):
 
         if cfg.scanned:
             self.layers = jax.vmap(
-                lambda key: DecoderBlock(cfg, ctx=nnx.Context(key)).partition()
-            )(jax.random.split(ctx.make_rng("params"), cfg.layers)).merge()
+                lambda key: DecoderBlock(cfg, ctx=nnx.Context(key)).deref()
+            )(jax.random.split(ctx.make_rng("params"), cfg.layers)).reref()
         else:
             self.layers = tuple(DecoderBlock(cfg, ctx=ctx) for _ in range(cfg.layers))
 
@@ -468,7 +468,7 @@ class Cache(nnx.Module):
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         if cfg.scanned:
             self.layers = jax.vmap(
-                lambda key: CacheLayer(cfg, ctx=nnx.Context(key)).partition()
-            )(jax.random.split(ctx.make_rng("params"), cfg.layers)).merge()
+                lambda key: CacheLayer(cfg, ctx=nnx.Context(key)).deref()
+            )(jax.random.split(ctx.make_rng("params"), cfg.layers)).reref()
         else:
             self.layers = tuple(CacheLayer(cfg, ctx=ctx) for _ in range(cfg.layers))

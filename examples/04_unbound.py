@@ -45,9 +45,9 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(unbound: nnx.Unbound[MLP], batch) -> nnx.Unbound[MLP]:
+def train_step(unbound: nnx.DerefedMod[MLP], batch) -> nnx.DerefedMod[MLP]:
     x, y = batch
-    model = unbound.merge()
+    model = unbound.reref()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
@@ -62,9 +62,9 @@ def train_step(unbound: nnx.Unbound[MLP], batch) -> nnx.Unbound[MLP]:
 
 
 @jax.jit
-def test_step(unbound: nnx.Unbound[MLP], batch):
+def test_step(unbound: nnx.DerefedMod[MLP], batch):
     x, y = batch
-    model = unbound.merge()
+    model = unbound.reref()
     y_pred = model(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
@@ -86,7 +86,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = bounded.merge()
+model = bounded.reref()
 print("times called:", model.count)
 
 y_pred = model(X)

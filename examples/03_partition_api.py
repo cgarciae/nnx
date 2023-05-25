@@ -85,7 +85,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = model.merge([params, state])
+model = model.reref([params, state])
 print("times called:", model.count)
 
 y_pred = model(X)

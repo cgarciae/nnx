@@ -8,6 +8,7 @@ from nnx.reference import (
     NOTHING,
     DagDef,
     Deref,
+    Derefed,
     LeafPredicate,
     Partition,
     Referential,
@@ -31,17 +32,17 @@ def tree_partition(
     pytree: A,
     *filters: CollectionFilter,
     is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[tp.Tuple[Partition, ...], DagDef[A]]:
+) -> Derefed[tp.Tuple[Partition, ...], A]:
     if len(filters) == 0:
         raise ValueError("Expected at least one predicate")
 
     partition, dagdef = deref(pytree, is_leaf=is_leaf)
-    partitions = split_partition(partition, dagdef, *filters)
+    partitions = _split_partition(partition, dagdef, *filters)
 
-    return partitions, dagdef
+    return Derefed((partitions, dagdef))
 
 
-def split_partition(
+def _split_partition(
     partition: Partition,
     dagdef: DagDef[tp.Any],
     *filters: CollectionFilter,
@@ -75,7 +76,7 @@ def collection_partition(
     pytree: A,
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[tp.Dict[str, Partition], DagDef[A]]:
+) -> Derefed[tp.Dict[str, Partition], A]:
     ...
 
 
@@ -85,7 +86,7 @@ def collection_partition(
     collection: str,
     *,
     is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[Partition, DagDef[A]]:
+) -> Derefed[Partition, A]:
     ...
 
 
@@ -96,7 +97,7 @@ def collection_partition(
     second: str,
     *rest: str,
     is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[tp.Tuple[Partition, ...], DagDef[A]]:
+) -> Derefed[tp.Tuple[Partition, ...], A]:
     ...
 
 
@@ -104,9 +105,7 @@ def collection_partition(
     pytree: A,
     *collections: str,
     is_leaf: tp.Optional[LeafPredicate] = None,
-) -> tp.Tuple[
-    tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]], DagDef[A]
-]:
+) -> Derefed[tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]], A]:
     partition, dagdef = deref(pytree, is_leaf=is_leaf)
 
     num_collections = len(collections)
@@ -118,7 +117,7 @@ def collection_partition(
         if "rest" in collections:
             raise ValueError("Found reserved 'rest' collection name in pytree Refs")
 
-    partitions = split_partition(partition, dagdef, *collections)
+    partitions = _split_partition(partition, dagdef, *collections)
 
     if all(x is NOTHING for x in partitions[-1].values()):
         partitions = partitions[:-1]
@@ -141,7 +140,7 @@ def collection_partition(
     elif num_collections == 1:
         partitions = partitions[0]
 
-    return partitions, dagdef
+    return Derefed((partitions, dagdef))
 
 
 @tp.overload
@@ -181,11 +180,6 @@ def get_partition(
         partitions = tuple(partitions)
 
     return partitions
-
-
-def merge_partitions(partitions: tp.Sequence[Partition], dagdef: DagDef[A]) -> A:
-    partition = _merge_partitions(partitions)
-    return dagdef.reref(partition)
 
 
 def to_predicate(collection_filter: CollectionFilter) -> Predicate:

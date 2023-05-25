@@ -2,7 +2,9 @@ import dataclasses
 from nnx.pytree import Pytree
 from nnx import partitioning
 from nnx.reference import (
+    P,
     DagDef,
+    Derefed,
     Partition,
     Referential,
     clone,
@@ -17,6 +19,35 @@ import builtins
 
 
 M = tp.TypeVar("M", bound="Module")
+
+
+class ApplyCaller(tp.Protocol):
+    def __getattr__(self, __name) -> "ApplyCaller":
+        ...
+
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
+        ...
+
+
+class DerefedMod(Derefed[P, M]):
+    @property
+    def moduledef(self) -> "ModuleDef[M]":
+        return tuple.__getitem__(self, 1)
+
+    def apply(self) -> ApplyCaller:
+        return self.moduledef.apply(self.partitions)
+
+
+def _flatten_bounded(bounded: DerefedMod[P, M]):
+    return tuple(bounded), None
+
+
+def _unflatten_bounded(_, values):
+    return DerefedMod(values)
+
+
+jtu.register_pytree_node(DerefedMod, _flatten_bounded, _unflatten_bounded)
+
 
 if tp.TYPE_CHECKING:
     SetItemType = tp.Union[builtins.ellipsis, builtins.slice]
@@ -42,33 +73,8 @@ class CallableProxy:
 
 
 class Module(Pytree):
-    @tp.overload
-    def deref(self: M) -> tp.Tuple[Partition, DagDef[M]]:
-        ...
-
-    @tp.overload
-    def deref(
-        self: M, *, unflatten: tp.Literal[False]
-    ) -> tp.Tuple[Partition, DagDef[M]]:
-        ...
-
-    @tp.overload
-    def deref(self: M, *, unflatten: tp.Literal[True]) -> tp.Tuple[M, DagDef[M]]:
-        ...
-
-    @tp.overload
-    def deref(
-        self: M, *, unflatten: bool
-    ) -> tp.Tuple[tp.Union[M, Partition], DagDef[M]]:
-        ...
-
-    def deref(
-        self: M, *, unflatten: bool = False
-    ) -> tp.Tuple[tp.Union[M, Partition], DagDef[M]]:
-        return deref(self, unflatten=unflatten)
-
-    def reref(self: M, dagdef: DagDef[M]) -> M:
-        return reref(self, dagdef)
+    def deref(self: M) -> DerefedMod[Partition, M]:
+        return DerefedMod(deref(self))
 
     def clone(self: M) -> M:
         return clone(self)
@@ -95,19 +101,19 @@ class Module(Pytree):
     def __setitem__(self, name: SetItemType, value: Partition):
         update_refs(self, value)
 
-    def collections(self) -> tp.FrozenSet[str]:
-        return frozenset(
+    def collections(self) -> tp.Set[str]:
+        return {
             x.collection
             for x in jtu.tree_leaves(self, is_leaf=lambda x: isinstance(x, Referential))
             if isinstance(x, Referential)
-        )
+        }
 
     @tp.overload
     def partition(
         self: M,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> "Unbound[M]":
+    ) -> DerefedMod[tp.Dict[str, Partition], M]:
         ...
 
     @tp.overload
@@ -116,7 +122,7 @@ class Module(Pytree):
         collection: str,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[Partition, "ModuleDef[M]",]:
+    ) -> DerefedMod[Partition, M]:
         ...
 
     @tp.overload
@@ -126,19 +132,15 @@ class Module(Pytree):
         second: str,
         *rest: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Tuple[tp.Tuple[Partition, ...], "ModuleDef[M]",]:
+    ) -> DerefedMod[tp.Tuple[Partition, ...], M]:
         ...
 
     def partition(
         self: M,
         *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> tp.Union[
-        "Unbound[M]",
-        tp.Tuple[
-            tp.Union[tp.Tuple[Partition, ...], Partition],
-            "ModuleDef[M]",
-        ],
+    ) -> DerefedMod[
+        tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]], M
     ]:
         if len(collections) == 0:
             partitions, dagdef = partitioning.collection_partition(
@@ -155,10 +157,7 @@ class Module(Pytree):
 
         moduledef = ModuleDef(dagdef.indexes, dagdef.treedef)
 
-        if isinstance(partitions, tp.Dict):
-            return Unbound((partitions, moduledef))
-
-        return partitions, moduledef
+        return DerefedMod((partitions, moduledef))
 
     @tp.overload
     def ref_dict(self) -> tp.Tuple[tp.Dict[tp.Tuple[str, ...], tp.Any], jtu.PyTreeDef]:
@@ -189,21 +188,14 @@ class Module(Pytree):
         return partition, treedef
 
 
-class ApplyCaller(tp.Protocol):
-    def __getattr__(self, __name) -> "ApplyCaller":
-        ...
-
-    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
-        ...
-
-
 class ModuleDef(DagDef[M]):
     def apply(
-        self, partitions: tp.Union[tp.Sequence[Partition], tp.Dict[str, Partition]]
+        self,
+        partitions: tp.Union[
+            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+        ],
     ) -> ApplyCaller:
-        if isinstance(partitions, dict):
-            partitions = tuple(partitions.values())
-        module: M = self.merge(partitions)
+        module: M = self.reref(partitions)
 
         def _context(fn, *args, **kwargs):
             out = fn(*args, **kwargs)
@@ -211,36 +203,3 @@ class ModuleDef(DagDef[M]):
             return out, partitions
 
         return CallableProxy(_context, module)  # type: ignore
-
-
-class Unbound(tp.Tuple[tp.Dict[str, Partition], ModuleDef[M]]):
-    @property
-    def module(self) -> M:
-        def _context(apply, *args, **kwargs):
-            out, updates = apply(self.partitions)(*args, **kwargs)
-            self.partitions.update(updates)
-            return out
-
-        return CallableProxy(_context, self.moduledef.apply)  # type: ignore
-
-    @property
-    def partitions(self) -> tp.Dict[str, Partition]:
-        return tuple.__getitem__(self, 0)
-
-    @property
-    def moduledef(self) -> ModuleDef[M]:
-        return tuple.__getitem__(self, 1)
-
-    def merge(self) -> M:
-        return self.moduledef.merge(self.partitions)
-
-
-def _flatten_bounded(bounded: Unbound[M]):
-    return tuple(bounded), None
-
-
-def _unflatten_bounded(_, values):
-    return Unbound(values)
-
-
-jtu.register_pytree_node(Unbound, _flatten_bounded, _unflatten_bounded)
