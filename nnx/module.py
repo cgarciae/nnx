@@ -24,84 +24,27 @@ A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
 
 
-class ApplyCaller(tp.Protocol, tp.Generic[A]):
-    def __getattr__(self, __name) -> "ApplyCaller[A]":
+class ApplyCaller(tp.Protocol):
+    def __getattr__(self, __name) -> "ApplyCaller":
         ...
 
-    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, A]:
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
         ...
 
 
 class ModuleDef(DagDef[M]):
-    @tp.overload
-    def apply(self, partitions: Partition) -> ApplyCaller[Partition]:
-        ...
-
-    @tp.overload
-    def apply(
-        self, partitions: tp.Tuple[Partition, ...]
-    ) -> ApplyCaller[tp.Tuple[Partition, ...]]:
-        ...
-
-    @tp.overload
-    def apply(
-        self, partitions: tp.Dict[str, Partition]
-    ) -> ApplyCaller[tp.Dict[str, Partition]]:
-        ...
-
-    @tp.overload
     def apply(
         self,
         partitions: tp.Union[
             Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
         ],
-    ) -> tp.Union[
-        ApplyCaller[Partition],
-        ApplyCaller[tp.Tuple[Partition, ...]],
-        ApplyCaller[tp.Dict[str, Partition]],
-    ]:
-        ...
-
-    def apply(
-        self,
-        partitions: tp.Union[
-            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
-        ],
-    ) -> tp.Union[
-        ApplyCaller[Partition],
-        ApplyCaller[tp.Tuple[Partition, ...]],
-        ApplyCaller[tp.Dict[str, Partition]],
-    ]:
+    ) -> ApplyCaller:
         module: M = self.reref(partitions)
 
-        def _context(
-            fn, *args, **kwargs
-        ) -> tp.Tuple[
-            tp.Any,
-            tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
-        ]:
-            if not isinstance(partitions, (Partition, tuple, dict)):
-                raise ValueError(
-                    f"Expected a Partition, tuple of Partitions, or dict of Partitions, "
-                    f"got '{type(partitions).__name__}'"
-                )
+        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
             out = fn(*args, **kwargs)
-            if isinstance(partitions, Partition):
-                out_partitions, _ = module.deref()
-            elif isinstance(partitions, dict):
-                out_partitions, _ = module.partition()
-            else:
-                complete_partition, _ = module.deref()
-                out_partitions = tuple(
-                    Partition(
-                        (path, value if indicator is not NOTHING else NOTHING)
-                        for (path, value), indicator in zip(
-                            complete_partition.items(), partition.values()
-                        )
-                    )
-                    for partition in partitions
-                )
-            return out, out_partitions
+            updates, _ = module.partition()
+            return out, updates
 
         return CallableProxy(_context, module)  # type: ignore
 
