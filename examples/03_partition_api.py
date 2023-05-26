@@ -62,7 +62,9 @@ def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
 
 
 @jax.jit
-def test_step(model: nnx.ModuleDef[MLP], params, state, batch):
+def test_step(
+    model: nnx.ModuleDef[MLP], params: nnx.Partition, state: nnx.Partition, batch
+):
     x, y = batch
     y_pred, _ = model.apply([params, state])(x)
     loss = jnp.mean((y - y_pred) ** 2)

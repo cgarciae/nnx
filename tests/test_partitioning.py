@@ -40,7 +40,7 @@ class TestPartitioning:
         assert rest[("b",)] is nnx.NOTHING
         assert rest[("c",)] == 100
 
-        pytree = dagdef.reref([params, rest])
+        pytree = dagdef.reref((params, rest))
 
         assert pytree["a"][0].value == p1.value
         assert pytree["a"][1].value == s1.value

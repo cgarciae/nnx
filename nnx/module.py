@@ -1,8 +1,8 @@
 import dataclasses
-from ideas.pure import module
 from nnx.pytree import Pytree
 from nnx import partitioning
 from nnx.reference import (
+    NOTHING,
     P,
     DagDef,
     Derefed,
@@ -20,30 +20,88 @@ import jax.tree_util as jtu
 import builtins
 
 
+A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
 
 
-class ApplyCaller(tp.Protocol):
-    def __getattr__(self, __name) -> "ApplyCaller":
+class ApplyCaller(tp.Protocol, tp.Generic[A]):
+    def __getattr__(self, __name) -> "ApplyCaller[A]":
         ...
 
-    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, A]:
         ...
 
 
 class ModuleDef(DagDef[M]):
+    @tp.overload
+    def apply(self, partitions: Partition) -> ApplyCaller[Partition]:
+        ...
+
+    @tp.overload
+    def apply(
+        self, partitions: tp.Tuple[Partition, ...]
+    ) -> ApplyCaller[tp.Tuple[Partition, ...]]:
+        ...
+
+    @tp.overload
+    def apply(
+        self, partitions: tp.Dict[str, Partition]
+    ) -> ApplyCaller[tp.Dict[str, Partition]]:
+        ...
+
+    @tp.overload
     def apply(
         self,
         partitions: tp.Union[
-            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
         ],
-    ) -> ApplyCaller:
+    ) -> tp.Union[
+        ApplyCaller[Partition],
+        ApplyCaller[tp.Tuple[Partition, ...]],
+        ApplyCaller[tp.Dict[str, Partition]],
+    ]:
+        ...
+
+    def apply(
+        self,
+        partitions: tp.Union[
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
+        ],
+    ) -> tp.Union[
+        ApplyCaller[Partition],
+        ApplyCaller[tp.Tuple[Partition, ...]],
+        ApplyCaller[tp.Dict[str, Partition]],
+    ]:
         module: M = self.reref(partitions)
 
-        def _context(fn, *args, **kwargs):
+        def _context(
+            fn, *args, **kwargs
+        ) -> tp.Tuple[
+            tp.Any,
+            tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
+        ]:
+            if not isinstance(partitions, (Partition, tuple, dict)):
+                raise ValueError(
+                    f"Expected a Partition, tuple of Partitions, or dict of Partitions, "
+                    f"got '{type(partitions).__name__}'"
+                )
             out = fn(*args, **kwargs)
-            partitions, _ = module.partition()
-            return out, partitions
+            if isinstance(partitions, Partition):
+                out_partitions, _ = module.deref()
+            elif isinstance(partitions, dict):
+                out_partitions, _ = module.partition()
+            else:
+                complete_partition, _ = module.deref()
+                out_partitions = tuple(
+                    Partition(
+                        (path, value if indicator is not NOTHING else NOTHING)
+                        for (path, value), indicator in zip(
+                            complete_partition.items(), partition.values()
+                        )
+                    )
+                    for partition in partitions
+                )
+            return out, out_partitions
 
         return CallableProxy(_context, module)  # type: ignore
 
@@ -61,7 +119,7 @@ class DerefedMod(tp.Tuple[P, ModuleDef[M]]):
         return reref(self.partitions, self.moduledef)
 
     @property
-    def apply(self) -> ApplyCaller:
+    def apply(self) -> ApplyCaller[P]:
         return self.moduledef.apply(self.partitions)
 
 
@@ -135,7 +193,7 @@ class Module(Pytree):
     def __setitem__(
         self,
         _: SetItemType,
-        value: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+        value: tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
     ):
         update_refs(self, value)
 
@@ -149,6 +207,9 @@ class Module(Pytree):
     @tp.overload
     def partition(
         self: M,
+        collection: None = None,
+        second: None = None,
+        /,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> DerefedMod[tp.Dict[str, Partition], M]:
@@ -158,6 +219,8 @@ class Module(Pytree):
     def partition(
         self: M,
         collection: str,
+        second: None = None,
+        /,
         *,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> DerefedMod[Partition, M]:
@@ -168,18 +231,30 @@ class Module(Pytree):
         self: M,
         collection: str,
         second: str,
-        *rest: str,
+        /,
+        *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
     ) -> DerefedMod[tp.Tuple[Partition, ...], M]:
         ...
 
     def partition(
         self: M,
+        collection: tp.Optional[str] = None,
+        second: tp.Optional[str] = None,
+        /,
         *collections: str,
         is_leaf: tp.Optional[partitioning.LeafPredicate] = None,
-    ) -> DerefedMod[
-        tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]], M
+    ) -> tp.Union[
+        DerefedMod[Partition, M],
+        DerefedMod[tp.Tuple[Partition, ...], M],
+        DerefedMod[tp.Dict[str, Partition], M],
     ]:
+        if second is not None:
+            collections = (second, *collections)
+
+        if collection is not None:
+            collections = (collection, *collections)
+
         if len(collections) == 0:
             partitions, dagdef = partitioning.collection_partition(
                 self, is_leaf=is_leaf

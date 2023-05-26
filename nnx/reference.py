@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from functools import partial
 from types import MappingProxyType
 import typing as tp
-import nnx
 
 import jax
 import jax.tree_util as jtu
@@ -28,25 +27,18 @@ Sharding = jax.sharding.PartitionSpec
 
 
 class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
-    @tp.overload
-    def __init__(self, __mapping: tp.Mapping[tp.Tuple[str, ...], Leaf], /):
-        ...
-
-    @tp.overload
-    def __init__(self, __iterable: tp.Iterable[tp.Tuple[tp.Tuple[str, ...], Leaf]], /):
-        ...
-
     def __init__(
         self,
         __input: tp.Union[
             tp.Mapping[tp.Tuple[str, ...], Leaf],
-            tp.Iterable[tp.Tuple[tp.Tuple[str, ...], Leaf]],
+            tp.Iterator[tp.Tuple[tp.Tuple[str, ...], Leaf]],
         ],
         /,
     ):
-        if not isinstance(__input, tp.Mapping):
-            __input = dict(__input)
-        self._mapping = MappingProxyType(__input)
+        if isinstance(__input, tp.Mapping):
+            self._mapping = MappingProxyType(dict(__input))
+        else:
+            self._mapping = MappingProxyType(dict(__input))
 
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
@@ -114,9 +106,6 @@ def _to_str_path(key_path: KeyPath) -> tp.Tuple[str, ...]:
     return tuple(_remove_last_ref(_to_str_path_gen(key_path)))
 
 
-D = tp.TypeVar("D", bound="DagDef[tp.Any]")
-
-
 class DagDef(tp.Generic[A]):
     __slots__ = ("_indexes", "_treedef")
 
@@ -154,7 +143,7 @@ class DagDef(tp.Generic[A]):
     def reref(
         self,
         partitions: tp.Union[
-            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
         ],
     ) -> A:
         ...
@@ -172,7 +161,7 @@ class DagDef(tp.Generic[A]):
     def reref(
         self,
         partitions: tp.Union[
-            Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
         ],
         *,
         from_tree: tp.Literal[False],
@@ -183,7 +172,7 @@ class DagDef(tp.Generic[A]):
     def reref(
         self,
         partitions: tp.Union[
-            A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+            A, Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
         ],
         *,
         from_tree: bool,
@@ -193,7 +182,7 @@ class DagDef(tp.Generic[A]):
     def reref(
         self,
         partitions: tp.Union[
-            A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]
+            A, Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
         ],
         *,
         from_tree: bool = False,
@@ -552,7 +541,7 @@ def deref(
 
 @tp.overload
 def reref(
-    partitions: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    partitions: tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
     dagdef: DagDef[A],
 ) -> A:
     ...
@@ -570,7 +559,7 @@ def reref(
 
 @tp.overload
 def reref(
-    partitions: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    partitions: tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
     dagdef: DagDef[A],
     *,
     from_tree: tp.Literal[False],
@@ -580,7 +569,9 @@ def reref(
 
 @tp.overload
 def reref(
-    partitions: tp.Union[A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    partitions: tp.Union[
+        A, Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
+    ],
     dagdef: DagDef[A],
     *,
     from_tree: bool,
@@ -589,7 +580,9 @@ def reref(
 
 
 def reref(
-    partitions: tp.Union[A, Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    partitions: tp.Union[
+        A, Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
+    ],
     dagdef: DagDef[A],
     *,
     from_tree: bool = False,
@@ -597,16 +590,20 @@ def reref(
     if from_tree:
         leaves = dagdef.flatten_up_to(partitions)
     else:
-        if not isinstance(partitions, Partition):
+        if isinstance(partitions, Partition):
+            partition = partitions
+        else:
             if isinstance(partitions, dict):
                 partitions_seq = tuple(partitions.values())
-            else:
+            elif isinstance(partitions, tuple):
                 partitions_seq = partitions
+            else:
+                raise ValueError(
+                    f"Expected 'Partition', 'tuple' or 'dict', got "
+                    f"'{type(partitions).__name__}'"
+                )
 
-            assert isinstance(partitions_seq, tp.Sequence)
             partition = _merge_partitions(partitions_seq)
-        else:
-            partition = partitions
 
         leaves = list(partition.values())
     context_trace = tracers.get_top_trace(leaves)
@@ -663,7 +660,7 @@ def _get_non_nothing(
     return non_nothing[0]
 
 
-def _merge_partitions(partitions: tp.Sequence[Partition]) -> Partition:
+def _merge_partitions(partitions: tp.Tuple[Partition, ...]) -> Partition:
     if len(partitions) == 0:
         raise ValueError("Expected at least one partition")
 
@@ -689,7 +686,7 @@ def _merge_partitions(partitions: tp.Sequence[Partition]) -> Partition:
 
 def update_refs(
     pytree: tp.Any,
-    value: tp.Union[Partition, tp.Sequence[Partition], tp.Dict[str, Partition]],
+    value: tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
 ):
     if isinstance(value, Partition):
         partition = value
