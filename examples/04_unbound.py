@@ -1,4 +1,5 @@
 # %%
+from typing import Any
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -45,24 +46,24 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(unbound: nnx.DerefedMod[MLP], batch) -> nnx.DerefedMod[MLP]:
+def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any, MLP]:
     x, y = batch
-    model = unbound.reref()
+    model = derefmod.reref()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
         loss = jnp.mean((y - y_pred) ** 2)
         return loss
 
-    grad = nnx.grad(loss_fn)(model)
+    grads = nnx.grad(loss_fn)(model)
     #                       |-------- sgd ---------|
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
-    return model.partition()
+    return model.deref()
 
 
 @jax.jit
-def test_step(unbound: nnx.DerefedMod[MLP], batch):
+def test_step(unbound: nnx.DerefedMod[Any, MLP], batch):
     x, y = batch
     model = unbound.reref()
     y_pred = model(x)
@@ -72,21 +73,21 @@ def test_step(unbound: nnx.DerefedMod[MLP], batch):
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-bounded = model.partition()
+derefmod = model.deref()
 
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    bounded = train_step(bounded, batch)
+    derefmod = train_step(derefmod, batch)
 
     if step % 1000 == 0:
-        logs = test_step(bounded, (X, Y))
+        logs = test_step(derefmod, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = bounded.reref()
+model = derefmod.reref()
 print("times called:", model.count)
 
 y_pred = model(X)

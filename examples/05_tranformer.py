@@ -380,6 +380,3 @@ class Decoder(nnx.Module):
 
         x = jnp.einsum("bse,ev->bsv", x, self.unembed)
         return x
-
-
-(params, cache), moddef = module.partition("params", "cache")

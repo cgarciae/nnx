@@ -62,7 +62,7 @@ class DerefedMod(tp.Tuple[P, ModuleDef[M]]):
         return reref(self.partitions, self.moduledef)
 
     @property
-    def apply(self) -> ApplyCaller[P]:
+    def apply(self) -> ApplyCaller:
         return self.moduledef.apply(self.partitions)
 
 
