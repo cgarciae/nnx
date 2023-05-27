@@ -15,7 +15,7 @@ NNX was designed to have the same capabilities as Flax with the simplicity of Eq
 ## Status
 
 `nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module 
-system for JAX based on Refx. It is not intended for production use.
+system for JAX based on references. It is not intended for production use.
 
 ## Installation
 
@@ -48,7 +48,7 @@ class Linear(nnx.Module):
     def __call__(self, x):
         return x @ self.w + self.b
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
+ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
 
 @nnx.jit
@@ -83,24 +83,18 @@ class Linear(nnx.Module):
     b: jax.Array = nnx.param() # shortcut for ref("params")
 
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        key = nnx.make_rng("params") # request an RNG key
+        key = ctx.make_rng("params") # request an RNG key
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))
 
     def __call__(self, x):
         return x @ self.w + self.b
+
+ctx = nnx.Context(params=jax.random.PRNGKey(0))
+model = Linear(din=12, dout=2, ctx=ctx)
 ```
 
-TODO: update info on the `Rngs` class.
-`nnx` offers the same `make_rng` API as Flax to distribute RNG keys where they are needed. It does this by storing RNG keys in a global state and carefully handling them with context managers. The `init` and `apply` methods allow you to set the state for the RNG keys and other flags. These methods are similar to Flax's `init` and `apply` but are designed to be more compatible with static analysis tools.
-
-```python
-# global state ==>  .....................
-model = Linear.init(jax.random.PRNGKey(0))(din=12, dout=2)
-#                    constructor args ==> ^^^^^^^^^^^^^^^^
-```
-
-If global state is not needed, you can simply use the constructor directly.
+`nnx` uses a `Context` object to propagate RNG and other forms of state throughout the model. `Context` provides a `make_rng` method that creates a new RNG key on demand for a given name (in this case, `"params"`).
 
 #### RefField Descriptor
 
@@ -129,7 +123,7 @@ It's important to note that `Ref` instances are created during the first call to
 `Module` implements `__getitem__` and `__setitem__` to provide syntactic sugar for creating and updating `Partition`s. Although it may appear otherwise, `__setitem__` does not modify the Module's structure. Instead, it updates the values of the references, as demonstrated in this simplified implementation:
 
 ```python
-class Module(simple_pytree.Pytree):
+class Module(nnx.Pytree):
     ...
     def __getitem__(self, collection: str) -> nnx.Partition:
         return nnx.get_partition(self, collection)
@@ -176,9 +170,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grad = nnx.grad(loss_fn, wrt="params")(model)
+    grads = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 # stateful update, no return needed
 train_step(model, x, y)
@@ -211,9 +205,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grad = nnx.grad(loss_fn, wrt="params")(model)
+    grads = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
     
     return model
 
@@ -240,14 +234,14 @@ params = partitions["params"]
 def train_step(params, x, y):
 
     def loss_fn(params):
-        model: Linear = modeldef.merge(params)
+        model: Linear = modeldef.reref(params)
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grad = jax.grad(loss_fn)(params)
+    grads = jax.grad(loss_fn)(params)
     # SGD update
-    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
     
     return params
 
