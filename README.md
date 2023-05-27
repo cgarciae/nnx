@@ -260,32 +260,36 @@ Here's an example of creating a module with shared state:
 
 ```python
 class Block(nnx.Module):
-    def __init__(self, linear: nnx.Linear):
+    def __init__(self, linear: nnx.Linear, *, ctx: nnx.Context):
         self.linear = linear
-        self.bn = nnx.BatchNorm(2)
+        self.bn = nnx.BatchNorm(2, ctx=ctx)
 
-    def __call__(self, x):
-        return nnx.relu(self.bn(self.linear(x)))
+    def __call__(self, x, *, ctx: nnx.Context):
+        x = self.linear(x)
+        x = self.bn(x, ctx=ctx)
+        x = nnx.relu(x)
+        return x
 
 class Model(nnx.Module):
-    def __init__(self):
-        shared = nnx.Linear(2, 2)
-        self.block1 = Block(shared)
-        self.block2 = Block(shared)
+    def __init__(self, *, ctx: nnx.Context):
+        shared = nnx.Linear(2, 2, ctx=ctx)
+        self.block1 = Block(shared, ctx=ctx)
+        self.block2 = Block(shared, ctx=ctx)
 
-    def __call__(self, x):
-        x = self.block1(x)
-        x = self.block2(x)
+    def __call__(self, x, *, ctx: nnx.Context):
+        x = self.block1(x, ctx=ctx)
+        x = self.block2(x, ctx=ctx)
         return x
 ```
 
-In this example, the `Model` module contains two instances of the `Block` module. Each instance shares the same `nnx.Linear` module. To run the model, you can use the `apply` method to set the `use_running_average` flag for all `BatchNorm` modules.
+In this example, the `Model` module contains two instances of the `Block` module. Each instance shares the same `nnx.Linear` module. To run the model, you can use the Context `flags` argument to set the `use_running_average` flag for all `BatchNorm` modules.
 
 Here's an example of computing the loss for a `Model` instance:
 
 ```python
 def loss_fn(model: Model, x: jax.Array, y: jax.Array):
-    y_pred = model.apply(use_running_average=False)(x)
+    ctx = nnx.Context(flags=dict(use_running_average=True))
+    y_pred = model(x, ctx=ctx)
     return jnp.mean((y - y_pred) ** 2)
 ```
 

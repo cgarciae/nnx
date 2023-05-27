@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nnx"
-version = "0.0.2"
+version = "0.0.3"
 description = ""
 authors = ["Cristian Garcia <cgarcia.e88@gmail.com>"]
 readme = "README.md"
@@ -12,8 +12,9 @@ jaxlib = "*"
 
 
 [tool.poetry.group.test.dependencies]
-pytest = "^7.2.2"
-pytest-cov = "^4.0.0"
+pytest = ">=7.2.2"
+pytest-cov = ">=4.0.0"
+flax = ">=0.6.10"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -22,7 +23,6 @@ ipykernel = "^6.22.0"
 
 [tool.poetry.group.examples.dependencies]
 matplotlib = "^3.7.1"
-ciclo = { path = "../ciclo", develop = true }
 optax = "^0.1.5"
 
 [build-system]

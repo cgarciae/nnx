@@ -299,8 +299,8 @@ class Ref(Referential[A]):
 
     @property
     def value(self) -> A:
-        # TODO: passing references as a constant to a function as a capture should be allowed
-        # maybe access should always be allowed? Commenting out for now.
+        # TODO: passing references as a constant to a function as a capture should
+        # be allowed? Commenting out for now.
         # value_trace = tracers.get_top_trace(self._value)
         # if self._jax_trace is not tracers.current_jax_trace() or (
         #     value_trace is not self._jax_trace
