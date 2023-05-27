@@ -21,14 +21,8 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.param()
     b: jax.Array = nnx.param()
 
-    def __init__(
-        self,
-        din: int,
-        dout: int,
-        kernel_init: initializers.Initializer = initializers.kaiming_normal(),
-    ):
-        w_key = nnx.make_rng("params")
-        self.w = kernel_init(w_key, (din, dout))
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        self.w = jax.random.uniform(ctx.make_rng("params"), (din, dout))
         self.b = jnp.zeros((dout,))
 
     def __call__(self, x):
@@ -38,10 +32,10 @@ class Linear(nnx.Module):
 class MLP(nnx.Module):
     count: jax.Array = nnx.ref("state")
 
-    def __init__(self, din, dhidden, dout):
+    def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
         self.count = jnp.array(0)
-        self.linear1 = Linear(din, dhidden)
-        self.linear2 = Linear(dhidden, dout)
+        self.linear1 = Linear(din, dhidden, ctx=ctx)
+        self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
     def __call__(self, x):
         self.count += 1
@@ -56,7 +50,7 @@ def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
     x, y = batch
 
     def loss_fn(params):
-        y_pred, updates = model.apply([params, state])(x)
+        y_pred, updates = model.apply((params, state))(x)
         loss = jnp.mean((y - y_pred) ** 2)
         return loss, updates["state"]
 
@@ -68,14 +62,17 @@ def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
 
 
 @jax.jit
-def test_step(model: nnx.ModuleDef[MLP], params, state, batch):
+def test_step(
+    model: nnx.ModuleDef[MLP], params: nnx.Partition, state: nnx.Partition, batch
+):
     x, y = batch
-    y_pred, _ = model.apply([params, state])(x)
+    y_pred, _ = model.apply((params, state))(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
-model = MLP.init(jax.random.PRNGKey(0))(din=1, dhidden=32, dout=1)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
 (params, state), model = model.partition("params", "state")
 
 
@@ -90,7 +87,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = model.merge([params, state])
+model = model.reref((params, state))
 print("times called:", model.count)
 
 y_pred = model(X)

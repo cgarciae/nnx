@@ -4,18 +4,17 @@ import typing as tp
 import jax
 import pytest
 
-import refx
 import nnx
 
 
 def collection(collection: str):
-    return lambda x: isinstance(x, refx.Referential) and x.collection == collection
+    return lambda x: isinstance(x, nnx.Referential) and x.collection == collection
 
 
 class TestFilters:
     # def test_dagify_jit(self):
-    #     r1 = refx.Ref(10.0)
-    #     r2 = refx.Ref(20.0)
+    #     r1 = nnx.Ref(10.0)
+    #     r2 = nnx.Ref(20.0)
 
     #     pytree: tp.Dict[str, tp.Any] = {
     #         "a": [r1, r2],
@@ -38,7 +37,7 @@ class TestFilters:
     #     assert pytree["d"] == 5.0
 
     def test_jit(self):
-        r1: refx.Ref[int] = refx.Ref(1)
+        r1: nnx.Ref[int] = nnx.Ref(1)
 
         @jax.jit
         def f():
@@ -51,7 +50,7 @@ class TestFilters:
         f()
 
         @nnx.jit_filter
-        def g(r2: refx.Ref[int], r3: refx.Ref[int]):
+        def g(r2: nnx.Ref[int], r3: nnx.Ref[int]):
             assert r2 is r3
 
             r2.value = 2

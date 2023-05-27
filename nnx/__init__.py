@@ -1,10 +1,10 @@
 __version__ = "0.0.0"
 
-from refx import Partition
 
-from .fields import dataclass, field, param, ref, static_field
+from .context import Context, RngStream
+from .dataclasses import dataclass, field, node_field, param, ref, static_field
 from .filters import jit_filter
-from .nn import BatchNorm, Conv, Dropout, Linear, Module, ModuleDef
+from .module import Module, ModuleDef, DerefedMod
 from .nn.activations import (
     celu,
     elu,
@@ -32,17 +32,47 @@ from .nn.activations import (
     swish,
     tanh,
 )
-from .rng_stream import RngStream, Rngs
-from .scope_lib import (
-    Scope,
-    apply,
-    current_scope,
-    fork_scope,
-    get_flag,
-    init,
-    make_rng,
-    scope,
-    get_rngs,
+from .nn.initializers import (
+    Initializer,
+    constant,
+    delta_orthogonal,
+    glorot_normal,
+    glorot_uniform,
+    he_normal,
+    he_uniform,
+    kaiming_normal,
+    kaiming_uniform,
+    lecun_normal,
+    lecun_uniform,
+    normal,
+    ones,
+    orthogonal,
+    uniform,
+    variance_scaling,
+    xavier_normal,
+    xavier_uniform,
+    zeros,
+)
+from .nn.linear import Conv, Embed, Linear
+from .nn.normalization import BatchNorm, LayerNorm
+from .nn.stochastic import Dropout
+from .partitioning import collection_partition as partition
+from .partitioning import get_partition, tree_partition
+from .pytree import Pytree, PytreeMeta
+from .ref_field import RefField, RefMetadata, ref_metadata, with_partitioning
+from .reference import (
+    NOTHING,
+    Dag,
+    DagDef,
+    Deref,
+    Index,
+    Partition,
+    Ref,
+    Referential,
+    Value,
+    clone,
+    deref,
+    reref,
+    update_refs,
 )
 from .transforms import grad, jit
-from .partitioning import tree_partition, get_partition

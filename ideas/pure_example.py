@@ -42,7 +42,7 @@ class BatchNorm(pure.Module):
         if use_running_averages:
             mean, var = state.mean, state.var
         else:
-            axis = tuple(range(1, x.ndim - 1))
+            axis = tuple(range(0, x.ndim - 1))
             mean = jax.numpy.mean(x, axis=axis)
             var = jax.numpy.var(x, axis=axis)
             # ema update

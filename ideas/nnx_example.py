@@ -36,7 +36,7 @@ class BatchNorm(nnx.Module):
         if use_running_averages:
             mean, var = self.mean, self.var
         else:
-            axis = tuple(range(1, x.ndim - 1))
+            axis = tuple(range(0, x.ndim - 1))
             mean = jax.numpy.mean(x, axis=axis)
             var = jax.numpy.var(x, axis=axis)
             # ema update
@@ -48,7 +48,7 @@ class BatchNorm(nnx.Module):
         return x
 
 
-@nnx.dataclass
+@nnx.dataclasses
 class Dropout(nnx.Module):
     rate: float
 
@@ -77,7 +77,7 @@ class MLP(nnx.Module):
         return x
 
 
-rngs = nnx.Rngs(params=jax.random.PRNGKey(0))
+rngs = nnx.Context(jax.random.PRNGKey(0))
 model = MLP.init(rngs)(10, 20, 30)
 
 
@@ -86,13 +86,13 @@ def train_step(model: MLP, key, batch):
     x, y = batch
 
     def loss(model: MLP):
-        rngs = nnx.Rngs(dropout=key)
+        rngs = nnx.Context(dropout=key)
         y_pred = model.apply(rngs=rngs)(x, train=True)
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
 
     grads = nnx.grad(loss, wrt="params")(model)
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 
 # ----------------------------------------
@@ -106,7 +106,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 
 @partial(jax.vmap, in_axes=0, out_axes=(0, None, None))
 def create_state(params_key: jax.random.KeyArray):
-    rngs = nnx.Rngs(params=params_key)
+    rngs = nnx.Context(params=params_key)
     model = MLP.init(rngs)(10, 20, 10)
     (params, batch_stats), modeldef = model.partition("params", "batch_stats")
     return params, batch_stats, modeldef
@@ -128,7 +128,7 @@ def scan_fn(
 
     # create state and rngs
     model = modeldef.merge([params, batch_stats])
-    rngs = nnx.Rngs(dropout=dropout_stream)
+    rngs = nnx.Context(dropout=dropout_stream)
 
     # forward pass
     x = model.apply(rngs=rngs)(x, train=True)

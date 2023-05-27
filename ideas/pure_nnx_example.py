@@ -9,8 +9,8 @@ class Linear(nnx.Module):
     kernel: jax.Array = nnx.param()
     bias: jax.Array = nnx.param()
 
-    def __init__(self, din: int, dout: int, *, rngs: nnx.Rngs):
-        self.kernel = jax.random.uniform(rngs.make_rng("params"), (din, dout))
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        self.kernel = jax.random.uniform(ctx.make_rng("params"), (din, dout))
         self.bias = jax.numpy.zeros((dout,))
 
     def __call__(self, x):
@@ -24,8 +24,8 @@ class BatchNorm(nnx.Module):
     var: jax.Array = nnx.ref("batch_stats")
     mu: float = nnx.static_field()
 
-    def __init__(self, din: int, mu: float = 0.95, *, rngs: nnx.Rngs):
-        self.scale = jax.random.uniform(rngs.make_rng("params"), (din,))
+    def __init__(self, din: int, mu: float = 0.95, *, ctx: nnx.Context):
+        self.scale = jax.random.uniform(ctx.make_rng("params"), (din,))
         self.bias = jax.numpy.zeros((din,))
         self.mean = jax.numpy.zeros((din,))
         self.var = jax.numpy.ones((din,))
@@ -36,7 +36,7 @@ class BatchNorm(nnx.Module):
         if use_running_averages:
             mean, var = self.mean, self.var
         else:
-            axis = tuple(range(1, x.ndim - 1))
+            axis = tuple(range(0, x.ndim - 1))
             mean = jax.numpy.mean(x, axis=axis)
             var = jax.numpy.var(x, axis=axis)
             # ema update
@@ -52,33 +52,33 @@ class BatchNorm(nnx.Module):
 class Dropout(nnx.Module):
     rate: float
 
-    def __call__(self, inputs, *, deterministic: bool, rngs: nnx.Rngs):
+    def __call__(self, inputs, *, deterministic: bool, ctx: nnx.Context):
         if (self.rate == 0.0) or deterministic:
             return inputs
-        rng = rngs.make_rng("dropout")
+        rng = ctx.make_rng("dropout")
         keep_prob = 1.0 - self.rate
         mask = jax.random.bernoulli(rng, p=keep_prob, shape=inputs.shape)
         return jax.lax.select(mask, inputs / keep_prob, jnp.zeros_like(inputs))
 
 
 class MLP(nnx.Module):
-    def __init__(self, din: int, dmid: int, dout: int, *, rngs: nnx.Rngs):
-        self.linear1 = Linear(din, dmid, rngs=rngs)
-        self.bn1 = BatchNorm(dmid, rngs=rngs)
+    def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
+        self.linear1 = Linear(din, dmid, ctx=ctx)
+        self.bn1 = BatchNorm(dmid, ctx=ctx)
         self.dropout = Dropout(0.5)
-        self.linear2 = Linear(dmid, dout, rngs=rngs)
+        self.linear2 = Linear(dmid, dout, ctx=ctx)
 
-    def __call__(self, x: jax.Array, *, train: bool, rngs: nnx.Rngs) -> jax.Array:
+    def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
         x = self.linear1(x)
         x = self.bn1(x, use_running_averages=not train)
-        x = self.dropout(x, deterministic=not train, rngs=rngs)
+        x = self.dropout(x, deterministic=not train, ctx=ctx)
         x = jax.nn.relu(x)
         x = self.linear2(x)
         return x
 
 
-rngs = nnx.Rngs(params=jax.random.PRNGKey(0))
-model = MLP(10, 20, 30, rngs=rngs)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = MLP(10, 20, 30, ctx=ctx)
 
 
 @nnx.jit
@@ -86,13 +86,13 @@ def train_step(model: MLP, key, batch):
     x, y = batch
 
     def loss(model: MLP):
-        rngs = nnx.Rngs(dropout=key)
-        y_pred = model(x, train=True, rngs=rngs)
+        ctx = nnx.Context(rngs=dict(dropout=key))
+        y_pred = model(x, train=True, ctx=ctx)
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
 
     grads = nnx.grad(loss, wrt="params")(model)
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 
 # ----------------------------------------
@@ -106,8 +106,8 @@ params_keys = jax.random.split(params_keys, n_layers)
 
 @partial(jax.vmap, in_axes=0, out_axes=(0, None, None))
 def create_state(params_key: jax.random.KeyArray):
-    rngs = nnx.Rngs(params=params_key)
-    model = MLP(10, 20, 10, rngs=rngs)
+    ctx = nnx.Context(rngs=dict(params=params_key))
+    model = MLP(10, 20, 10, ctx=ctx)
     (params, batch_stats), modeldef = model.partition("params", "batch_stats")
     return params, batch_stats, modeldef
 
@@ -126,12 +126,12 @@ def scan_fn(
     x, batch_stats = carry
     params, dropout_stream = inputs
 
-    # create state and rngs
+    # create state and ctx
     model = modeldef.merge([params, batch_stats])
-    rngs = nnx.Rngs(dropout=dropout_stream)
+    ctx = nnx.Context(rngs=dict(dropout=dropout_stream))
 
     # forward pass
-    x = model(x, train=True, rngs=rngs)
+    x = model(x, train=True, ctx=ctx)
 
     # partition state
     params, batch_stats = model["params", "batch_stats"]
@@ -143,3 +143,4 @@ def scan_fn(
     scan_fn, (x, batch_stats), (params, dropout_stream)
 )
 model = modeldef.merge([params, batch_stats])
+model

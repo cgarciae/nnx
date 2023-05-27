@@ -3,18 +3,14 @@ from typing import Optional, Sequence
 import jax.numpy as jnp
 from jax import lax, random
 
-from nnx.nn.module import Module
-from nnx import fields, utils
+from nnx.module import Module
+from nnx import context, utils
+from nnx.dataclasses import dataclass
 
 
-@fields.dataclass
+@dataclass
 class Dropout(Module):
     """Create a dropout layer.
-
-    Note: When using :meth:`Module.apply() <flax.linen.Module.apply>`, make sure
-    to include an RNG seed named `'dropout'`. For example::
-
-      model.apply({'params': params}, inputs=inputs, train=True, rngs={'dropout': dropout_rng})`
 
     Attributes:
       rate: the dropout probability.  (_not_ the keep rate!)
@@ -30,7 +26,13 @@ class Dropout(Module):
     deterministic: Optional[bool] = None
     rng_collection: str = "dropout"
 
-    def __call__(self, inputs, deterministic: Optional[bool] = None):
+    def __call__(
+        self,
+        inputs,
+        *,
+        deterministic: Optional[bool] = None,
+        ctx: Optional[context.Context] = None,
+    ):
         """Applies a random dropout mask to the input.
 
         Args:
@@ -45,7 +47,7 @@ class Dropout(Module):
         deterministic = utils.first_from(
             deterministic,
             self.deterministic,
-            self.get_flag("deterministic", None),
+            ctx and ctx.get_flag("deterministic"),
         )
 
         if (self.rate == 0.0) or deterministic:
@@ -55,8 +57,13 @@ class Dropout(Module):
         if self.rate == 1.0:
             return jnp.zeros_like(inputs)
 
+        if ctx is None:
+            raise ValueError(
+                "Dropout needs to generate a random mask but no 'ctx' were provided."
+            )
+
         keep_prob = 1.0 - self.rate
-        rng = self.make_rng(self.rng_collection)
+        rng = ctx.make_rng(self.rng_collection)
         broadcast_shape = list(inputs.shape)
         for dim in self.broadcast_dims:
             broadcast_shape[dim] = 1

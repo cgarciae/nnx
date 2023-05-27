@@ -1,4 +1,5 @@
 # %%
+from typing import Any
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -36,7 +37,7 @@ class MLP(nnx.Module):
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
-    def __call__(self, x):
+    def __call__(self, x) -> jax.Array:
         self.count += 1
         x = self.linear1(x)
         x = jax.nn.relu(x)
@@ -44,29 +45,27 @@ class MLP(nnx.Module):
         return x
 
 
-def mse(y, y_pred):
-    return jnp.mean((y - y_pred) ** 2)
-
-
-@nnx.jit
-def train_step(model: MLP, batch):
+@jax.jit
+def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any, MLP]:
     x, y = batch
+    model = derefmod.reref()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
-        return jnp.mean((y - y_pred) ** 2)
+        loss = jnp.mean((y - y_pred) ** 2)
+        return loss
 
-    #                                      |--default--|
-    grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
-    #                              |-------- sgd ---------|
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    grads = nnx.grad(loss_fn)(model)
+    #                       |-------- sgd ---------|
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
-    # no return!!!
+    return model.deref()
 
 
-@nnx.jit
-def test_step(model: MLP, batch):
+@jax.jit
+def test_step(unbound: nnx.DerefedMod[Any, MLP], batch):
     x, y = batch
+    model = unbound.reref()
     y_pred = model(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
@@ -74,18 +73,21 @@ def test_step(model: MLP, batch):
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
+derefmod = model.deref()
+
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    train_step(model, batch)
+    derefmod = train_step(derefmod, batch)
 
     if step % 1000 == 0:
-        logs = test_step(model, (X, Y))
+        logs = test_step(derefmod, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
+model = derefmod.reref()
 print("times called:", model.count)
 
 y_pred = model(X)

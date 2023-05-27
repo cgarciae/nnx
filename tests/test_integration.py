@@ -8,37 +8,39 @@ import nnx
 class TestIntegration:
     def test_shared_modules(self):
         class Block(nnx.Module):
-            def __init__(self, linear: nnx.Linear):
+            def __init__(self, linear: nnx.Linear, *, ctx):
                 self.linear = linear
-                self.bn = nnx.BatchNorm(2)
+                self.bn = nnx.BatchNorm(2, ctx=ctx)
 
-            def __call__(self, x):
-                return nnx.relu(self.bn(self.linear(x)))
+            def __call__(self, x, *, ctx):
+                x = self.linear(x)
+                x = self.bn(x, ctx=ctx)
+                return nnx.relu(x)
 
         class Model(nnx.Module):
-            def __init__(self):
-                shared = nnx.Linear(2, 2)
-                self.block1 = Block(shared)
-                self.block2 = Block(shared)
+            def __init__(self, *, ctx):
+                shared = nnx.Linear(2, 2, ctx=ctx)
+                self.block1 = Block(shared, ctx=ctx)
+                self.block2 = Block(shared, ctx=ctx)
 
-            def __call__(self, x):
-                x = self.block1(x)
-                x = self.block2(x)
+            def __call__(self, x, *, ctx):
+                x = self.block1(x, ctx=ctx)
+                x = self.block2(x, ctx=ctx)
                 return x
 
         @nnx.jit
         def train_step(model: Model, x, y):
             @nnx.grad
             def loss_fn(model: Model):
-                y_pred = model.apply(use_running_average=False)(x)
+                ctx = nnx.Context(flags=dict(use_running_average=False))
+                y_pred = model(x, ctx=ctx)
                 return jnp.mean((y - y_pred) ** 2)
 
-            grad = loss_fn(model)
-            model["params"] = jax.tree_map(
-                lambda w, g: w - 0.1 * g, model["params"], grad
-            )
+            grads = loss_fn(model)
+            model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
-        model = Model.init(jax.random.PRNGKey(0))()
+        ctx = nnx.Context(jax.random.PRNGKey(0))
+        model = Model(ctx=ctx)
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))
@@ -54,39 +56,41 @@ class TestIntegration:
 
     def test_shared_modules_jit_filter(self):
         class Block(nnx.Module):
-            def __init__(self, linear: nnx.Linear):
+            def __init__(self, linear: nnx.Linear, *, ctx: nnx.Context):
                 self.linear = linear
-                self.bn = nnx.BatchNorm(2)
+                self.bn = nnx.BatchNorm(2, ctx=ctx)
 
-            def __call__(self, x):
-                return nnx.relu(self.bn(self.linear(x)))
+            def __call__(self, x, *, ctx: nnx.Context):
+                x = self.linear(x)
+                x = self.bn(x, ctx=ctx)
+                return nnx.relu(x)
 
         class Model(nnx.Module):
-            def __init__(self):
-                shared = nnx.Linear(2, 2)
-                self.block1 = Block(shared)
-                self.block2 = Block(shared)
+            def __init__(self, *, ctx: nnx.Context):
+                shared = nnx.Linear(2, 2, ctx=ctx)
+                self.block1 = Block(shared, ctx=ctx)
+                self.block2 = Block(shared, ctx=ctx)
 
-            def __call__(self, x):
-                x = self.block1(x)
-                x = self.block2(x)
+            def __call__(self, x, *, ctx: nnx.Context):
+                x = self.block1(x, ctx=ctx)
+                x = self.block2(x, ctx=ctx)
                 return x
 
         @nnx.jit_filter
         def train_step(model: Model, x, y):
             @nnx.grad
             def loss_fn(model: Model):
-                y_pred = model.apply(use_running_average=False)(x)
+                ctx = nnx.Context(flags=dict(use_running_average=False))
+                y_pred = model(x, ctx=ctx)
                 return jnp.mean((y - y_pred) ** 2)
 
-            grad = loss_fn(model)
-            model["params"] = jax.tree_map(
-                lambda w, g: w - 0.1 * g, model["params"], grad
-            )
+            grads = loss_fn(model)
+            model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
             return model
 
-        model = Model.init(jax.random.PRNGKey(0))()
+        ctx = nnx.Context(jax.random.PRNGKey(0))
+        model = Model(ctx=ctx)
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))

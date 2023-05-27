@@ -2,18 +2,20 @@
 
 _**N**eural **N**etworks for JA**X**_
 
-`nnx` is a lightweight module system for JAX designed to offer the same capabilities as `flax` but with a simpler mental model and implementation, inspired by `equinox`.
+`nnx` is a Neural Networks library for JAX that uses Pytree-based Modules and a novel 
+a **Ref**erence system to enable:
 
-#### Features
-
-* **Simplicity**: Easy-to-understand mental model and implementation.
-* **Shared state**: Supports shared state and controlled mutability for efficient model design.
-* **Semantic partitioning**: Effectively manage and manipulate model sections.
+* **Simplicity**: Provides an easy-to-understand mental model and implementation.
+* **Shared refereces**: Supports **safe** mutable shared state thanks to its **Ref**erence system.
+* **Leaf Metadata**: Enables semantic splitting a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
 * **Stateful transformations**: Seamless integration with JAX's native transformation capabilities.
+
+NNX was designed to have the same capabilities as Flax with the simplicity of Equinox.
 
 ## Status
 
-`nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module system for JAX based on Refx. It is not intended for production use.
+`nnx` is currently a proof of concept, aimed at exploring the design space of a lightweight module 
+system for JAX based on references. It is not intended for production use.
 
 ## Installation
 
@@ -21,6 +23,11 @@ To get started with `nnx`, first install the package using pip:
 
 ```
 pip install nnx
+```
+To get the latest version, install directly from GitHub:
+
+```
+pip install git+https://github.com/cgarciae/nnx
 ```
 
 ## Usage
@@ -33,15 +40,16 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.param()
     b: jax.Array = nnx.param()
 
-    def __init__(self, din: int, dout: int):
-        key = self.make_rng("params")
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        key = ctx.make_rng("params")
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))
 
     def __call__(self, x):
         return x @ self.w + self.b
 
-model = Linear.init(jax.random.PRNGKey(0))(din=12, dout=2)
+ctx = nnx.Context(params=jax.random.PRNGKey(0))
+model = Linear(din=12, dout=2, ctx=ctx)
 
 @nnx.jit
 def train_step(model, x, y):
@@ -49,8 +57,10 @@ def train_step(model, x, y):
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
     
-    grad = nnx.grad(loss_fn, wrt="params")(model)
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    # compute gradient
+    grads = nnx.grad(loss_fn, wrt="params")(model)
+    # SGD update
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 # yes... there's no return :)
 train_step(model, x, y)
@@ -72,28 +82,23 @@ class Linear(nnx.Module):
     w: jax.Array = nnx.ref("params")
     b: jax.Array = nnx.param() # shortcut for ref("params")
 
-    def __init__(self, din: int, dout: int):
-        key = self.make_rng("params") # request an RNG key
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        key = ctx.make_rng("params") # request an RNG key
         self.w = jax.random.uniform(key, (din, dout))
         self.b = jax.numpy.zeros((dout,))
 
     def __call__(self, x):
         return x @ self.w + self.b
+
+ctx = nnx.Context(params=jax.random.PRNGKey(0))
+model = Linear(din=12, dout=2, ctx=ctx)
 ```
 
-`nnx` offers the same `make_rng` API as Flax to distribute RNG keys where they are needed. It does this by storing RNG keys in a global state and carefully handling them with context managers. The `init` and `apply` methods allow you to set the state for the RNG keys and other flags. These methods are similar to Flax's `init` and `apply` but are designed to be more compatible with static analysis tools.
-
-```python
-# global state ==>  .....................
-model = Linear.init(jax.random.PRNGKey(0))(din=12, dout=2)
-#                    constructor args ==> ^^^^^^^^^^^^^^^^
-```
-
-If global state is not needed, you can simply use the constructor directly.
+`nnx` uses a `Context` object to propagate RNG and other forms of state throughout the model. `Context` provides a `make_rng` method that creates a new RNG key on demand for a given name (in this case, `"params"`).
 
 #### RefField Descriptor
 
-`nnx.ref` and `nnx.param` are descriptors that create `RefField` instances. A `RefField` is a descriptor that stores a `Ref` instance in a separate `{attribute_name}__ref` attribute. It handles retrieving and setting the value of the reference automatically, so the user doesn't have to manipulate references directly. Additionally, `RefField` inherits from `dataclasses.Field` to ensure compatibility with `dataclasses` when needed.
+`nnx.ref` and `nnx.param` are descriptors that create `RefField` instances. A `RefField` is a descriptor that stores a `Ref` instance in a separate `{attribute_name}__ref` attribute. It handles retrieving and setting the value of the reference automatically, so the user doesn't have to manipulate references directly. Additionally, `RefField` inherits from `dataclasses.Field` to ensure compatibility with `nnx.dataclass` when needed.
 
 Here's a simplified version of the `RefField` implementation:
 
@@ -118,28 +123,24 @@ It's important to note that `Ref` instances are created during the first call to
 `Module` implements `__getitem__` and `__setitem__` to provide syntactic sugar for creating and updating `Partition`s. Although it may appear otherwise, `__setitem__` does not modify the Module's structure. Instead, it updates the values of the references, as demonstrated in this simplified implementation:
 
 ```python
-class Module(simple_pytree.Pytree):
+class Module(nnx.Pytree):
     ...
-    def __getitem__(self, collection: str) -> refx.Partition:
-        derefed_module = refx.deref(self)[0]
-        return nnx.get_partition(derefed_module, collection)
+    def __getitem__(self, collection: str) -> nnx.Partition:
+        return nnx.get_partition(self, collection)
 
-    def __setitem__(self, collection: str, updates: refx.Partition):
-        partition = nnx.get_partition(self, collection)
-        refx.update_refs(partition, updates)
+    def __setitem__(self, _: SetItemType, value: nnx.Partition):
+        nnx.update_refs(self, value)
 ```
 
 Sample usage might look like this:
 
 ```python
-model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+# SGD update
+model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 ```
 
-In this example, `model["params"]` is a `Partition` that contains all the references in the `params` collection. `grad` is a `Partition` with the same structure as `model["params"]`, but with gradients instead of parameters. The expression `model["params"] = ...` updates the values of the references in `model["params"]` with the values of the stochastic gradient descent (SGD) update.
+In this example, `model["params"]` returns a `Partition` that contains all the references in the `params` collection. `grads` is a `Partition` with the same structure as `model["params"]`, but with gradients instead of parameters. The statement `model[:] = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
-Of course! I've made some adjustments to the text to improve clarity and readability. Here's the revised version:
-
----
 ### Transformations
 
 Currently, NNX offers three types of transformations: stateful, filtered, and the partition API. As it is unclear which API is the best, all three will be maintained for now.
@@ -169,9 +170,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grad = nnx.grad(loss_fn, wrt="params")(model)
+    grads = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 # stateful update, no return needed
 train_step(model, x, y)
@@ -204,9 +205,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grad = nnx.grad(loss_fn, wrt="params")(model)
+    grads = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model["params"] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
     
     return model
 
@@ -217,37 +218,37 @@ Filtered transformations must output any state they want to propagate but have m
 
 #### Partition API
 
-The partition API mimics Flax's `variables` and `apply` API. It splits a Pytree of references into all its `Partition`s and creates a `ModuleDef` object that knows how to reconstruct the original Pytree from the `Partition`s. Since each `Partition` is a flat dictionary, this API works with regular JAX transformations.
+The partition API enables splitting a Module's state into sets of reference-less `Partition`s, this provides a general way of interacting with vanilla JAX transformations.
 
-Here's a diagram illustrating how the partition API works:
 
 ![partition-api](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/partition-api.png)
 
-Here's an example of using the partition API:
+Here's an example of how a `train_step` function can be implemented using the partition API:
 
 ```python
-model: ModuleDef
-partitions, model = model.partition()
+modeldef: ModuleDef[Linear]
+partitions, modeldef = model.partition()
 params = partitions["params"]
 
 @jax.jit
 def train_step(params, x, y):
 
-    def loss_fn(params):  #    |----merge----|
-        y_pred, updates = model.apply([params])(x)
+    def loss_fn(params):
+        model: Linear = modeldef.reref(params)
+        y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grad = jax.grad(loss_fn)(params)
+    grads = jax.grad(loss_fn)(params)
     # SGD update
-    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
     
     return params
 
 params = train_step(params, x, y)
 ```
 
-The main benefit of the partition API is its compatibility with other JAX tools, as the training step can be written using regular JAX transformations. The main drawback is that it's more verbose, and users must manually keep track of all the partitions. This overhead often makes `flax` and `haiku` a bit harder to learn than other frameworks like `pytorch` and `keras`.
+The main benefit of the partition API is its compatibility with other JAX tools, as the training step can be written using regular JAX transformations. The main drawback is that it's more verbose.
 
 ### Case Studies
 

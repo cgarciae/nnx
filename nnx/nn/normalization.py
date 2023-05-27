@@ -4,9 +4,10 @@ import jax
 import jax.numpy as jnp
 from jax import lax
 
-from nnx.nn.module import Module
+from nnx.module import Module
 from nnx.nn import initializers, dtypes
-from nnx import fields, utils
+from nnx import context, utils
+from nnx.dataclasses import param, ref
 
 PRNGKey = jax.Array
 Array = jax.Array
@@ -147,36 +148,8 @@ def _normalize(
     return jnp.asarray(y, dtype)
 
 
-@fields.dataclass
 class BatchNorm(Module):
     """BatchNorm Module.
-
-    Usage Note:
-    If we define a model with BatchNorm, for example::
-
-      BN = nn.BatchNorm(use_running_average=False, momentum=0.9, epsilon=1e-5,
-                        dtype=jnp.float32)
-
-    The initialized variables dict will contain in addition to a 'params'
-    collection a separate 'batch_stats' collection that will contain all the
-    running statistics for all the BatchNorm layers in a model::
-
-      vars_initialized = BN.init(key, x)  # {'params': ..., 'batch_stats': ...}
-
-    We then update the batch_stats during training by specifying that the
-    `batch_stats` collection is mutable in the `apply` method for our module.::
-
-      vars_in = {'params': params, 'batch_stats': old_batch_stats}
-      y, mutated_vars = BN.apply(vars_in, x, mutable=['batch_stats'])
-      new_batch_stats = mutated_vars['batch_stats']
-
-    During eval we would define BN with `use_running_average=True` and use the
-    batch_stats collection from training to set the statistics.  In this case
-    we are not mutating the batch statistics collection, and needn't mark it
-    mutable::
-
-      vars_in = {'params': params, 'batch_stats': training_batch_stats}
-      y = BN.apply(vars_in, x)
 
     Attributes:
       use_running_average: if True, the statistics stored in batch_stats
@@ -202,47 +175,66 @@ class BatchNorm(Module):
         for more details.
     """
 
-    num_features: int = fields.static_field()
-    use_running_average: tp.Optional[bool] = fields.static_field(default=None)
-    axis: int = fields.static_field(default=-1)
-    momentum: float = fields.static_field(default=0.99)
-    epsilon: float = fields.static_field(default=1e-5)
-    dtype: tp.Optional[Dtype] = fields.static_field(default=None)
-    param_dtype: Dtype = fields.static_field(default=jnp.float32)
-    use_bias: bool = fields.static_field(default=True)
-    use_scale: bool = fields.static_field(default=True)
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
-        default=initializers.zeros()
-    )
-    scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
-        default=initializers.ones()
-    )
-    axis_name: tp.Optional[str] = fields.static_field(default=None)
-    axis_index_groups: tp.Any = fields.static_field(default=None)
-    # refs
-    mean: Array = fields.ref("batch_stats", init=False)
-    var: Array = fields.ref("batch_stats", init=False)
-    scale: tp.Optional[Array] = fields.param(init=False)
-    bias: tp.Optional[Array] = fields.param(init=False)
+    mean: Array = ref("batch_stats", init=False)
+    var: Array = ref("batch_stats", init=False)
+    scale: tp.Optional[Array] = param(init=False)
+    bias: tp.Optional[Array] = param(init=False)
 
-    def __post_init__(self):
-        feature_shape = (self.num_features,)
+    def __init__(
+        self,
+        num_features: int,
+        *,
+        use_running_average: tp.Optional[bool] = None,
+        axis: int = -1,
+        momentum: float = 0.99,
+        epsilon: float = 1e-5,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        use_bias: bool = True,
+        use_scale: bool = True,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.ones(),
+        axis_name: tp.Optional[str] = None,
+        axis_index_groups: tp.Any = None,
+        ctx: context.Context,
+    ):
+        feature_shape = (num_features,)
         self.mean = jnp.zeros(feature_shape, jnp.float32)
         self.var = jnp.ones(feature_shape, jnp.float32)
 
-        if self.use_scale:
-            key = self.make_rng("params")
-            self.scale = self.scale_init(key, feature_shape, self.param_dtype)
+        if use_scale:
+            key = ctx.make_rng("params")
+            self.scale = scale_init(key, feature_shape, param_dtype)
         else:
             self.scale = None
 
-        if self.use_bias:
-            key = self.make_rng("params")
-            self.bias = self.bias_init(key, feature_shape, self.param_dtype)
+        if use_bias:
+            key = ctx.make_rng("params")
+            self.bias = bias_init(key, feature_shape, param_dtype)
         else:
             self.bias = None
 
-    def __call__(self, x, use_running_average: tp.Optional[bool] = None):
+        self.num_features = num_features
+        self.use_running_average = use_running_average
+        self.axis = axis
+        self.momentum = momentum
+        self.epsilon = epsilon
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.use_bias = use_bias
+        self.use_scale = use_scale
+        self.bias_init = bias_init
+        self.scale_init = scale_init
+        self.axis_name = axis_name
+        self.axis_index_groups = axis_index_groups
+
+    def __call__(
+        self,
+        x,
+        use_running_average: tp.Optional[bool] = None,
+        *,
+        ctx: tp.Optional[context.Context] = None,
+    ):
         """Normalizes the input using batch statistics.
 
         Args:
@@ -257,7 +249,7 @@ class BatchNorm(Module):
         use_running_average = utils.first_from(
             use_running_average,
             self.use_running_average,
-            self.get_flag("use_running_average", None),
+            ctx and ctx.get_flag("use_running_average"),
         )
         feature_axes = _canonicalize_axes(x.ndim, self.axis)
         reduction_axes = tuple(i for i in range(x.ndim) if i not in feature_axes)
@@ -287,3 +279,110 @@ class BatchNorm(Module):
             self.dtype,
             self.epsilon,
         )
+
+
+class LayerNorm(Module):
+    """Layer normalization (https://arxiv.org/abs/1607.06450).
+
+    LayerNorm normalizes the activations of the layer for each given example in a
+    batch independently, rather than across a batch like Batch Normalization.
+    i.e. applies a transformation that maintains the mean activation within
+    each example close to 0 and the activation standard deviation close to 1.
+
+    Attributes:
+        epsilon: A small float added to variance to avoid dividing by zero.
+        dtype: the dtype of the result (default: infer from input and params).
+        param_dtype: the dtype passed to parameter initializers (default: float32).
+        use_bias:  If True, bias (beta) is added.
+        use_scale: If True, multiply by scale (gamma). When the next layer is linear
+            (also e.g. nn.relu), this can be disabled since the scaling will be done
+            by the next layer.
+        bias_init: Initializer for bias, by default, zero.
+        scale_init: Initializer for scale, by default, one.
+        reduction_axes: Axes for computing normalization statistics.
+        feature_axes: Feature axes for learned bias and scaling.
+        axis_name: the axis name used to combine batch statistics from multiple
+            devices. See `jax.pmap` for a description of axis names (default: None).
+            This is only needed if the model is subdivided across devices, i.e. the
+            array being normalized is sharded across devices within a pmap.
+        axis_index_groups: groups of axis indices within that named axis
+            representing subsets of devices to reduce over (default: None). For
+            example, `[[0, 1], [2, 3]]` would independently batch-normalize over
+            the examples on the first two and last two devices. See `jax.lax.psum`
+            for more details.
+    """
+
+    scale: tp.Optional[Array] = param(init=False)
+    bias: tp.Optional[Array] = param(init=False)
+
+    def __init__(
+        self,
+        num_features: int,
+        *,
+        epsilon: float = 1e-6,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        use_bias: bool = True,
+        use_scale: bool = True,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.ones(),
+        reduction_axes: Axes = -1,
+        feature_axes: Axes = -1,
+        axis_name: tp.Optional[str] = None,
+        axis_index_groups: tp.Any = None,
+        ctx: context.Context,
+    ):
+        feature_shape = (num_features,)
+
+        if use_scale:
+            key = ctx.make_rng("params")
+            self.scale = scale_init(key, feature_shape, param_dtype)
+        else:
+            self.scale = None
+
+        if use_bias:
+            key = ctx.make_rng("params")
+            self.bias = bias_init(key, feature_shape, param_dtype)
+        else:
+            self.bias = None
+
+        self.num_features = num_features
+        self.epsilon = epsilon
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.use_bias = use_bias
+        self.use_scale = use_scale
+        self.bias_init = bias_init
+        self.scale_init = scale_init
+        self.reduction_axes = reduction_axes
+        self.feature_axes = feature_axes
+        self.axis_name = axis_name
+        self.axis_index_groups = axis_index_groups
+
+    def __call__(self, x):
+        """Applies layer normalization on the input.
+
+        Args:
+          x: the inputs
+
+        Returns:
+          Normalized inputs (the same shape as inputs).
+        """
+        mean, var = _compute_stats(
+            x, self.reduction_axes, self.dtype, self.axis_name, self.axis_index_groups
+        )
+
+        return _normalize(
+            x,
+            mean,
+            var,
+            self.scale,
+            self.bias,
+            self.reduction_axes,
+            self.feature_axes,
+            self.dtype,
+            self.epsilon,
+        )
+
+
+

@@ -1,13 +1,15 @@
+import dataclasses
 import typing as tp
 
 import jax
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
+from nnx import context
 
-from nnx.nn.module import Module
+from nnx.module import Module
 from nnx.nn import initializers
-from nnx import fields
+from nnx.dataclasses import dataclass, param
 from nnx.nn import dtypes
 
 Array = jax.Array
@@ -59,7 +61,6 @@ def _conv_dimension_numbers(input_shape):
     return lax.ConvDimensionNumbers(lhs_spec, rhs_spec, out_spec)
 
 
-@fields.dataclass
 class Linear(Module):
     """A linear transformation applied over the last dimension of the input.
 
@@ -74,33 +75,41 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    in_features: int = fields.static_field()
-    out_features: int = fields.static_field()
-    use_bias: bool = fields.static_field(default=True)
-    dtype: tp.Optional[Dtype] = fields.static_field(default=None)
-    param_dtype: Dtype = fields.static_field(default=jnp.float32)
-    precision: PrecisionLike = fields.static_field(default=None)
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
-        default=default_kernel_init
-    )
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
-        default=initializers.zeros()
-    )
-    dot_general: DotGeneralT = fields.static_field(default=lax.dot_general)
     # ref fields
-    kernel: Array = fields.param(init=False)
-    bias: tp.Optional[Array] = fields.param(init=False)
+    kernel: Array = param()
+    bias: tp.Optional[Array] = param()
 
-    def __post_init__(self):
-        kernel_key = self.make_rng("params")
-        self.kernel = self.kernel_init(
-            kernel_key, (self.in_features, self.out_features), self.param_dtype
-        )
-        if self.use_bias:
-            bias_key = self.make_rng("params")
-            self.bias = self.bias_init(bias_key, (self.out_features,), self.param_dtype)
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        *,
+        use_bias: bool = True,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        precision: PrecisionLike = None,
+        kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        dot_general: DotGeneralT = lax.dot_general,
+        ctx: context.Context,
+    ):
+        kernel_key = ctx.make_rng("params")
+        self.kernel = kernel_init(kernel_key, (in_features, out_features), param_dtype)
+        if use_bias:
+            bias_key = ctx.make_rng("params")
+            self.bias = bias_init(bias_key, (out_features,), param_dtype)
         else:
             self.bias = None
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.use_bias = use_bias
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.precision = precision
+        self.kernel_init = kernel_init
+        self.bias_init = bias_init
+        self.dot_general = dot_general
 
     def __call__(self, inputs: Array) -> Array:
         """Applies a linear transformation to the inputs along the last dimension.
@@ -128,7 +137,6 @@ class Linear(Module):
         return y
 
 
-@fields.dataclass
 class Conv(Module):
     """Convolution Module wrapping `lax.conv_general_dilated[_local]`.
 
@@ -167,61 +175,69 @@ class Conv(Module):
       bias_init: initializer for the bias.
     """
 
-    in_features: int = fields.static_field()
-    out_features: int = fields.static_field()
-    kernel_size: tp.Sequence[int] = fields.static_field()
-    strides: tp.Union[None, int, tp.Sequence[int]] = fields.static_field(default=1)
-    padding: PaddingLike = fields.static_field(default="SAME")
-    input_dilation: tp.Union[None, int, tp.Sequence[int]] = fields.static_field(
-        default=1
-    )
-    kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = fields.static_field(
-        default=1
-    )
-    feature_group_count: int = fields.static_field(default=1)
-    use_bias: bool = fields.static_field(default=True)
-    mask_fn: tp.Optional[tp.Callable[[Array], Array]] = fields.static_field(
-        default=None
-    )
-    dtype: tp.Optional[Dtype] = fields.static_field(default=None)
-    param_dtype: Dtype = fields.static_field(default=jnp.float32)
-    precision: PrecisionLike = fields.static_field(default=None)
-    kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
-        default=default_kernel_init
-    )
-    bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = fields.static_field(
-        default=initializers.zeros()
-    )
-    conv_general_dilated: ConvGeneralDilatedT = fields.static_field(
-        default=lax.conv_general_dilated
-    )
-    # ref fields
-    kernel: Array = fields.param(init=False)
-    bias: tp.Optional[Array] = fields.param(init=False)
+    kernel: Array = param()
+    bias: tp.Optional[Array] = param()
 
-    def __post_init__(self):
-        if isinstance(self.kernel_size, int):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        kernel_size: tp.Sequence[int],
+        strides: tp.Union[None, int, tp.Sequence[int]] = 1,
+        *,
+        padding: PaddingLike = "SAME",
+        input_dilation: tp.Union[None, int, tp.Sequence[int]] = 1,
+        kernel_dilation: tp.Union[None, int, tp.Sequence[int]] = 1,
+        feature_group_count: int = 1,
+        use_bias: bool = True,
+        mask_fn: tp.Optional[tp.Callable[[Array], Array]] = None,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        precision: PrecisionLike = None,
+        kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
+        bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
+        conv_general_dilated: ConvGeneralDilatedT = lax.conv_general_dilated,
+        ctx: context.Context,
+    ):
+        if isinstance(kernel_size, int):
             raise TypeError(
                 "Expected Conv kernel_size to be a"
                 " tuple/list of integers (eg.: [3, 3]) but got"
-                f" {self.kernel_size}."
+                f" {kernel_size}."
             )
         else:
-            self.kernel_size = tuple(self.kernel_size)
+            kernel_size = tuple(kernel_size)
 
-        kernel_shape = self.kernel_size + (
-            self.in_features // self.feature_group_count,
-            self.out_features,
+        kernel_shape = kernel_size + (
+            in_features // feature_group_count,
+            out_features,
         )
-        kernel_key = self.make_rng("params")
-        self.kernel = self.kernel_init(kernel_key, kernel_shape, self.param_dtype)
+        kernel_key = ctx.make_rng("params")
+        self.kernel = kernel_init(kernel_key, kernel_shape, param_dtype)
 
-        if self.use_bias:
-            bias_shape = (self.out_features,)
-            bias_key = self.make_rng("params")
-            self.bias = self.bias_init(bias_key, bias_shape, self.param_dtype)
+        if use_bias:
+            bias_shape = (out_features,)
+            bias_key = ctx.make_rng("params")
+            self.bias = bias_init(bias_key, bias_shape, param_dtype)
         else:
             self.bias = None
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel_size = kernel_size
+        self.strides = strides
+        self.padding = padding
+        self.input_dilation = input_dilation
+        self.kernel_dilation = kernel_dilation
+        self.feature_group_count = feature_group_count
+        self.use_bias = use_bias
+        self.mask_fn = mask_fn
+        self.dtype = dtype
+        self.param_dtype = param_dtype
+        self.precision = precision
+        self.kernel_init = kernel_init
+        self.bias_init = bias_init
+        self.conv_general_dilated = conv_general_dilated
 
     def __call__(self, inputs: Array) -> Array:
         """Applies a (potentially unshared) convolution to the inputs.
@@ -329,3 +345,80 @@ class Conv(Module):
             output_shape = input_batch_shape + y.shape[1:]
             y = jnp.reshape(y, output_shape)
         return y
+
+
+default_embed_init = initializers.variance_scaling(1.0, "fan_in", "normal", out_axis=0)
+
+
+class Embed(Module):
+    """Embedding Module.
+
+    A parameterized function from integers [0, n) to d-dimensional vectors.
+
+    Attributes:
+      num_embeddings: number of embeddings.
+      features: number of feature dimensions for each embedding.
+      dtype: the dtype of the embedding vectors (default: same as embedding).
+      param_dtype: the dtype passed to parameter initializers (default: float32).
+      embedding_init: embedding initializer.
+    """
+
+    embedding: Array = param()
+
+    def __init__(
+        self,
+        num_embeddings: int,
+        features: int,
+        *,
+        dtype: tp.Optional[Dtype] = None,
+        param_dtype: Dtype = jnp.float32,
+        embedding_init: tp.Callable[
+            [PRNGKey, Shape, Dtype], Array
+        ] = default_embed_init,
+        ctx: context.Context,
+    ):
+        self.embedding = embedding_init(
+            ctx.make_rng("params"),
+            (num_embeddings, features),
+            param_dtype,
+        )
+
+        self.num_embeddings = num_embeddings
+        self.features = features
+        self.dtype = dtype or self.embedding.dtype
+        self.param_dtype = param_dtype
+        self.embedding_init = embedding_init
+
+    def __call__(self, inputs: Array) -> Array:
+        """Embeds the inputs along the last dimension.
+
+        Args:
+          inputs: input data, all dimensions are considered batch dimensions.
+
+        Returns:
+          Output which is embedded input data.  The output shape follows the input,
+          with an additional `features` dimension appended.
+        """
+        if not jnp.issubdtype(inputs.dtype, jnp.integer):
+            raise ValueError("Input type must be an integer or unsigned integer.")
+        # Use take because fancy indexing numpy arrays with JAX indices does not
+        # work correctly.
+        (embedding,) = dtypes.promote_dtype(
+            self.embedding, dtype=self.dtype, inexact=False
+        )
+        return jnp.take(embedding, inputs, axis=0)
+
+    def attend(self, query: Array) -> Array:
+        """Attend over the embedding using a query array.
+
+        Args:
+          query: array with last dimension equal the feature depth `features` of the
+            embedding.
+        Returns:
+          An array with final dim `num_embeddings` corresponding to the batched
+          inner-product of the array of query vectors against each embedding.
+          Commonly used for weight-sharing between embeddings and logit transform
+          in NLP models.
+        """
+        query, embedding = dtypes.promote_dtype(query, self.embedding, dtype=self.dtype)
+        return jnp.dot(query, embedding.T)
