@@ -43,12 +43,12 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        partitions, moduledef = foo.partition()
+        partitions, moddef = foo.partition()
 
         assert "params" in partitions
         assert "rest" in partitions
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, partitions = moduledef.apply(partitions)(x=2.0, ctx=ctx)
+        y, partitions = moddef.apply(partitions)(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)
