@@ -75,7 +75,6 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    # ref fields
     kernel: Array = param()
     bias: tp.Optional[Array] = param()
 
