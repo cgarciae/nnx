@@ -56,23 +56,8 @@ from .nn.initializers import (
 from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
-from .partitioning import collection_partition as partition
-from .partitioning import get_partition, tree_partition
 from .pytree import Pytree, PytreeMeta
 from .ref_field import RefField, RefMetadata, ref_metadata, with_partitioning
-from .reference import (
-    NOTHING,
-    Dag,
-    DagDef,
-    Deref,
-    Index,
-    Partition,
-    Ref,
-    Referential,
-    Value,
-    clone,
-    deref,
-    reref,
-    update_refs,
-)
+from .reference import NOTHING, Deref, Index, Partition, Ref, Referential, Value
 from .transforms import grad, jit
+from .module_helpers import Map, Seq

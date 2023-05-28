@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 import jax.stages
-from nnx.reference import DagDef, Partition, deref, reref, update_refs
+from nnx.reference import Partition
 import jax.tree_util as jtu
 from nnx import context
 

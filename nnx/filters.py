@@ -3,7 +3,6 @@ import typing as tp
 
 import jax
 from nnx import context
-from nnx.reference import DagDef, deref, reref
 from nnx.transforms import UNSPECIFIED
 
 A = tp.TypeVar("A")
