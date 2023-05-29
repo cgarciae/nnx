@@ -46,6 +46,12 @@ class ModuleDef(tp.Generic[M]):
         self._submodules = submodules
         self._static_fields = static_fields
 
+    def __repr__(self) -> str:
+        return (
+            f"ModuleDef(type={self._type.__name__}, index={self._index}, "
+            f"submodules={self._submodules}, static_fields={self._static_fields})"
+        )
+
     def __hash__(self) -> int:
         return hash((self._type, self._submodules, self._static_fields))
 
@@ -515,6 +521,7 @@ def _build_module(
     module = object.__new__(moduledef.type)
     vars(module).update(moduledef.static_fields)
     vars(module).update(submodules)
+    index_module[moduledef.index] = module
 
     return module
 

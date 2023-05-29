@@ -11,6 +11,7 @@ from nnx.module import Module
 from nnx.nn import initializers
 from nnx.dataclasses import dataclass, param_field
 from nnx.nn import dtypes
+import nnx
 
 Array = jax.Array
 PRNGKey = tp.Any

@@ -37,7 +37,11 @@ class TestIntegration:
                 return jnp.mean((y - y_pred) ** 2)
 
             grads = loss_fn(model)
-            model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+            model.update(
+                jax.tree_map(
+                    lambda w, g: w - 0.1 * g, model.get_partition("params"), grads
+                )
+            )
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         model = Model(ctx=ctx)
@@ -48,10 +52,8 @@ class TestIntegration:
         for _i in range(3):
             train_step(model, x, y)
 
+        assert model.block1.linear is model.block2.linear
         assert model.block1.linear.bias is not None
-        assert model.block2.linear.bias is not None
-        assert model.block1.linear.kernel is model.block2.linear.kernel
-        assert model.block1.linear.bias is model.block2.linear.bias
         assert model.block1.bn is not model.block2.bn
 
     def test_shared_modules_jit_filter(self):

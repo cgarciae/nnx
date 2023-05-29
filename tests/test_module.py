@@ -33,6 +33,16 @@ class TestModule:
         with pytest.raises(TypeError, match="Trying to set a Ref attribute"):
             foo = Foo()
 
+    def test_shared_module(self):
+        m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
+        m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
+
+        m3 = m2.deref().reref()
+
+        assert m3["x"] is m3["y"]
+        assert m3["x"]["a"] is m3["y"]["a"]
+        assert m3["x"]["b"] is m3["y"]["b"]
+
 
 class TestModuleDef:
     def test_apply(self):
