@@ -108,40 +108,18 @@ class TestPartitioning:
         assert m["c"] == 100
 
     def test_get_paritition(self):
-        p1 = nnx.Ref(10.0)
-        p2 = nnx.Ref(20.0)
+        p1 = nnx.Ref(10.0, "")
+        p2 = nnx.Ref(20.0, "")
 
-        pytree: tp.Dict[str, tp.Any] = {
-            "a": [p1, p2],
-            "b": p1,
-            "c": 7,
-            "d": 5.0,
-        }
+        m = nnx.Map(
+            a=nnx.Seq([p1, p2]),
+            b=p1,
+            c=7,
+            d=5.0,
+        )
 
-        partition = nnx.get_partition(pytree, any_ref)
+        partition = m.get_partition(any_ref)
         assert partition[("a", "0")].value == p1.value
         assert partition[("a", "1")].value == p2.value
         assert isinstance(partition[("b",)], nnx.Index)
-        assert partition[("c",)] is nnx.NOTHING
-        assert partition[("d",)] is nnx.NOTHING
-        assert len(partition) == 5
-
-    def test_nested_partition(self):
-        p1 = nnx.Ref(10.0)
-        p2 = nnx.Ref(20.0)
-
-        pytree: tp.Dict[str, tp.Any] = {
-            "a": [p1, p2],
-        }
-
-        partition = nnx.get_partition(pytree, any_ref)
-        assert partition[("a", "0")].value == p1.value
-        assert partition[("a", "1")].value == p2.value
-        assert len(partition) == 2
-
-        pytree = {"x": partition}
-
-        partition = nnx.get_partition(pytree, any_ref)
-        assert ("x", "a", "0", "value") in partition
-        assert ("x", "a", "1", "value") in partition
-        assert len(partition) == 2
+        assert len(partition) == 3

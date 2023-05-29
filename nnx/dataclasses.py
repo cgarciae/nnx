@@ -11,91 +11,10 @@ A = tp.TypeVar("A")
 # fields
 # ----------------------------------------
 
-
-def field(
-    *,
-    default: tp.Any = dataclasses.MISSING,
-    default_factory: tp.Any = dataclasses.MISSING,
-    init: bool = True,
-    repr: bool = True,
-    hash: tp.Optional[bool] = None,
-    compare: bool = True,
-    metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
-):
-    return dataclasses.field(  # type: ignore
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+field = dataclasses.field
 
 
-def node_field(
-    *,
-    default: tp.Any = dataclasses.MISSING,
-    default_factory: tp.Any = dataclasses.MISSING,
-    init: bool = True,
-    repr: bool = True,
-    hash: tp.Optional[bool] = None,
-    compare: bool = True,
-    metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
-):
-    if metadata is None:
-        metadata = {}
-    else:
-        metadata = dict(metadata)
-
-    if "pytree_node" in metadata:
-        raise ValueError("'pytree_node' found in metadata")
-
-    metadata["pytree_node"] = True
-
-    return field(
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
-
-
-def static_field(
-    *,
-    default: tp.Any = dataclasses.MISSING,
-    default_factory: tp.Any = dataclasses.MISSING,
-    init: bool = True,
-    repr: bool = True,
-    hash: tp.Optional[bool] = None,
-    compare: bool = True,
-    metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
-):
-    if metadata is None:
-        metadata = {}
-    else:
-        metadata = dict(metadata)
-
-    if "pytree_node" in metadata:
-        raise ValueError("'pytree_node' found in metadata")
-
-    metadata["pytree_node"] = False
-
-    return field(
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
-
-
-def ref(
+def ref_field(
     collection: str,
     default: tp.Any = dataclasses.MISSING,
     *,
@@ -118,7 +37,7 @@ def ref(
     )
 
 
-def param(
+def param_field(
     default: tp.Any = dataclasses.MISSING,
     *,
     default_factory: tp.Any = dataclasses.MISSING,
@@ -128,7 +47,7 @@ def param(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return ref(
+    return ref_field(
         "params",
         default=default,
         default_factory=default_factory,
@@ -158,7 +77,7 @@ def dataclass(
     ...
 
 
-@tpe.dataclass_transform(field_specifiers=(ref, param, field, node_field, static_field))
+@tpe.dataclass_transform(field_specifiers=(ref_field, param_field, dataclasses.field))
 def dataclass(
     cls: tp.Optional[tp.Type[A]] = None,
     init: bool = True,

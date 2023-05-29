@@ -9,7 +9,7 @@ from nnx import context
 
 from nnx.module import Module
 from nnx.nn import initializers
-from nnx.dataclasses import dataclass, param
+from nnx.dataclasses import dataclass, param_field
 from nnx.nn import dtypes
 
 Array = jax.Array
@@ -75,8 +75,8 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    kernel: Array = param()
-    bias: tp.Optional[Array] = param()
+    kernel: Array = param_field()
+    bias: tp.Optional[Array] = param_field()
 
     def __init__(
         self,
@@ -174,8 +174,8 @@ class Conv(Module):
       bias_init: initializer for the bias.
     """
 
-    kernel: Array = param()
-    bias: tp.Optional[Array] = param()
+    kernel: Array = param_field()
+    bias: tp.Optional[Array] = param_field()
 
     def __init__(
         self,
@@ -362,7 +362,7 @@ class Embed(Module):
       embedding_init: embedding initializer.
     """
 
-    embedding: Array = param()
+    embedding: Array = param_field()
 
     def __init__(
         self,

@@ -6,16 +6,14 @@ import jax
 class TestModule:
     def test_call(self):
         class Foo(nnx.Module):
-            w: jax.Array = nnx.param()
-
             def __init__(self, c: float, *, ctx: nnx.Context):
                 key = ctx.make_rng("params")
-                self.w = jax.random.uniform(key, ())
-                self.c = c
+                self.w = nnx.param(jax.random.uniform(key, ()))
+                self.c = jnp.asarray(c)
 
             def __call__(self, x, *, ctx: nnx.Context):
                 key = ctx.make_rng("e")
-                return self.w * x + jax.random.normal(key, ()) + self.c
+                return self.w.value * x + jax.random.normal(key, ()) + self.c
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
@@ -29,16 +27,13 @@ class TestModule:
 class TestModuleDef:
     def test_apply(self):
         class Foo(nnx.Module):
-            w: jax.Array = nnx.param()
-            c: float = nnx.node_field()
-
             def __init__(self, c: float, *, ctx: nnx.Context):
-                self.w = jax.random.uniform(ctx.make_rng("params"), ())
-                self.c = c
+                self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), ()))
+                self.c = jnp.asarray(c)
 
             def __call__(self, x, *, ctx: nnx.Context):
                 key = ctx.make_rng("e")
-                return self.w * x + jax.random.normal(key, ()) + self.c
+                return self.w.value * x + jax.random.normal(key, ()) + self.c
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
@@ -50,5 +45,28 @@ class TestModuleDef:
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
         y, partitions = moddef.apply(partitions)(x=2.0, ctx=ctx)
+
+        assert isinstance(y, jax.Array)
+
+    def test_derefed_mod_apply(self):
+        class Foo(nnx.Module):
+            def __init__(self, c: float, *, ctx: nnx.Context):
+                self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), ()))
+                self.c = jnp.asarray(c)
+
+            def __call__(self, x, *, ctx: nnx.Context):
+                key = ctx.make_rng("e")
+                return self.w.value * x + jax.random.normal(key, ()) + self.c
+
+        ctx = nnx.Context(jax.random.PRNGKey(0))
+        foo = Foo(c=1.0, ctx=ctx)
+
+        dermod = foo.partition()
+
+        assert "params" in dermod.partitions
+        assert "rest" in dermod.partitions
+
+        ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
+        y, partitions = dermod.apply(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)

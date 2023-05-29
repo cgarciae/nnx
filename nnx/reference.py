@@ -107,8 +107,8 @@ class Ref(Referential[A]):
     def __init__(
         self,
         value: A,
+        collection: str,
         *,
-        collection: str = "",
         sharding: tp.Optional[Sharding] = None,
         context_trace: tp.Optional[tracers.MainTrace] = None,
     ):
@@ -153,6 +153,35 @@ class Ref(Referential[A]):
 
     def to_index(self, val_path: tp.Tuple[str, ...]) -> "Index[A]":
         return Index(val_path, self._collection, self._sharding)
+
+
+def ref(
+    collection: str,
+    value: A,
+    *,
+    sharding: tp.Optional[Sharding] = None,
+    context_trace: tp.Optional[tracers.MainTrace] = None,
+) -> A:
+    return Ref(  # type: ignore
+        value,
+        collection=collection,
+        sharding=sharding,
+        context_trace=context_trace,
+    )
+
+
+def param(
+    value: A,
+    *,
+    sharding: tp.Optional[Sharding] = None,
+    context_trace: tp.Optional[tracers.MainTrace] = None,
+) -> A:
+    return ref(
+        "params",
+        value,
+        sharding=sharding,
+        context_trace=context_trace,
+    )
 
 
 class Value(Deref[A]):

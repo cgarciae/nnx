@@ -2,7 +2,7 @@ __version__ = "0.0.0"
 
 
 from .context import Context, RngStream
-from .dataclasses import dataclass, field, node_field, param, ref, static_field
+from .dataclasses import dataclass, field, param_field, ref_field
 from .filters import jit_filter
 from .module import Module, ModuleDef, DerefedMod
 from .nn.activations import (
@@ -57,6 +57,6 @@ from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .ref_field import RefField, RefMetadata, ref_metadata, with_partitioning
-from .reference import NOTHING, Deref, Index, Partition, Ref, Referential, Value
+from .reference import Deref, Index, Partition, Ref, Referential, Value, param, ref
 from .transforms import grad, jit
 from .module_helpers import Map, Seq

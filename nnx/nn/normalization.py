@@ -7,7 +7,7 @@ from jax import lax
 from nnx.module import Module
 from nnx.nn import initializers, dtypes
 from nnx import context, utils
-from nnx.dataclasses import param, ref
+from nnx.dataclasses import param_field, ref_field
 
 PRNGKey = jax.Array
 Array = jax.Array
@@ -175,10 +175,10 @@ class BatchNorm(Module):
         for more details.
     """
 
-    mean: Array = ref("batch_stats", init=False)
-    var: Array = ref("batch_stats", init=False)
-    scale: tp.Optional[Array] = param(init=False)
-    bias: tp.Optional[Array] = param(init=False)
+    mean: Array = ref_field("batch_stats", init=False)
+    var: Array = ref_field("batch_stats", init=False)
+    scale: tp.Optional[Array] = param_field(init=False)
+    bias: tp.Optional[Array] = param_field(init=False)
 
     def __init__(
         self,
@@ -312,8 +312,8 @@ class LayerNorm(Module):
             for more details.
     """
 
-    scale: tp.Optional[Array] = param(init=False)
-    bias: tp.Optional[Array] = param(init=False)
+    scale: tp.Optional[Array] = param_field(init=False)
+    bias: tp.Optional[Array] = param_field(init=False)
 
     def __init__(
         self,
@@ -383,6 +383,3 @@ class LayerNorm(Module):
             self.dtype,
             self.epsilon,
         )
-
-
-

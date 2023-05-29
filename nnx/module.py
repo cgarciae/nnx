@@ -1,5 +1,7 @@
 from abc import ABC
 import dataclasses
+from types import MappingProxyType
+from typing import Any
 
 import jax
 import numpy as np
@@ -180,6 +182,26 @@ class CallableProxy:
 
 
 class Module(ABC):
+    if not tp.TYPE_CHECKING:
+
+        def __getattribute__(self, __name: str) -> Any:
+            value = object.__getattribute__(self, __name)
+            if isinstance(value, Ref):
+                return value.value
+            return value
+
+    def get_ref(self, __name: str) -> Ref[tp.Any]:
+        if __name not in vars(self):
+            raise AttributeError(f"Module has no attribute {__name}")
+
+        return vars(self)[__name]
+
+    @property
+    def refs(self) -> tp.Mapping[str, Ref[tp.Any]]:
+        return MappingProxyType(
+            {k: v for k, v in vars(self).items() if isinstance(v, Ref)}
+        )
+
     def __hash__(self) -> int:
         return id(self)
 
