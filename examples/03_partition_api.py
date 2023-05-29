@@ -23,7 +23,7 @@ class Linear(nnx.Module):
         self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w.value) + self.b.value
+        return x @ self.w.value + self.b.value
 
 
 class MLP(nnx.Module):

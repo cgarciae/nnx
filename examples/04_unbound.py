@@ -23,7 +23,7 @@ class Linear(nnx.Module):
         self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w.value) + self.b.value
+        return x @ self.w.value + self.b.value
 
 
 class MLP(nnx.Module):
@@ -51,8 +51,8 @@ def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any,
         return loss
 
     grads = nnx.grad(loss_fn)(model)
-    #                              |-------- sgd ---------|
-    model.update[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    #                           |-------- sgd ---------|
+    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
     return model.deref()
 

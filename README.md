@@ -37,16 +37,14 @@ import nnx
 import jax
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
 
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
-        self.w = jax.random.uniform(key, (din, dout))
-        self.b = jax.numpy.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.param(jax.numpy.zeros((dout,)))
 
     def __call__(self, x):
-        return x @ self.w + self.b
+        return x @ self.w.value + self.b.value
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
@@ -58,9 +56,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
 # yes... there's no return :)
 train_step(model, x, y)
@@ -79,16 +77,14 @@ import nnx
 import jax
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.ref("params")
-    b: jax.Array = nnx.param() # shortcut for ref("params")
 
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params") # request an RNG key
-        self.w = jax.random.uniform(key, (din, dout))
-        self.b = jax.numpy.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.param(jax.numpy.zeros((dout,)))
 
     def __call__(self, x):
-        return x @ self.w + self.b
+        return x @ self.w.value + self.b.value
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
@@ -96,27 +92,6 @@ model = Linear(din=12, dout=2, ctx=ctx)
 
 `nnx` uses a `Context` object to propagate RNG and other forms of state throughout the model. `Context` provides a `make_rng` method that creates a new RNG key on demand for a given name (in this case, `"params"`).
 
-#### RefField Descriptor
-
-`nnx.ref` and `nnx.param` are descriptors that create `RefField` instances. A `RefField` is a descriptor that stores a `Ref` instance in a separate `{attribute_name}__ref` attribute. It handles retrieving and setting the value of the reference automatically, so the user doesn't have to manipulate references directly. Additionally, `RefField` inherits from `dataclasses.Field` to ensure compatibility with `nnx.dataclass` when needed.
-
-Here's a simplified version of the `RefField` implementation:
-
-```python
-class RefField(dataclasses.Field):
-    def __set_name__(self, cls, name):
-        self.name = name
-
-    def __get__(self, obj, objtype=None):
-        ref = getattr(obj, f"{self.name}__ref")
-        return ref.value
-
-    def __set__(self, obj, value):
-        ref = getattr(obj, f"{self.name}__ref")
-        ref.value = value
-```
-
-It's important to note that `Ref` instances are created during the first call to `__set__` if the companion `{name}__ref` attribute doesn't exist yet. This should only happen inside the `__init__` method, otherwise, the `Module` will raise an error, as `simple_pytree` Pytrees are frozen after initialization.
 
 #### GetItem and SetItem Syntactic Sugar
 
@@ -136,10 +111,10 @@ Sample usage might look like this:
 
 ```python
 # SGD update
-model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 ```
 
-In this example, `model["params"]` returns a `Partition` that contains all the references in the `params` collection. `grads` is a `Partition` with the same structure as `model["params"]`, but with gradients instead of parameters. The statement `model[:] = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
+In this example, `model.get("params")` returns a `Partition` that contains all the references in the `params` collection. `grads` is a `Partition` with the same structure as `model.get("params")`, but with gradients instead of parameters. The statement `model.update = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
 ### Transformations
 
@@ -170,9 +145,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
 # stateful update, no return needed
 train_step(model, x, y)
@@ -205,9 +180,9 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grads = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
     
     return model
 
@@ -227,18 +202,18 @@ Here's an example of how a `train_step` function can be implemented using the pa
 
 ```python
 partitions, moddef = model.partition()
-params = partitions["params"]
+params: nnx.Partition = partitions["params"]
 
 @jax.jit
-def train_step(params, x, y):
+def train_step(params: nnx.Partition, x, y):
 
-    def loss_fn(params):
+    def loss_fn(params: nnx.Partition):
         model: Linear = moddef.reref(params)
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grads = jax.grad(loss_fn)(params)
+    grads: nnx.Partition = jax.grad(loss_fn)(params)
     # SGD update
     params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
     
