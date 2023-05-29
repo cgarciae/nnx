@@ -175,8 +175,8 @@ def ref(
     sharding: tp.Optional[Sharding] = None,
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
-) -> Ref[A]:
-    return Ref(
+) -> A:
+    return Ref(  # type: ignore
         value,
         collection=collection,
         sharding=sharding,
@@ -189,7 +189,7 @@ def param(
     sharding: tp.Optional[Sharding] = None,
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
-) -> Ref[A]:
+) -> A:
     return ref(
         "params",
         value,

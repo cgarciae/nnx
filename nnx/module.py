@@ -191,15 +191,20 @@ class CallableProxy:
 class Module(ABC):
     if not tp.TYPE_CHECKING:
 
+        def __getattribute__(self, __name: str) -> Any:
+            value = object.__getattribute__(self, __name)
+            if isinstance(value, Ref):
+                return value.value
+            return value
+
         def __setattr__(self, __name: str, value: Any) -> None:
             vars_dict = vars(self)
-            if __name in vars_dict and isinstance(vars_dict[__name], Ref):
-                raise TypeError(
-                    f"Trying to set a Ref attribute '{__name}' to a non-Ref value of "
-                    f"type '{type(value).__name__}'. To update a Ref attribute "
-                    f"use 'del module.{__name}' first to remove the attribute and then "
-                    f"set the attribute to the new value."
-                )
+            if (
+                __name in vars_dict
+                and isinstance(vars_dict[__name], Ref)
+                and not isinstance(value, Ref)
+            ):
+                vars_dict[__name].value = value
 
             object.__setattr__(self, __name, value)
 
