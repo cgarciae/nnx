@@ -24,10 +24,7 @@ class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         ],
         /,
     ):
-        if isinstance(__input, tp.Mapping):
-            self._mapping = MappingProxyType(dict(__input))
-        else:
-            self._mapping = MappingProxyType(dict(__input))
+        self._mapping = dict(__input)
 
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
@@ -38,14 +35,18 @@ class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
     def __len__(self) -> int:
         return len(self._mapping)
 
+    def __repr__(self) -> str:
+        return f"Partition({self._mapping})"
+
 
 def _partition_flatten_with_keys(
     x: Partition,
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[jtu.DictKey, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
 ]:
-    children = tuple((jtu.DictKey(key), value) for key, value in x.items())
-    return children, tuple(x.keys())
+    key_values = sorted(x.items(), key=lambda x: x[0])
+    children = tuple((jtu.DictKey(key), value) for key, value in key_values)
+    return children, tuple(key for key, _ in key_values)
 
 
 def _partition_unflatten(keys: tp.Tuple[Path, ...], leaves: tp.Tuple[Leaf, ...]):
@@ -170,8 +171,13 @@ class Value(Deref[A]):
     def value(self) -> A:
         return self._value
 
-    def to_ref(self) -> "Ref[A]":
-        return Ref(self._value, collection=self.collection, sharding=self.sharding)
+    def to_ref(self, context_trace: tracers.MainTrace) -> "Ref[A]":
+        return Ref(
+            self._value,
+            collection=self.collection,
+            sharding=self.sharding,
+            context_trace=context_trace,
+        )
 
     def __repr__(self) -> str:
         return (
