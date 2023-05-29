@@ -42,7 +42,8 @@ class JitTransform(jax.stages.Wrapped):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
         args, kwargs = jax.tree_map(
-            lambda x: x.deref() if isinstance(x, Module) else x, (args, kwargs)
+            lambda x: x.deref() if isinstance(x, Module) else x,
+            (args, kwargs),
         )
         out = self.jitted_fn(*args, **kwargs)
         out = jax.tree_map(

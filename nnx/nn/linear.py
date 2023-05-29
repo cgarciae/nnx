@@ -1,4 +1,3 @@
-import dataclasses
 import typing as tp
 
 import jax
@@ -9,7 +8,6 @@ from nnx import context
 
 from nnx.module import Module
 from nnx.nn import initializers
-from nnx.dataclasses import dataclass, param_field
 from nnx.nn import dtypes
 import nnx
 

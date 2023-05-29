@@ -14,7 +14,7 @@ class TestModule:
 
             def __call__(self, x, *, ctx: nnx.Context):
                 key = ctx.make_rng("e")
-                return self.w * x + jax.random.normal(key, ()) + self.c
+                return self.w.value * x + jax.random.normal(key, ()) + self.c
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)

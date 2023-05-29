@@ -18,7 +18,7 @@ class Map(Module, tp.Mapping[str, A]):
         return len(vars(self))
 
 
-class Seq(Module, tp.Sequence[A]):
+class Seq(Module, tp.Generic[A]):
     def __init__(self, iterable: tp.Iterable[A]):
         for i, value in enumerate(iterable):
             vars(self)[str(i)] = value

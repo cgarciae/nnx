@@ -1,3 +1,4 @@
+import dataclasses
 from typing import Optional, Sequence
 
 import jax.numpy as jnp
@@ -5,10 +6,9 @@ from jax import lax, random
 
 from nnx.module import Module
 from nnx import context, utils
-from nnx.dataclasses import dataclass
 
 
-@dataclass
+@dataclasses.dataclass
 class Dropout(Module):
     """Create a dropout layer.
 

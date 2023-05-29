@@ -36,8 +36,8 @@ class TestFilters:
     #     assert pytree["c"] == 7
     #     assert pytree["d"] == 5.0
 
-    def test_jit(self):
-        r1: nnx.Ref[int] = nnx.Ref(1)
+    def test_trace_level(self):
+        r1: nnx.Ref[int] = nnx.param(1)
 
         @jax.jit
         def f():
@@ -49,16 +49,20 @@ class TestFilters:
 
         f()
 
+    def test_jit(self):
+        r1: nnx.Ref[int] = nnx.param(1)
+
         @nnx.jit_filter
-        def g(r2: nnx.Ref[int], r3: nnx.Ref[int]):
+        def g(m: nnx.Seq[nnx.Ref[int]]):
+            r2, r3 = m
             assert r2 is r3
 
             r2.value = 2
             assert r1 is not r2
             assert r3.value == 2
-            return r2
+            return nnx.Seq([r2])
 
-        r2 = g(r1, r1)
+        r2 = g(nnx.Seq((r1, r1)))[0]
 
         assert r1.value == 1
         assert r2.value == 2
@@ -67,7 +71,7 @@ class TestFilters:
         assert r1.value == 1
         assert r2.value == 3
 
-        r3 = g(r1, r1)
+        r3 = g(nnx.Seq((r1, r1)))[0]
 
         assert r3 is not r2
         assert r3.value == 2
