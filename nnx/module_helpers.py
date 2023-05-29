@@ -19,7 +19,7 @@ class Map(Module, tp.Mapping[str, A]):
 
 
 class Seq(Module, tp.Sequence[A]):
-    def __init__(self, iterable: tp.Iterable[tp.Any]):
+    def __init__(self, iterable: tp.Iterable[A]):
         for i, value in enumerate(iterable):
             setattr(self, str(i), value)
 

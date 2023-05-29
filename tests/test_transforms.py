@@ -13,22 +13,22 @@ def collection(collection: str):
 
 class TestJIT:
     def test_jit(self):
-        r1: nnx.Ref[int] = nnx.Ref(1)
-        pytree = (r1, r1)
+        r1: nnx.Ref[int] = nnx.param(1)
+        m = nnx.Seq((r1, r1))
 
         @nnx.jit
-        def f(pytree):
+        def f(m):
             with pytest.raises(
                 ValueError, match="Cannot mutate ref from different trace level"
             ):
                 r1.value = 2
             return 1
 
-        f(pytree)
+        f(m)
 
         @nnx.jit
-        def g(pytree):
-            r2, r3 = pytree
+        def g(m: nnx.Seq):
+            r2, r3 = m
             assert r2 is r3
 
             r2.value = 2
@@ -36,19 +36,19 @@ class TestJIT:
             assert r3.value == 2
             return 1.0
 
-        out = g(pytree)
+        out = g(m)
 
-        assert pytree[0].value == 2
-        assert pytree[1].value == 2
+        assert m[0].value == 2
+        assert m[1].value == 2
         assert out == 1.0
 
     def test_jit_stateless(self):
-        r1: nnx.Ref[int] = nnx.Ref(1)
-        pytree = (r1, r1)
+        r1 = nnx.param(1)
+        m = nnx.Seq((r1, r1))
 
         @partial(nnx.jit, stateful=False)
-        def g(pytree):
-            r2, r3 = pytree
+        def g(m: nnx.Seq):
+            r2, r3 = m
             assert r2 is r3
 
             r2.value = 2
@@ -56,138 +56,131 @@ class TestJIT:
             assert r3.value == 2
             return 1.0
 
-        out = g(pytree)
+        out = g(m)
 
-        assert pytree[0].value == 1
-        assert pytree[1].value == 1
+        assert m[0].value == 1
+        assert m[1].value == 1
         assert out == 1.0
 
 
 class TestGrad:
     def test_grad(self):
-        p1 = nnx.Ref(10.0, collection="params")
-        p2 = nnx.Ref(20.0, collection="params")
+        p1 = nnx.param(10.0)
+        p2 = nnx.param(20.0)
 
-        pytree: tp.Dict[str, tp.Any] = {
-            "a": [p1, p2],
-            "b": p1,
-            "c": 7,
-            "d": 5.0,
-        }
+        m = nnx.Map(
+            a=nnx.Seq([p1, p2]),
+            b=p1,
+            c=7,
+            d=5.0,
+        )
 
         @nnx.grad
-        def f(pytree):
+        def f(m: nnx.Map):
             # sum all params
-            return pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value
+            return m["a"][0].value + m["a"][1].value + m["b"].value
 
-        grad = f(pytree)
-        assert isinstance(grad, nnx.Partition)
+        grads = f(m)
 
-        nnx.Value
+        assert isinstance(grads, nnx.Partition)
+        assert grads[("a", "0")].value == 2.0
+        assert isinstance(grads[("a", "0")], nnx.Value)
+        assert grads[("a", "1")].value == 1.0
+        assert isinstance(grads[("a", "1")], nnx.Value)
+        assert isinstance(grads[("b",)], nnx.Index)
+        assert len(grads) == 3
 
-        assert grad[("a", "0")].value == 2.0
-        assert isinstance(grad[("a", "0")], nnx.Value)
-        assert grad[("a", "1")].value == 1.0
-        assert isinstance(grad[("a", "1")], nnx.Value)
-        assert isinstance(grad[("b",)], nnx.Index)
-        assert grad[("c",)] is nnx.NOTHING
-        assert grad[("d",)] is nnx.NOTHING
+        m.update(grads)
 
-        nnx.update_refs(pytree, grad)
-        assert pytree["a"][0].value == 2.0
-        assert pytree["a"][1].value == 1.0
-        assert pytree["b"].value == 2.0
-        assert pytree["c"] == 7
-        assert pytree["d"] == 5.0
+        assert m["a"][0].value == 2.0
+        assert m["a"][1].value == 1.0
+        assert m["b"].value == 2.0
+        assert m["c"] == 7
+        assert m["d"] == 5.0
 
     def test_grad_with_multiple_ref_types(self):
         p1 = nnx.Ref(10.0, collection="params")
         p2 = nnx.Ref(20.0, collection="batch_stats")
 
-        pytree: tp.Dict[str, tp.Any] = {
-            "a": [p1, p2],
-            "b": p1,
-            "c": 7,
-            "d": 5.0,
-        }
+        m = nnx.Map(
+            a=nnx.Seq([p1, p2]),
+            b=p1,
+            c=7,
+            d=5.0,
+        )
 
         @nnx.grad
-        def f(pytree):
+        def f(m: nnx.Map):
             # sum all params
-            return pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value
+            return m["a"][0].value + m["a"][1].value + m["b"].value
 
-        grad = f(pytree)
-        assert isinstance(grad, nnx.Partition)
+        grads = f(m)
 
-        assert grad[("a", "0")].value == 2.0
-        assert isinstance(grad[("a", "0")], nnx.Value)
-        assert grad[("a", "0")].collection == "params"
-        assert grad[("a", "1")] is nnx.NOTHING
-        assert isinstance(grad[("b",)], nnx.Index)
-        assert grad[("b",)].collection == "params"
-        assert grad[("c",)] is nnx.NOTHING
-        assert grad[("d",)] is nnx.NOTHING
+        assert isinstance(grads, nnx.Partition)
+        assert grads[("a", "0")].value == 2.0
+        assert isinstance(grads[("a", "0")], nnx.Value)
+        assert grads[("a", "0")].collection == "params"
+        assert isinstance(grads[("b",)], nnx.Index)
+        assert grads[("b",)].collection == "params"
+        assert len(grads) == 2
 
-        nnx.update_refs(pytree, grad)
-        assert pytree["a"][0].value == 2.0
-        assert pytree["a"][1].value == 20.0
-        assert pytree["b"].value == 2.0
-        assert pytree["c"] == 7
-        assert pytree["d"] == 5.0
+        m.update(grads)
+
+        assert m["a"][0].value == 2.0
+        assert m["a"][1].value == 20.0
+        assert m["b"].value == 2.0
+        assert m["c"] == 7
+        assert m["d"] == 5.0
 
     def test_grad_with_type_predicate(self):
-        p1 = nnx.Ref(10.0, collection="params")
-        p2 = nnx.Ref(20.0, collection="batch_stats")
+        p1 = nnx.param(10.0)
+        p2 = nnx.ref("batch_stats", 20.0)
 
-        pytree: tp.Dict[str, tp.Any] = {
-            "a": [p1, p2],
-            "b": p1,
-            "c": 7,
-            "d": 5.0,
-        }
+        m = nnx.Map(
+            a=nnx.Seq([p1, p2]),
+            b=p1,
+            c=7,
+            d=5.0,
+        )
 
         @partial(nnx.grad, wrt="batch_stats")
-        def f(pytree):
+        def f(m: nnx.Map):
             # sum all params
-            return pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value
+            return m["a"][0].value + m["a"][1].value + m["b"].value
 
-        grad = f(pytree)
-        assert isinstance(grad, nnx.Partition)
+        grads = f(m)
 
-        assert grad[("a", "0")] is nnx.NOTHING
-        assert grad[("a", "1")].value == 1.0
-        assert isinstance(grad[("a", "1")], nnx.Value)
-        assert grad[("a", "1")].collection == "batch_stats"
-        assert grad[("b",)] is nnx.NOTHING
-        assert grad[("c",)] is nnx.NOTHING
-        assert grad[("d",)] is nnx.NOTHING
+        assert isinstance(grads, nnx.Partition)
+        assert grads[("a", "1")].value == 1.0
+        assert isinstance(grads[("a", "1")], nnx.Value)
+        assert grads[("a", "1")].collection == "batch_stats"
+        assert len(grads) == 1
 
-        nnx.update_refs(pytree, grad)
-        assert pytree["a"][0].value == 10.0
-        assert pytree["a"][1].value == 1.0
-        assert pytree["b"].value == 10.0
-        assert pytree["c"] == 7
-        assert pytree["d"] == 5.0
+        m.update(grads)
+
+        assert m["a"][0].value == 10.0
+        assert m["a"][1].value == 1.0
+        assert m["b"].value == 10.0
+        assert m["c"] == 7
+        assert m["d"] == 5.0
 
     def test_scope(self):
-        p1 = nnx.Ref(10.0, collection="params")
-        p2 = nnx.Ref(20.0, collection="params")
+        p1 = nnx.param(10.0)
+        p2 = nnx.param(20.0)
 
-        pytree: tp.Dict[str, tp.Any] = {
-            "a": [p1, p2],
-            "b": p1,
-            "c": 7,
-            "d": 5.0,
-        }
+        m = nnx.Map(
+            a=nnx.Seq([p1, p2]),
+            b=p1,
+            c=7,
+            d=5.0,
+        )
         ctx = nnx.Context(dict(a=jax.random.PRNGKey(0)))
 
         @nnx.grad
-        def f(pytree):
+        def f(m: nnx.Map):
             # sum all params
             noise = jax.random.normal(ctx.make_rng("a"), shape=())
-            return (
-                pytree["a"][0].value + pytree["a"][1].value + pytree["b"].value + noise
-            )
+            return m["a"][0].value + m["a"][1].value + m["b"].value + noise
 
-        grad = f(pytree)
+        grad = f(m)
         assert isinstance(grad, nnx.Partition)

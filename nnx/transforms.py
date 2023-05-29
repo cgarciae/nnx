@@ -3,6 +3,7 @@ import typing as tp
 
 import jax
 import jax.stages
+from nnx.module import DerefedMod, Module, ModuleDef
 from nnx.reference import Partition
 import jax.tree_util as jtu
 from nnx import context
@@ -28,31 +29,27 @@ class JitTransform(jax.stages.Wrapped):
     ):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(
-            partition: Partition,
+            dermod: DerefedMod[Partition, Module],
             *args,
-            _nnx__dagdef: DagDef[tp.Any],
             **kwargs,
         ):
-            pytree = reref(partition, _nnx__dagdef)
-            out = fun(pytree, *args, **kwargs)
+            module = dermod.reref()
+            out = fun(module, *args, **kwargs)
             if self.stateful:
-                out = (deref(pytree), out)
+                out = (module.deref().partitions, out)
             return out
 
         self.jitted_fn = jitted_fn
         self.stateful = stateful
 
-    def __call__(self, pytree, *args, **kwargs):
-        pytree_in = pytree
-
+    def __call__(self, module: Module, *args, **kwargs):
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
-        partition, dagdef = deref(pytree_in)
-        out = self.jitted_fn(partition, *args, _nnx__dagdef=dagdef, **kwargs)
+        out = self.jitted_fn(module.deref(), *args, **kwargs)
         if self.stateful:
-            (partition_out, _), out = out
-            update_refs(pytree_in, partition_out)
+            updates, out = out
+            module.update(updates)
         return out
 
     def __repr__(self):
@@ -139,14 +136,14 @@ class GradTransform:
         def grad_fn(
             diff: Partition,
             non_diff: Partition,
-            dagdef: DagDef[tp.Any],
-            *args,
+            moddef: ModuleDef[Module],
+            *args: tp.Any,
         ):
-            pytree = dagdef.reref((diff, non_diff))
-            out = fun(pytree, *args)
+            module = moddef.reref((diff, non_diff))
+            out = fun(module, *args)
 
             if self.stateful:
-                updates = deref(pytree)[0]
+                updates = module.deref().partitions
                 if self.has_aux:
                     loss, aux = out
                     out = (loss, (updates, aux))
@@ -160,10 +157,9 @@ class GradTransform:
         self.has_aux = has_aux
         self.stateful = stateful
 
-    def __call__(self, pytree, *args):
-        pytree_in = pytree
-        (diff, nondiff), dagdef = partitioning.tree_partition(pytree, self.predicate)
-        grads = self.grad_fn(diff, nondiff, dagdef, *args)
+    def __call__(self, module: Module, *args: tp.Any):
+        (diff, nondiff), moddef = module.partition_general(self.predicate)
+        grads = self.grad_fn(diff, nondiff, moddef, *args)
 
         if self.stateful:
             updates: Partition
@@ -172,7 +168,7 @@ class GradTransform:
                 out = grads, aux
             else:
                 out, updates = grads
-            update_refs(pytree_in, updates)
+            module.update(updates)
         else:
             out = grads
 

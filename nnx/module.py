@@ -5,6 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
+from zmq import has
 from nnx.reference import Deref, Index, Partition, Ref, Referential, Value
 import typing as tp
 import jax.tree_util as jtu
@@ -184,23 +185,17 @@ class CallableProxy:
 class Module(ABC):
     if not tp.TYPE_CHECKING:
 
-        def __getattribute__(self, __name: str) -> Any:
-            value = object.__getattribute__(self, __name)
-            if isinstance(value, Ref):
-                return value.value
-            return value
+        def __setattr__(self, __name: str, value: Any) -> None:
+            vars_dict = vars(self)
+            if __name in vars_dict and isinstance(vars_dict[__name], Ref):
+                raise TypeError(
+                    f"Trying to set a Ref attribute '{__name}' to a non-Ref value of "
+                    f"type '{type(value).__name__}'. To update a Ref attribute "
+                    f"use 'del module.{__name}' first to remove the attribute and then "
+                    f"set the attribute to the new value."
+                )
 
-    def get_ref(self, __name: str) -> Ref[tp.Any]:
-        if __name not in vars(self):
-            raise AttributeError(f"Module has no attribute {__name}")
-
-        return vars(self)[__name]
-
-    @property
-    def refs(self) -> tp.Mapping[str, Ref[tp.Any]]:
-        return MappingProxyType(
-            {k: v for k, v in vars(self).items() if isinstance(v, Ref)}
-        )
+            object.__setattr__(self, __name, value)
 
     def __hash__(self) -> int:
         return id(self)
@@ -470,9 +465,9 @@ def _reref(state: StateLike, moduledef: ModuleDef[M]) -> M:
 
 def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
     if len(path) == 1:
-        setattr(module, path[0], value)
+        vars(module)[path[0]] = value
     else:
-        _set_value_at_path(getattr(module, path[0]), path[1:], value)
+        _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
 def _reref_state(state: StateLike) -> State:
