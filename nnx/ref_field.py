@@ -1,36 +1,12 @@
-import functools
 import typing as tp
 import dataclasses
 
-import jax
-from nnx.nn import initializers
 
-from nnx.reference import Ref, Sharding
+from nnx.reference import Ref
 
 
 A = tp.TypeVar("A")
 K = tp.TypeVar("K", bound=tp.Hashable)
-
-
-@dataclasses.dataclass
-class RefMetadata(tp.Generic[A]):
-    value: A
-    sharding: Sharding
-
-
-def with_partitioning(
-    initializer: initializers.Initializer,
-    sharding: Sharding,
-) -> initializers.Initializer:
-    @functools.wraps(initializer)
-    def wrapper(*args):
-        return RefMetadata(initializer(*args), sharding)
-
-    return wrapper  # type: ignore
-
-
-def ref_metadata(value: A, sharding: Sharding) -> A:
-    return RefMetadata(value, sharding)  # type: ignore
 
 
 class RefField(dataclasses.Field, tp.Generic[A]):
@@ -74,20 +50,13 @@ class RefField(dataclasses.Field, tp.Generic[A]):
 
         return getattr(obj, self.object_field_name).value
 
-    def __set__(self, obj, value: tp.Union[A, RefMetadata[A]]):
+    def __set__(self, obj, value: A):
         if isinstance(value, Ref):
             raise ValueError("Cannot change Ref")
         elif hasattr(obj, self.object_field_name):
-            if isinstance(value, RefMetadata):
-                raise ValueError("Cannot change RefMetadata after initialization")
             ref: Ref[A] = getattr(obj, self.object_field_name)
             ref.value = value
         else:
-            if isinstance(value, RefMetadata):
-                value, sharding = value.value, value.sharding
-            else:
-                sharding = None
-
             obj.__dict__[self.object_field_name] = Ref(
-                value, collection=self.collection, sharding=sharding
+                value, collection=self.collection
             )

@@ -151,56 +151,49 @@ def dropout(cfg: Config, x, broadcast_dims=(-2,), *, ctx: nnx.Context):
 
 
 class Attention(nnx.Module):
-    WQ: jax.Array = nnx.param()
-    WK: jax.Array = nnx.param()
-    WV: jax.Array = nnx.param()
-    WO: jax.Array = nnx.param()
-    # cache
-    index: jax.Array = nnx.ref("cache")
-    key: jax.Array = nnx.ref("cache")
-    value: jax.Array = nnx.ref("cache")
-
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         sharding = cfg.sharding
 
         key = ctx.make_rng("params")
-        self.WQ = nnx.ref_metadata(
+        self.WQ = nnx.param(
             dense_init(
                 key, (cfg.embed, cfg.heads, cfg.depth), cfg.param_dtype, 0, (1, 2)
             ),
             P(sharding.embed, sharding.heads, sharding.depth),
         )
         key = ctx.make_rng("params")
-        self.WK = nnx.ref_metadata(
+        self.WK = nnx.param(
             dense_init(
                 key, (cfg.embed, cfg.heads, cfg.depth), cfg.param_dtype, 0, (1, 2)
             ),
             P(sharding.embed, sharding.heads, sharding.depth),
         )
         key = ctx.make_rng("params")
-        self.WV = nnx.ref_metadata(
+        self.WV = nnx.param(
             dense_init(
                 key, (cfg.embed, cfg.heads, cfg.depth), cfg.param_dtype, 0, (1, 2)
             ),
             P(sharding.embed, sharding.heads, sharding.depth),
         )
         key = ctx.make_rng("params")
-        self.WO = nnx.ref_metadata(
+        self.WO = nnx.param(
             dense_init(
                 key, (cfg.heads, cfg.depth, cfg.embed), cfg.param_dtype, (0, 1), 2
             ),
             P(sharding.heads, sharding.depth, sharding.embed),
         )
         # cache
-        self.index = nnx.ref_metadata(jnp.array(0, dtype=jnp.int32), P())
-        self.key = nnx.ref_metadata(
+        self.index = nnx.ref("cache", jnp.array(0, dtype=jnp.int32), P())
+        self.key = nnx.ref(
+            "cache",
             jnp.zeros(
                 (cfg.batch, cfg.heads, cfg.depth, cfg.max_length),
                 jnp.bfloat16,
             ),
             P(sharding.batch, sharding.heads, sharding.depth, None),
         )
-        self.value = nnx.ref_metadata(
+        self.value = nnx.ref(
+            "cache",
             jnp.zeros(
                 (cfg.batch, cfg.heads, cfg.depth, cfg.max_length),
                 jnp.bfloat16,
@@ -211,24 +204,26 @@ class Attention(nnx.Module):
     # We combine the cache and params into "vs", but it would be no harder at all
     # to thread through a separate "cache" argument storing cache entries.
     def __call__(self, cfg: Config, x_q, x_kv, mask=None, *, ctx: nnx.Context):
-        q = jnp.einsum("bse,enh->bsnh", x_q, self.WQ.astype(cfg.dtype)).astype(
+        q = jnp.einsum("bse,enh->bsnh", x_q, self.WQ.value.astype(cfg.dtype)).astype(
             jnp.float32
         )
-        k = jnp.einsum("bte,enh->btnh", x_kv, self.WK.astype(cfg.dtype)).astype(
+        k = jnp.einsum("bte,enh->btnh", x_kv, self.WK.value.astype(cfg.dtype)).astype(
             jnp.float32
         )
-        v = jnp.einsum("bte,enh->btnh", x_kv, self.WV.astype(cfg.dtype))
+        v = jnp.einsum("bte,enh->btnh", x_kv, self.WV.value.astype(cfg.dtype))
 
         index = None
         if cfg.decode:
-            index = self.index
+            index = self.index.value
             one_hot_indices = jax.nn.one_hot(
                 self.index, cfg.max_length, dtype=cfg.dtype
             )
-            self.key = self.key + jnp.moveaxis(k, -3, -1) * one_hot_indices
-            self.value = self.value + jnp.moveaxis(v, -3, -1) * one_hot_indices
-            k = jnp.moveaxis(self.key, -1, -3)
-            v = jnp.moveaxis(self.value, -1, -3)
+            self.key.value = self.key.value + jnp.moveaxis(k, -3, -1) * one_hot_indices
+            self.value.value = (
+                self.value.value + jnp.moveaxis(v, -3, -1) * one_hot_indices
+            )
+            k = jnp.moveaxis(self.key.value, -1, -3)
+            v = jnp.moveaxis(self.value.value, -1, -3)
             cache_mask = jnp.broadcast_to(
                 jnp.arange(cfg.max_length) <= self.index,
                 (cfg.batch, 1, 1, cfg.max_length),
@@ -236,7 +231,7 @@ class Attention(nnx.Module):
             mask = jnp.logical_and(
                 cache_mask if mask is None else mask, cache_mask
             ).astype(cfg.dtype)
-            self.index = self.index + 1
+            self.index.value = self.index.value + 1
 
         attention_bias = 0.0
         if mask is None:  # Hack in lieu of general mask routing.
@@ -255,31 +250,27 @@ class Attention(nnx.Module):
         s = jax.nn.softmax(l).astype(cfg.dtype)
         s = dropout(cfg, s, ctx=ctx)
         a = jnp.einsum("bnst,btnh->bsnh", s, v)
-        o = jnp.einsum("bsnh,nhe->bse", a, self.WO.astype(cfg.dtype))
+        o = jnp.einsum("bsnh,nhe->bse", a, self.WO.value.astype(cfg.dtype))
 
         return o
 
 
 class MLP(nnx.Module):
-    Win1: jax.Array = nnx.param()
-    Win2: jax.Array = nnx.param()
-    Wout: jax.Array = nnx.param()
-
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         sharding = cfg.sharding
-        self.Win1 = nnx.ref_metadata(
+        self.Win1 = nnx.param(
             dense_init(
                 ctx.make_rng("params"), (cfg.embed, cfg.hidden), cfg.param_dtype, 0, 1
             ),
             P(sharding.embed, sharding.hidden),
         )
-        self.Win2 = nnx.ref_metadata(
+        self.Win2 = nnx.param(
             dense_init(
                 ctx.make_rng("params"), (cfg.embed, cfg.hidden), cfg.param_dtype, 0, 1
             ),
             P(sharding.embed, sharding.hidden),
         )
-        self.Wout = nnx.ref_metadata(
+        self.Wout = nnx.param(
             dense_init(
                 ctx.make_rng("params"), (cfg.hidden, cfg.embed), cfg.param_dtype, 0, 1
             ),
@@ -287,61 +278,53 @@ class MLP(nnx.Module):
         )
 
     def __call__(self, cfg: Config, x, *, ctx: nnx.Context):
-        h1 = jnp.einsum("bse,eh->bsh", x, self.Win1.astype(cfg.dtype))
-        h2 = jnp.einsum("bse,eh->bsh", x, self.Win2.astype(cfg.dtype))
+        h1 = jnp.einsum("bse,eh->bsh", x, self.Win1.value.astype(cfg.dtype))
+        h2 = jnp.einsum("bse,eh->bsh", x, self.Win2.value.astype(cfg.dtype))
         h = jax.nn.gelu(h1) * h2
         h = dropout(cfg, h, ctx=ctx)
-        o = jnp.einsum("bsh,he->bse", h, self.Wout.astype(cfg.dtype))
+        o = jnp.einsum("bsh,he->bse", h, self.Wout.value.astype(cfg.dtype))
         return o
 
 
 class DecoderBlock(nnx.Module):
-    ln1: jax.Array = nnx.param()
-    ln2: jax.Array = nnx.param()
-
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         sharding = cfg.sharding
         self.attn = Attention(cfg, ctx=ctx)
         self.mlp = MLP(cfg, ctx=ctx)
-        self.scale1 = nnx.ref_metadata(
+        self.scale1 = nnx.param(
             jnp.ones((cfg.embed,), cfg.param_dtype), P(sharding.embed)
         )
-        self.scale2 = nnx.ref_metadata(
+        self.scale2 = nnx.param(
             jnp.ones((cfg.embed,), cfg.param_dtype), P(sharding.embed)
         )
 
     def __call__(self, cfg: Config, input, *, ctx: nnx.Context):
-        x = rms_norm(cfg, self.scale1, input)
+        x = rms_norm(cfg, self.scale1.value, input)
         x = self.attn(cfg, x, x, mask=None, ctx=ctx)
         x = dropout(cfg, x, ctx=ctx)
         x = x + input
-        y = rms_norm(cfg, self.scale2, x)
+        y = rms_norm(cfg, self.scale2.value, x)
         y = self.mlp(cfg, y, ctx=ctx)
         y = dropout(cfg, y, ctx=ctx)
         return y + x
 
 
 class Decoder(nnx.Module):
-    embed: jax.Array = nnx.param()
-    unembed: jax.Array = nnx.param()
-    scale1: jax.Array = nnx.param()
-    layers: tp.Union[DecoderBlock, tp.Tuple[DecoderBlock, ...]] = nnx.node_field()
-
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         sharding = cfg.sharding
-        self.embed = nnx.ref_metadata(
+        self.embed = nnx.param(
             embed_init(
                 ctx.make_rng("params"), (cfg.vocab, cfg.embed), cfg.param_dtype, 1, 0
             ),
             P(sharding.vocab, sharding.embed),
         )
-        self.unembed = nnx.ref_metadata(
+        self.unembed = nnx.param(
             dense_init(
                 ctx.make_rng("params"), (cfg.embed, cfg.vocab), jnp.float32, 0, 1
             ),
             P(sharding.embed, sharding.vocab),
         )
-        self.scale1 = nnx.ref_metadata(
+        self.scale1 = nnx.param(
             jnp.ones((cfg.embed,), cfg.param_dtype), P(sharding.embed)
         )
 
@@ -350,12 +333,12 @@ class Decoder(nnx.Module):
                 lambda key: DecoderBlock(cfg, ctx=nnx.Context(key)).deref()
             )(jax.random.split(ctx.make_rng("params"), cfg.layers)).reref()
         else:
-            self.layers = tuple(DecoderBlock(cfg, ctx=ctx) for _ in range(cfg.layers))
+            self.layers = nnx.Seq(DecoderBlock(cfg, ctx=ctx) for _ in range(cfg.layers))
 
     def __call__(self, cfg: Config, x, *, ctx: nnx.Context):
         # TODO: handle right-shifting for training: here or in train loop.
         # TODO: handle general mask routing.
-        x = self.embed.astype(cfg.dtype)[x]
+        x = self.embed.value.astype(cfg.dtype)[x]
 
         if cfg.scanned:
             assert isinstance(self.layers, DecoderBlock)
@@ -372,11 +355,11 @@ class Decoder(nnx.Module):
                 x,
                 (jax.random.split(dropout_key, cfg.layers), self.layers.deref()),
             )
-            self.layers[:] = updates
+            self.layers.update(updates)
         else:
-            assert isinstance(self.layers, tuple)
+            assert isinstance(self.layers, nnx.Seq)
             for decoder_block in self.layers:
                 x = decoder_block(cfg, x, ctx=ctx)
 
-        x = jnp.einsum("bse,ev->bsv", x, self.unembed)
+        x = jnp.einsum("bse,ev->bsv", x, self.unembed.value)
         return x

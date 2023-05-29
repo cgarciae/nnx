@@ -94,7 +94,7 @@ class TestPartitioning:
             c=100,
         )
 
-        params = m.get_partition("params")
+        params = m.get("params")
 
         def loss(params):
             return sum(2 * p for p in jax.tree_util.tree_leaves(params))
@@ -118,7 +118,7 @@ class TestPartitioning:
             d=5.0,
         )
 
-        partition = m.get_partition(any_ref)
+        partition = m.get(any_ref)
         assert partition[("a", "0")].value == p1.value
         assert partition[("a", "1")].value == p2.value
         assert isinstance(partition[("b",)], nnx.Index)

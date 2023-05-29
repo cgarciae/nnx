@@ -18,27 +18,22 @@ def dataset(batch_size):
 
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = jax.random.uniform(ctx.make_rng("params"), (din, dout))
-        self.b = jnp.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w) + self.b
+        return jnp.dot(x, self.w.value) + self.b.value
 
 
 class MLP(nnx.Module):
-    count: jax.Array = nnx.ref("state")
-
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = jnp.array(0)
+        self.count = nnx.ref("state", jnp.array(0))
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
     def __call__(self, x):
-        self.count += 1
+        self.count.value += 1
         x = self.linear1(x)
         x = jax.nn.relu(x)
         x = self.linear2(x)
@@ -60,7 +55,7 @@ def train_step(model: MLP, batch):
     #                                      |--default--|
     grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
     #                              |-------- sgd ---------|
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    model.update[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grad)
 
     return model
 
@@ -87,7 +82,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-print("times called:", model.count)
+print("times called:", model.count.value)
 
 y_pred = model(X)
 

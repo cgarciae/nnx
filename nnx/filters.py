@@ -3,6 +3,7 @@ import typing as tp
 
 import jax
 from nnx import context
+from nnx.module import DerefedMod, Module
 from nnx.transforms import UNSPECIFIED
 
 A = tp.TypeVar("A")
@@ -23,12 +24,16 @@ class JitTransform(jax.stages.Wrapped):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(
             *args,
-            _nnx__dagdef: DagDef[tp.Tuple[tp.Tuple[tp.Any, ...], tp.Dict[str, tp.Any]]],
             **kwargs,
         ):
-            args, kwargs = reref((args, kwargs), _nnx__dagdef, from_tree=True)
+            args, kwargs = jax.tree_map(
+                lambda x: x.reref() if isinstance(x, DerefedMod) else x,
+                (args, kwargs),
+                is_leaf=lambda x: isinstance(x, DerefedMod),
+            )
             out = fun(*args, **kwargs)
-            return deref(out)
+            out = jax.tree_map(lambda x: x.deref() if isinstance(x, Module) else x, out)
+            return out
 
         self.jitted_fn = jitted_fn
 
@@ -36,10 +41,16 @@ class JitTransform(jax.stages.Wrapped):
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
-        partition, dagdef = deref((args, kwargs))
-        args, kwargs = dagdef.unflatten(list(partition.values()))
-        out, dagdef = self.jitted_fn(*args, _nnx__dagdef=dagdef, **kwargs)
-        return reref(out, dagdef)
+        args, kwargs = jax.tree_map(
+            lambda x: x.deref() if isinstance(x, Module) else x, (args, kwargs)
+        )
+        out = self.jitted_fn(*args, **kwargs)
+        out = jax.tree_map(
+            lambda x: x.reref() if isinstance(x, DerefedMod) else x,
+            out,
+            is_leaf=lambda x: isinstance(x, DerefedMod),
+        )
+        return out
 
     def __repr__(self):
         return f"JitTransform({self.jitted_fn})"

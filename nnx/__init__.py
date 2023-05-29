@@ -56,7 +56,19 @@ from .nn.initializers import (
 from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
-from .ref_field import RefField, RefMetadata, ref_metadata, with_partitioning
-from .reference import Deref, Index, Partition, Ref, Referential, Value, param, ref
+from .ref_field import RefField
+from .reference import (
+    Deref,
+    Index,
+    Partition,
+    Ref,
+    Referential,
+    Value,
+    param,
+    ref,
+    RefMetadata,
+    ref_metadata,
+    with_partitioning,
+)
 from .transforms import grad, jit
 from .module_helpers import Map, Seq

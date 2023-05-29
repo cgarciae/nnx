@@ -1,12 +1,14 @@
 from abc import ABC, abstractmethod
+import dataclasses
 from functools import partial
-from types import MappingProxyType
+import functools
 import typing as tp
 
 import jax
 import jax.tree_util as jtu
 
 from nnx import tracers
+from nnx.nn import initializers
 
 A = tp.TypeVar("A")
 
@@ -101,17 +103,47 @@ class Deref(Referential[A]):
     __slots__ = ()
 
 
+@dataclasses.dataclass
+class RefMetadata(tp.Generic[A]):
+    value: A
+    sharding: Sharding
+
+
+def with_partitioning(
+    initializer: initializers.Initializer,
+    sharding: Sharding,
+) -> initializers.Initializer:
+    @functools.wraps(initializer)
+    def wrapper(*args):
+        return RefMetadata(initializer(*args), sharding)
+
+    return wrapper  # type: ignore
+
+
+def ref_metadata(value: A, sharding: Sharding) -> RefMetadata[A]:
+    return RefMetadata(value, sharding)
+
+
 class Ref(Referential[A]):
     __slots__ = ("_value", "_jax_trace", "_context_trace", "_trace_set")
 
     def __init__(
         self,
-        value: A,
+        value: tp.Union[A, RefMetadata[A]],
         collection: str,
         *,
         sharding: tp.Optional[Sharding] = None,
         context_trace: tp.Optional[tracers.MainTrace] = None,
     ):
+        if isinstance(value, RefMetadata):
+            if sharding is not None:
+                raise ValueError(
+                    "Cannot specify sharding when initializing from RefMetadata"
+                )
+            sharding = value.sharding
+            value = value.value
+
+        value = tp.cast(A, value)
         self._value = value
         self._jax_trace = tracers.current_jax_trace()
         self._context_trace = context_trace or self._jax_trace
@@ -157,9 +189,9 @@ class Ref(Referential[A]):
 
 def ref(
     collection: str,
-    value: A,
-    *,
+    value: tp.Union[A, RefMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
+    *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> Ref[A]:
     return Ref(
@@ -171,9 +203,9 @@ def ref(
 
 
 def param(
-    value: A,
-    *,
+    value: tp.Union[A, RefMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
+    *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> Ref[A]:
     return ref(

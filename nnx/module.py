@@ -188,6 +188,74 @@ class CallableProxy:
         return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
 
 
+@dataclasses.dataclass
+class ModuleUpdater(tp.Generic[M]):
+    module: M
+
+    def __setitem__(
+        self,
+        __name: SetItemType,
+        partitions: tp.Union[
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
+        ],
+    ) -> None:
+        self._update(partitions)
+
+    def __call__(
+        self,
+        partitions: tp.Union[
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
+        ],
+    ) -> None:
+        self._update(partitions)
+
+    def _update(
+        self,
+        partitions: tp.Union[
+            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
+        ],
+    ) -> None:
+        module = self.module
+
+        if isinstance(partitions, Partition):
+            new_state = partitions
+        else:
+            if isinstance(partitions, dict):
+                partitions = tuple(partitions.values())
+
+            new_state = _merge_partitions(partitions)
+
+        # sort by Values first, then by other values
+        new_state = dict(
+            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Value) else 2)
+        )
+
+        current_state = module.ref_dict()
+        context_trace = tracers.get_top_trace(
+            [x.value if isinstance(x, Ref) else x for x in current_state.values()]
+        )
+
+        for path, new_value in new_state.items():
+            if isinstance(new_value, Value):
+                if path in current_state:
+                    assert isinstance(current_state[path], Ref)
+                    current_state[path].value = new_value.value
+                else:
+                    current_state[path] = new_value.to_ref(context_trace)
+                    _set_value_at_path(module, path, current_state[path])
+            elif isinstance(new_value, Index):
+                if path not in current_state:
+                    if new_value.val_path not in current_state:
+                        raise ValueError(
+                            f"No Value for Index at path {path}, "
+                            f"expected Value at {new_value.val_path}"
+                        )
+
+                    _set_value_at_path(module, path, current_state[new_value.val_path])
+            else:
+                _set_value_at_path(module, path, new_value)
+
+
 class Module(ABC):
     if not tp.TYPE_CHECKING:
 
@@ -278,7 +346,7 @@ class Module(ABC):
         return DerefedMod((partitions, moddef))  # type: ignore
 
     @tp.overload
-    def get_partition(
+    def get(
         self,
         filter: partitioning.CollectionFilter,
         /,
@@ -286,7 +354,7 @@ class Module(ABC):
         ...
 
     @tp.overload
-    def get_partition(
+    def get(
         self,
         filter: partitioning.CollectionFilter,
         filter2: partitioning.CollectionFilter,
@@ -295,7 +363,7 @@ class Module(ABC):
     ) -> tp.Tuple[Partition, ...]:
         ...
 
-    def get_partition(
+    def get(
         self, *filters: partitioning.CollectionFilter
     ) -> tp.Union[Partition, tp.Tuple[Partition, ...]]:
         if len(filters) == 0:
@@ -312,49 +380,9 @@ class Module(ABC):
 
         return partitions
 
-    def update(
-        self,
-        partitions: tp.Union[
-            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
-        ],
-    ) -> None:
-        if isinstance(partitions, Partition):
-            new_state = partitions
-        else:
-            if isinstance(partitions, dict):
-                partitions = tuple(partitions.values())
-
-            new_state = _merge_partitions(partitions)
-
-        # sort by Values first, then by other values
-        new_state = dict(
-            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Value) else 2)
-        )
-
-        current_state = self.ref_dict()
-        context_trace = tracers.get_top_trace(
-            [x.value if isinstance(x, Ref) else x for x in current_state.values()]
-        )
-
-        for path, new_value in new_state.items():
-            if isinstance(new_value, Value):
-                if path in current_state:
-                    assert isinstance(current_state[path], Ref)
-                    current_state[path].value = new_value.value
-                else:
-                    current_state[path] = new_value.to_ref(context_trace)
-                    _set_value_at_path(self, path, current_state[path])
-            elif isinstance(new_value, Index):
-                if path not in current_state:
-                    if new_value.val_path not in current_state:
-                        raise ValueError(
-                            f"No Value for Index at path {path}, "
-                            f"expected Value at {new_value.val_path}"
-                        )
-
-                    _set_value_at_path(self, path, current_state[new_value.val_path])
-            else:
-                _set_value_at_path(self, path, new_value)
+    @property
+    def update(self: M) -> ModuleUpdater[M]:
+        return ModuleUpdater(self)
 
     @tp.overload
     def ref_dict(self) -> tp.Dict[Path, tp.Any]:
