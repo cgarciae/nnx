@@ -60,24 +60,6 @@ jax.tree_util.register_pytree_with_keys(
 )
 
 
-class Nothing:
-    def __repr__(self) -> str:
-        return "Nothing"  # pragma: no cover
-
-
-def _nothing_flatten(x):
-    return (), None
-
-
-def _nothing_unflatten(aux_data, children):
-    return NOTHING
-
-
-NOTHING = Nothing()
-
-jtu.register_pytree_node(Nothing, _nothing_flatten, _nothing_unflatten)
-
-
 class Referential(tp.Generic[A], ABC):
     __slots__ = ("_collection", "_sharding")
 
