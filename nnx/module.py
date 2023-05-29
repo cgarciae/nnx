@@ -6,6 +6,7 @@ from typing import Any
 import jax
 import numpy as np
 from zmq import has
+from ideas.pure import module
 from nnx.reference import Deref, Index, Partition, Ref, Referential, Value
 import typing as tp
 import jax.tree_util as jtu
@@ -188,25 +189,52 @@ class CallableProxy:
         return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
 
 
+@dataclasses.dataclass
+class RefUpdater(tp.Generic[M]):
+    module: M
+
+    def __getitem__(self, name: str) -> Ref[tp.Any]:
+        vars_dict = vars(self.module)
+
+        if name not in vars_dict:
+            raise AttributeError(f"Module has no attribute '{name}'")
+
+        value = vars_dict[name]
+        if not isinstance(value, Ref):
+            raise TypeError(f"'{name}' is not a Ref")
+
+        return value
+
+    def __setitem__(self, name: str, value: Ref[tp.Any]) -> None:
+        if not isinstance(value, Ref):
+            raise TypeError(f"Expected Ref, got {type(value).__name__}")
+
+        vars(self.module)[name] = value
+
+
 class Module(ABC):
     if not tp.TYPE_CHECKING:
 
-        def __getattribute__(self, __name: str) -> Any:
-            value = object.__getattribute__(self, __name)
+        def __getattribute__(self, name: str) -> Any:
+            value = object.__getattribute__(self, name)
             if isinstance(value, Ref):
                 return value.value
             return value
 
-        def __setattr__(self, __name: str, value: Any) -> None:
+        def __setattr__(self, name: str, value: Any) -> None:
             vars_dict = vars(self)
             if (
-                __name in vars_dict
-                and isinstance(vars_dict[__name], Ref)
+                name in vars_dict
+                and isinstance(vars_dict[name], Ref)
                 and not isinstance(value, Ref)
             ):
-                vars_dict[__name].value = value
+                vars_dict[name].value = value
+            else:
+                object.__setattr__(self, name, value)
 
-            object.__setattr__(self, __name, value)
+    @property
+    def ref(self: M) -> RefUpdater[M]:
+        return RefUpdater(self)
 
     def __hash__(self) -> int:
         return id(self)

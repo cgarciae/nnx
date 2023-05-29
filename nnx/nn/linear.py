@@ -117,8 +117,8 @@ class Linear(Module):
         Returns:
           The transformed input.
         """
-        kernel = self.kernel.value
-        bias = self.bias.value
+        kernel = self.kernel
+        bias = self.bias
 
         inputs, kernel, bias = dtypes.promote_dtype(
             inputs, kernel, bias, dtype=self.dtype
@@ -308,12 +308,12 @@ class Conv(Module):
         # One shared convolutional kernel for all pixels in the output.
         assert self.in_features % self.feature_group_count == 0
 
-        kernel = self.kernel.value
+        kernel = self.kernel
 
         if self.mask_fn is not None:
             kernel = self.mask_fn(kernel)
 
-        bias = self.bias.value
+        bias = self.bias
 
         inputs, kernel, bias = dtypes.promote_dtype(
             inputs, kernel, bias, dtype=self.dtype
@@ -377,7 +377,7 @@ class Embed(Module):
 
         self.num_embeddings = num_embeddings
         self.features = features
-        self.dtype = dtype or self.embedding.value.dtype
+        self.dtype = dtype or self.embedding.dtype
         self.param_dtype = param_dtype
         self.embedding_init = embedding_init
 
@@ -396,7 +396,7 @@ class Embed(Module):
         # Use take because fancy indexing numpy arrays with JAX indices does not
         # work correctly.
         (embedding,) = dtypes.promote_dtype(
-            self.embedding.value, dtype=self.dtype, inexact=False
+            self.embedding, dtype=self.dtype, inexact=False
         )
         return jnp.take(embedding, inputs, axis=0)
 
@@ -412,7 +412,5 @@ class Embed(Module):
           Commonly used for weight-sharing between embeddings and logit transform
           in NLP models.
         """
-        query, embedding = dtypes.promote_dtype(
-            query, self.embedding.value, dtype=self.dtype
-        )
+        query, embedding = dtypes.promote_dtype(query, self.embedding, dtype=self.dtype)
         return jnp.dot(query, embedding.T)

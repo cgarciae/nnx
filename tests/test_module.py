@@ -14,7 +14,7 @@ class TestModule:
 
             def __call__(self, x, *, ctx: nnx.Context):
                 key = ctx.make_rng("e")
-                return self.w.value * x + jax.random.normal(key, ()) + self.c
+                return self.w * x + jax.random.normal(key, ()) + self.c
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
@@ -23,15 +23,6 @@ class TestModule:
         y = foo(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)
-
-    def test_update_ref_error(self):
-        class Foo(nnx.Module):
-            def __init__(self):
-                self.w = nnx.param(jnp.asarray(1))
-                self.w = 2
-
-        with pytest.raises(TypeError, match="Trying to set a Ref attribute"):
-            foo = Foo()
 
     def test_shared_module(self):
         m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
@@ -53,7 +44,7 @@ class TestModuleDef:
 
             def __call__(self, x, *, ctx: nnx.Context):
                 key = ctx.make_rng("e")
-                return self.w.value * x + jax.random.normal(key, ()) + self.c
+                return self.w * x + jax.random.normal(key, ()) + self.c
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
@@ -78,7 +69,7 @@ class TestModuleDef:
 
             def __call__(self, x, *, ctx: nnx.Context):
                 key = ctx.make_rng("e")
-                return self.w.value * x + jax.random.normal(key, ()) + self.c
+                return self.w * x + jax.random.normal(key, ()) + self.c
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
