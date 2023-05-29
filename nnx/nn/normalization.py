@@ -7,7 +7,7 @@ from jax import lax
 from nnx.module import Module
 from nnx.nn import initializers, dtypes
 from nnx import context, utils
-from nnx.dataclasses import param_field, ref_field
+import nnx
 
 PRNGKey = jax.Array
 Array = jax.Array
@@ -175,11 +175,6 @@ class BatchNorm(Module):
         for more details.
     """
 
-    mean: Array = ref_field("batch_stats", init=False)
-    var: Array = ref_field("batch_stats", init=False)
-    scale: tp.Optional[Array] = param_field(init=False)
-    bias: tp.Optional[Array] = param_field(init=False)
-
     def __init__(
         self,
         num_features: int,
@@ -199,20 +194,20 @@ class BatchNorm(Module):
         ctx: context.Context,
     ):
         feature_shape = (num_features,)
-        self.mean = jnp.zeros(feature_shape, jnp.float32)
-        self.var = jnp.ones(feature_shape, jnp.float32)
+        self.mean = nnx.ref("batch_stats", jnp.zeros(feature_shape, jnp.float32))
+        self.var = nnx.ref("batch_stats", jnp.ones(feature_shape, jnp.float32))
 
         if use_scale:
             key = ctx.make_rng("params")
-            self.scale = scale_init(key, feature_shape, param_dtype)
+            self.scale = nnx.param(scale_init(key, feature_shape, param_dtype))
         else:
-            self.scale = None
+            self.scale = nnx.param(None)
 
         if use_bias:
             key = ctx.make_rng("params")
-            self.bias = bias_init(key, feature_shape, param_dtype)
+            self.bias = nnx.param(bias_init(key, feature_shape, param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.num_features = num_features
         self.use_running_average = use_running_average
@@ -255,7 +250,7 @@ class BatchNorm(Module):
         reduction_axes = tuple(i for i in range(x.ndim) if i not in feature_axes)
 
         if use_running_average:
-            mean, var = self.mean, self.var
+            mean, var = self.mean.value, self.var.value
         else:
             mean, var = _compute_stats(
                 x,
@@ -265,15 +260,17 @@ class BatchNorm(Module):
                 axis_index_groups=self.axis_index_groups,
             )
 
-            self.mean = self.momentum * self.mean + (1 - self.momentum) * mean
-            self.var = self.momentum * self.var + (1 - self.momentum) * var
+            self.mean.value = (
+                self.momentum * self.mean.value + (1 - self.momentum) * mean
+            )
+            self.var.value = self.momentum * self.var.value + (1 - self.momentum) * var
 
         return _normalize(
             x,
             mean,
             var,
-            self.scale,
-            self.bias,
+            self.scale.value,
+            self.bias.value,
             reduction_axes,
             feature_axes,
             self.dtype,
@@ -312,9 +309,6 @@ class LayerNorm(Module):
             for more details.
     """
 
-    scale: tp.Optional[Array] = param_field(init=False)
-    bias: tp.Optional[Array] = param_field(init=False)
-
     def __init__(
         self,
         num_features: int,
@@ -336,15 +330,15 @@ class LayerNorm(Module):
 
         if use_scale:
             key = ctx.make_rng("params")
-            self.scale = scale_init(key, feature_shape, param_dtype)
+            self.scale = nnx.param(scale_init(key, feature_shape, param_dtype))
         else:
-            self.scale = None
+            self.scale = nnx.param(None)
 
         if use_bias:
             key = ctx.make_rng("params")
-            self.bias = bias_init(key, feature_shape, param_dtype)
+            self.bias = nnx.param(bias_init(key, feature_shape, param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.num_features = num_features
         self.epsilon = epsilon
@@ -376,8 +370,8 @@ class LayerNorm(Module):
             x,
             mean,
             var,
-            self.scale,
-            self.bias,
+            self.scale.value,
+            self.bias.value,
             self.reduction_axes,
             self.feature_axes,
             self.dtype,

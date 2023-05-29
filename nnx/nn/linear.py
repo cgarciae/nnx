@@ -76,9 +76,6 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    kernel: Array = param_field()
-    bias: tp.Optional[Array] = param_field()
-
     def __init__(
         self,
         in_features: int,
@@ -94,12 +91,14 @@ class Linear(Module):
         ctx: context.Context,
     ):
         kernel_key = ctx.make_rng("params")
-        self.kernel = kernel_init(kernel_key, (in_features, out_features), param_dtype)
+        self.kernel = nnx.param(
+            kernel_init(kernel_key, (in_features, out_features), param_dtype)
+        )
         if use_bias:
             bias_key = ctx.make_rng("params")
-            self.bias = bias_init(bias_key, (out_features,), param_dtype)
+            self.bias = nnx.param(bias_init(bias_key, (out_features,), param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.in_features = in_features
         self.out_features = out_features
@@ -120,8 +119,8 @@ class Linear(Module):
         Returns:
           The transformed input.
         """
-        kernel = self.kernel
-        bias = self.bias
+        kernel = self.kernel.value
+        bias = self.bias.value
 
         inputs, kernel, bias = dtypes.promote_dtype(
             inputs, kernel, bias, dtype=self.dtype
@@ -175,9 +174,6 @@ class Conv(Module):
       bias_init: initializer for the bias.
     """
 
-    kernel: Array = param_field()
-    bias: tp.Optional[Array] = param_field()
-
     def __init__(
         self,
         in_features: int,
@@ -213,14 +209,14 @@ class Conv(Module):
             out_features,
         )
         kernel_key = ctx.make_rng("params")
-        self.kernel = kernel_init(kernel_key, kernel_shape, param_dtype)
+        self.kernel = nnx.param(kernel_init(kernel_key, kernel_shape, param_dtype))
 
         if use_bias:
             bias_shape = (out_features,)
             bias_key = ctx.make_rng("params")
-            self.bias = bias_init(bias_key, bias_shape, param_dtype)
+            self.bias = nnx.param(bias_init(bias_key, bias_shape, param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.in_features = in_features
         self.out_features = out_features
@@ -314,12 +310,12 @@ class Conv(Module):
         # One shared convolutional kernel for all pixels in the output.
         assert self.in_features % self.feature_group_count == 0
 
-        kernel = self.kernel
+        kernel = self.kernel.value
 
         if self.mask_fn is not None:
             kernel = self.mask_fn(kernel)
 
-        bias = self.bias
+        bias = self.bias.value
 
         inputs, kernel, bias = dtypes.promote_dtype(
             inputs, kernel, bias, dtype=self.dtype
@@ -363,8 +359,6 @@ class Embed(Module):
       embedding_init: embedding initializer.
     """
 
-    embedding: Array = param_field()
-
     def __init__(
         self,
         num_embeddings: int,
@@ -377,15 +371,15 @@ class Embed(Module):
         ] = default_embed_init,
         ctx: context.Context,
     ):
-        self.embedding = embedding_init(
-            ctx.make_rng("params"),
-            (num_embeddings, features),
-            param_dtype,
+        self.embedding = nnx.param(
+            embedding_init(
+                ctx.make_rng("params"), (num_embeddings, features), param_dtype
+            )
         )
 
         self.num_embeddings = num_embeddings
         self.features = features
-        self.dtype = dtype or self.embedding.dtype
+        self.dtype = dtype or self.embedding.value.dtype
         self.param_dtype = param_dtype
         self.embedding_init = embedding_init
 
@@ -404,7 +398,7 @@ class Embed(Module):
         # Use take because fancy indexing numpy arrays with JAX indices does not
         # work correctly.
         (embedding,) = dtypes.promote_dtype(
-            self.embedding, dtype=self.dtype, inexact=False
+            self.embedding.value, dtype=self.dtype, inexact=False
         )
         return jnp.take(embedding, inputs, axis=0)
 
@@ -420,5 +414,7 @@ class Embed(Module):
           Commonly used for weight-sharing between embeddings and logit transform
           in NLP models.
         """
-        query, embedding = dtypes.promote_dtype(query, self.embedding, dtype=self.dtype)
+        query, embedding = dtypes.promote_dtype(
+            query, self.embedding.value, dtype=self.dtype
+        )
         return jnp.dot(query, embedding.T)
