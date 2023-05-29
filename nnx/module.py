@@ -193,7 +193,11 @@ class Module(ABC):
 
         def __setattr__(self, __name: str, value: Any) -> None:
             vars_dict = vars(self)
-            if __name in vars_dict and isinstance(vars_dict[__name], Ref):
+            if (
+                __name in vars_dict
+                and isinstance(vars_dict[__name], Ref)
+                and not isinstance(value, Ref)
+            ):
                 raise TypeError(
                     f"Trying to set a Ref attribute '{__name}' to a non-Ref value of "
                     f"type '{type(value).__name__}'. To update a Ref attribute "
