@@ -28,7 +28,7 @@ class TestModule:
         m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
         m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
 
-        m3 = m2.deref().reref()
+        m3 = m2.flatten().unflatten()
 
         assert m3["x"] is m3["y"]
         assert m3["x"]["a"] is m3["y"]["a"]

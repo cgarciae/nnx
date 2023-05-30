@@ -40,12 +40,12 @@ class TestVariable:
         f()
 
         @jax.jit
-        def g(dermod: nnx.DerefedMod[nnx.State, nnx.Map[int]]):
-            m = dermod.reref()
+        def g(dermod: nnx.FlatMod[nnx.State, nnx.Map[int]]):
+            m = dermod.unflatten()
             m.a = 2
-            return m.deref()
+            return m.flatten()
 
-        m2 = g(m.deref()).reref()
+        m2 = g(m.flatten()).reref()
 
         assert m2.a == 2
 
@@ -70,15 +70,15 @@ class TestVariable:
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(dermod: nnx.DerefedMod[nnx.State, nnx.Map[tp.Any]]):
-            m = dermod.reref()
+        def f(dermod: nnx.FlatMod[nnx.State, nnx.Map[tp.Any]]):
+            m = dermod.unflatten()
 
             assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
 
-            return m.deref()
+            return m.flatten()
 
-        m = f(m.deref()).reref()
+        m = f(m.flatten()).reref()
 
         assert m["a"][0] is not m["b"]
         assert m["a"][1] is not m["b"]
@@ -123,12 +123,12 @@ class TestVariable:
         m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
-        def g(dermod: nnx.DerefedMod[nnx.State, nnx.Map[int]]):
-            m = dermod.reref()
+        def g(dermod: nnx.FlatMod[nnx.State, nnx.Map[int]]):
+            m = dermod.unflatten()
             m.a += 1
-            return m.deref()
+            return m.flatten()
 
-        m2 = g(m.deref()).reref()
+        m2 = g(m.flatten()).reref()
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
@@ -153,14 +153,14 @@ class TestVariable:
             m.a += 1
             return m.deref()
 
-        m2 = g(m.deref()).reref()
+        m2 = g(m.flatten()).reref()
 
         assert n == 1
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
 
-        g(m.deref())
+        g(m.flatten())
         assert n == 1
 
         g(m2.deref())
@@ -182,7 +182,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.deref()
+        p, moddef = m.flatten()
         assert len(p) == 4
         assert len(jax.tree_util.tree_leaves(p)) == 4
 
@@ -198,7 +198,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.deref()
+        p, moddef = m.flatten()
         assert len(p) == 5
         assert len(jax.tree_util.tree_leaves(p)) == 5
 

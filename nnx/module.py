@@ -81,7 +81,7 @@ class ModuleDef(tp.Generic[M]):
     def static_fields(self) -> tp.Tuple[tp.Tuple[str, tp.Any], ...]:
         return self._static_fields
 
-    def reref(
+    def unflatten(
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> M:
@@ -97,13 +97,13 @@ class ModuleDef(tp.Generic[M]):
         else:
             state = _merge_state(states.values())
 
-        return _reref(state, self)
+        return _unflatten(state, self)
 
     def apply(
         self,
         partitions: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> ApplyCaller:
-        module: M = self.reref(partitions)
+        module: M = self.unflatten(partitions)
 
         def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
             out = fn(*args, **kwargs)
@@ -132,7 +132,7 @@ def _moddef_unflatten(
 jtu.register_pytree_node(ModuleDef, _moddef_flatten, _moddef_unflatten)
 
 
-class DerefedMod(tp.Tuple[P, ModuleDef[M]]):
+class FlatMod(tp.Tuple[P, ModuleDef[M]]):
     @property
     def partitions(self) -> P:
         return self[0]
@@ -141,23 +141,23 @@ class DerefedMod(tp.Tuple[P, ModuleDef[M]]):
     def moduledef(self) -> ModuleDef[M]:
         return self[1]
 
-    def reref(self) -> M:
-        return self.moduledef.reref(self.partitions)
+    def unflatten(self) -> M:
+        return self.moduledef.unflatten(self.partitions)
 
     @property
     def apply(self) -> ApplyCaller:
         return self.moduledef.apply(self.partitions)
 
 
-def _derefedmod_flatten(bounded: DerefedMod[P, M]):
+def _derefedmod_flatten(bounded: FlatMod[P, M]):
     return tuple(bounded), None
 
 
 def _derefedmod_unflatten(_, values):
-    return DerefedMod(values)
+    return FlatMod(values)
 
 
-jtu.register_pytree_node(DerefedMod, _derefedmod_flatten, _derefedmod_unflatten)
+jtu.register_pytree_node(FlatMod, _derefedmod_flatten, _derefedmod_unflatten)
 
 
 if tp.TYPE_CHECKING:
@@ -211,20 +211,20 @@ class Module(ABC):
     def __hash__(self) -> int:
         return id(self)
 
-    def deref(self: M) -> DerefedMod[State, M]:
-        state, moduledef = _deref(self)
+    def flatten(self: M) -> FlatMod[State, M]:
+        state, moduledef = _flatten(self)
         state = State(state)
-        return DerefedMod((state, moduledef))
+        return FlatMod((state, moduledef))
 
     def clone(self: M) -> M:
-        return self.deref().reref()
+        return self.flatten().unflatten()
 
     def partition_general(
         self: M, *filters: partitioning.CollectionFilter
-    ) -> DerefedMod[tp.Tuple[State, ...], M]:
-        state, moduledef = self.deref()
+    ) -> FlatMod[tp.Tuple[State, ...], M]:
+        state, moduledef = self.flatten()
         states = _split_state(state, *filters)
-        return DerefedMod((states, moduledef))
+        return FlatMod((states, moduledef))
 
     @tp.overload
     def partition(
@@ -232,19 +232,19 @@ class Module(ABC):
         collection: None = None,
         second: None = None,
         /,
-    ) -> DerefedMod[tp.Dict[str, State], M]:
+    ) -> FlatMod[tp.Dict[str, State], M]:
         ...
 
     @tp.overload
     def partition(
         self: M, collection: str, second: None = None, /
-    ) -> DerefedMod[State, M]:
+    ) -> FlatMod[State, M]:
         ...
 
     @tp.overload
     def partition(
         self: M, collection: str, second: str, /, *collections: str
-    ) -> DerefedMod[tp.Tuple[State, ...], M]:
+    ) -> FlatMod[tp.Tuple[State, ...], M]:
         ...
 
     def partition(
@@ -254,9 +254,9 @@ class Module(ABC):
         /,
         *collections: str,
     ) -> tp.Union[
-        DerefedMod[State, M],
-        DerefedMod[tp.Tuple[State, ...], M],
-        DerefedMod[tp.Dict[str, State], M],
+        FlatMod[State, M],
+        FlatMod[tp.Tuple[State, ...], M],
+        FlatMod[tp.Dict[str, State], M],
     ]:
         if second is not None:
             collections = (second, *collections)
@@ -273,7 +273,7 @@ class Module(ABC):
                 self, collections[0], collections[1], *collections[2:]
             )
 
-        return DerefedMod((partitions, moddef))  # type: ignore
+        return FlatMod((partitions, moddef))  # type: ignore
 
     @tp.overload
     def get(
@@ -378,18 +378,18 @@ class Module(ABC):
         return state
 
 
-def _deref(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
+def _flatten(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
     module_index: tp.Dict[int, int] = {}
     path: Path = ()
     state: tp.Dict[Path, tp.Any] = {}
 
-    moduledef = _deref_recursive(module, module_index, path, state)
+    moduledef = _flatten_recursive(module, module_index, path, state)
     assert isinstance(moduledef, ModuleDef)
 
     return state, moduledef
 
 
-def _deref_recursive(
+def _flatten_recursive(
     module: M,
     module_index: tp.Dict[int, int],
     path: Path,
@@ -404,7 +404,7 @@ def _deref_recursive(
     for name, value in vars(module).items():
         value_path = (*path, name)
         if isinstance(value, Module):
-            submodule_dag = _deref_recursive(value, module_index, value_path, state)
+            submodule_dag = _flatten_recursive(value, module_index, value_path, state)
             submodules.append((name, submodule_dag))
         elif isinstance(value, Variable):
             state[value_path] = value.copy()
@@ -454,10 +454,10 @@ def _state_dict_recursive(
             state[value_path] = value
 
 
-def _reref(state: StateMapping, moduledef: ModuleDef[M]) -> M:
+def _unflatten(state: StateMapping, moduledef: ModuleDef[M]) -> M:
     index_module: tp.Dict[int, Module] = {}
     module = _build_module(moduledef, index_module)
-    state = _reref_state(state)
+    state = _set_context_trace(state)
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)
@@ -472,7 +472,7 @@ def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _reref_state(state: StateMapping) -> StateDict:
+def _set_context_trace(state: StateMapping) -> StateDict:
     new_state: StateDict = {}
     context_trace = tracers.get_top_trace(state)
 
@@ -517,30 +517,30 @@ def _merge_state(partitions: tp.Iterable[StateMapping]) -> StateDict:
 
 
 @tp.overload
-def _partition_by_collection(module: M) -> DerefedMod[tp.Dict[str, State], M]:
+def _partition_by_collection(module: M) -> FlatMod[tp.Dict[str, State], M]:
     ...
 
 
 @tp.overload
-def _partition_by_collection(module: M, collection: str) -> DerefedMod[State, M]:
+def _partition_by_collection(module: M, collection: str) -> FlatMod[State, M]:
     ...
 
 
 @tp.overload
 def _partition_by_collection(
     module: M, collection: str, second: str, *rest: str
-) -> DerefedMod[tp.Tuple[State, ...], M]:
+) -> FlatMod[tp.Tuple[State, ...], M]:
     ...
 
 
 def _partition_by_collection(
     module: M, *collections: str
 ) -> tp.Union[
-    DerefedMod[State, M],
-    DerefedMod[tp.Tuple[State, ...], M],
-    DerefedMod[tp.Dict[str, State], M],
+    FlatMod[State, M],
+    FlatMod[tp.Tuple[State, ...], M],
+    FlatMod[tp.Dict[str, State], M],
 ]:
-    state, moddef = module.deref()
+    state, moddef = module.flatten()
 
     num_collections = len(collections)
 
@@ -574,7 +574,7 @@ def _partition_by_collection(
     elif num_collections == 1:
         states = states[0]
 
-    return DerefedMod((states, moddef))  # type: ignore
+    return FlatMod((states, moddef))  # type: ignore
 
 
 def _split_state(

@@ -41,9 +41,9 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any, MLP]:
+def train_step(derefmod: nnx.FlatMod[Any, MLP], batch) -> nnx.FlatMod[Any, MLP]:
     x, y = batch
-    model = derefmod.reref()
+    model = derefmod.unflatten()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
@@ -54,13 +54,13 @@ def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any,
     #                           |-------- sgd ---------|
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
-    return model.deref()
+    return model.flatten()
 
 
 @jax.jit
-def test_step(unbound: nnx.DerefedMod[Any, MLP], batch):
+def test_step(unbound: nnx.FlatMod[Any, MLP], batch):
     x, y = batch
-    model = unbound.reref()
+    model = unbound.unflatten()
     y_pred = model(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
@@ -68,7 +68,7 @@ def test_step(unbound: nnx.DerefedMod[Any, MLP], batch):
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-derefmod = model.deref()
+derefmod = model.flatten()
 
 
 total_steps = 10_000
@@ -82,7 +82,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = derefmod.reref()
+model = derefmod.unflatten()
 print("times called:", model.count)
 
 y_pred = model(X)

@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 import jax.stages
-from nnx.module import DerefedMod, Module, ModuleDef
+from nnx.module import FlatMod, Module, ModuleDef
 from nnx.state import State
 import jax.tree_util as jtu
 from nnx import context
@@ -29,14 +29,14 @@ class JitTransform(jax.stages.Wrapped):
     ):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(
-            dermod: DerefedMod[State, Module],
+            dermod: FlatMod[State, Module],
             *args,
             **kwargs,
         ):
-            module = dermod.reref()
+            module = dermod.unflatten()
             out = fun(module, *args, **kwargs)
             if self.stateful:
-                out = (module.deref().partitions, out)
+                out = (module.flatten().partitions, out)
             return out
 
         self.jitted_fn = jitted_fn
@@ -46,7 +46,7 @@ class JitTransform(jax.stages.Wrapped):
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
-        out = self.jitted_fn(module.deref(), *args, **kwargs)
+        out = self.jitted_fn(module.flatten(), *args, **kwargs)
         if self.stateful:
             updates, out = out
             module.update(updates)
@@ -139,11 +139,11 @@ class GradTransform:
             moddef: ModuleDef[Module],
             *args: tp.Any,
         ):
-            module = moddef.reref((diff, non_diff))
+            module = moddef.unflatten((diff, non_diff))
             out = fun(module, *args)
 
             if self.stateful:
-                updates = module.deref().partitions
+                updates = module.flatten().partitions
                 if self.has_aux:
                     loss, aux = out
                     out = (loss, (updates, aux))
