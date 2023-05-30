@@ -8,7 +8,7 @@ import nnx
 
 
 def collection(collection: str):
-    return lambda x: isinstance(x, nnx.Referential) and x.collection == collection
+    return lambda x: isinstance(x, nnx.Ref) and x.collection == collection
 
 
 class TestFilters:

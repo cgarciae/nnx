@@ -11,8 +11,6 @@ class TestRef:
     def test_slots(self):
         ref = nnx.Ref(1, "")
         assert not hasattr(ref, "__dict__")
-        value = nnx.Value(1, "", None)
-        assert not hasattr(value, "__dict__")
 
     def test_ref(self):
         r1 = nnx.Ref(1, "")

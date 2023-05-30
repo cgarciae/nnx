@@ -58,8 +58,6 @@ from .nn.stochastic import Dropout
 from .reference import (
     Partition,
     Ref,
-    Referential,
-    Value,
     param,
     ref,
     RefMetadata,

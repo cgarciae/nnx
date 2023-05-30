@@ -5,7 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
-from nnx.reference import Partition, Ref, Value
+from nnx.reference import Partition, Ref
 import typing as tp
 import jax.tree_util as jtu
 import builtins
@@ -345,7 +345,7 @@ class Module(ABC):
 
         # sort by Values first, then by other values
         new_state = dict(
-            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Value) else 2)
+            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Ref) else 2)
         )
 
         current_state = self.ref_dict()
@@ -354,7 +354,7 @@ class Module(ABC):
         )
 
         for path, new_value in new_state.items():
-            if isinstance(new_value, Value):
+            if isinstance(new_value, Ref):
                 if path in current_state:
                     assert isinstance(current_state[path], Ref)
                     current_state[path].value = new_value.value
@@ -411,7 +411,7 @@ def _deref_recursive(
             submodule_dag = _deref_recursive(value, module_index, value_path, state)
             submodules.append((name, submodule_dag))
         elif isinstance(value, Ref):
-            state[value_path] = value.to_value()
+            state[value_path] = value.copy()
         elif isinstance(value, (jax.Array, np.ndarray)):
             state[value_path] = value
         else:
@@ -479,7 +479,7 @@ def _reref_state(state: StateLike) -> State:
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if isinstance(value, Value):
+        if isinstance(value, Ref):
             new_state[path] = value.to_ref(context_trace)
         else:
             new_state[path] = value
@@ -548,7 +548,7 @@ def _partition_by_collection(
 
     if num_collections == 0:
         collections = tuple(
-            set(x.collection for x in partition.values() if isinstance(x, Value))
+            set(x.collection for x in partition.values() if isinstance(x, Ref))
         )
         if "rest" in collections:
             raise ValueError("Found reserved 'rest' collection name in module Refs")

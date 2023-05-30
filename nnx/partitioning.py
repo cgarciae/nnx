@@ -4,7 +4,8 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx.reference import Referential
+from nnx.reference import Ref
+
 
 Predicate = tp.Callable[[tp.Tuple[str, ...], tp.Any], bool]
 CollectionFilter = tp.Union[
@@ -30,7 +31,7 @@ class Is:
     collection: str
 
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
-        if isinstance(x, Referential):
+        if isinstance(x, Ref):
             return x.collection == self.collection
         return False
 
