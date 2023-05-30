@@ -205,6 +205,12 @@ class RefUpdater(tp.Generic[M]):
 
         return value
 
+    def __getattr__(self, name: str) -> Ref[tp.Any]:
+        return self[name]
+
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        self[__name] = __value
+
     def __setitem__(self, name: str, value: Ref[tp.Any]) -> None:
         if not isinstance(value, Ref):
             raise TypeError(f"Expected Ref, got {type(value).__name__}")
