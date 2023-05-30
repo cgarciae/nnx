@@ -55,11 +55,11 @@ from .nn.initializers import (
 from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
-from .reference import (
+from .state import (
     State,
     Variable,
     param,
-    ref,
+    var,
     VarMetadata,
     var_metadata,
     with_partitioning,

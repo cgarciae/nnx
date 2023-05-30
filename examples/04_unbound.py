@@ -28,7 +28,7 @@ class Linear(nnx.Module):
 
 class MLP(nnx.Module):
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = nnx.ref("state", jnp.array(0))
+        self.count = nnx.var("state", jnp.array(0))
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 

@@ -4,7 +4,7 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx.reference import Variable
+from nnx.state import Variable
 
 
 Predicate = tp.Callable[[tp.Tuple[str, ...], tp.Any], bool]

@@ -7,7 +7,7 @@ import nnx
 A = tp.TypeVar("A")
 
 
-class TestRef:
+class TestVariable:
     def test_slots(self):
         ref = nnx.Variable(1, "")
         assert not hasattr(ref, "__dict__")

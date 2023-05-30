@@ -206,7 +206,7 @@ jtu.register_pytree_with_keys(
 )
 
 
-def ref(
+def var(
     collection: str,
     value: tp.Union[A, VarMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
@@ -227,7 +227,7 @@ def param(
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> A:
-    return ref(
+    return var(
         "params",
         value,
         sharding=sharding,

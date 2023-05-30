@@ -5,7 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
-from nnx.reference import State, Variable
+from nnx.state import State, Variable
 import typing as tp
 import jax.tree_util as jtu
 import builtins

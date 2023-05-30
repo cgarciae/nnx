@@ -4,7 +4,7 @@ import typing as tp
 import jax
 import jax.stages
 from nnx.module import DerefedMod, Module, ModuleDef
-from nnx.reference import State
+from nnx.state import State
 import jax.tree_util as jtu
 from nnx import context
 

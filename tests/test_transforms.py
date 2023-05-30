@@ -87,7 +87,7 @@ class TestGrad:
 
     def test_grad_with_multiple_ref_types(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(10.0), nnx.ref("batch_stats", 20.0)]),
+            a=nnx.Seq([nnx.param(10.0), nnx.var("batch_stats", 20.0)]),
             b=nnx.param(10.0),
             c=7,
             d=5.0,
@@ -116,7 +116,7 @@ class TestGrad:
 
     def test_grad_with_type_predicate(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(10.0), nnx.ref("batch_stats", 20.0)]),
+            a=nnx.Seq([nnx.param(10.0), nnx.var("batch_stats", 20.0)]),
             b=nnx.param(10.0),
             c=7,
             d=5.0,

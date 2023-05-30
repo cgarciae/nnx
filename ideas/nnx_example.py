@@ -20,8 +20,8 @@ class Linear(nnx.Module):
 class BatchNorm(nnx.Module):
     scale: jax.Array = nnx.param()
     bias: jax.Array = nnx.param()
-    mean: jax.Array = nnx.ref("batch_stats")
-    var: jax.Array = nnx.ref("batch_stats")
+    mean: jax.Array = nnx.var("batch_stats")
+    var: jax.Array = nnx.var("batch_stats")
     mu: float = nnx.static_field()
 
     def __init__(self, din: int, mu: float = 0.95):
