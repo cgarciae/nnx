@@ -16,59 +16,41 @@ class TestRef:
         r1 = nnx.Variable(1, "")
         assert r1.value == 1
 
-        def add_one(r):
-            r.value += 1
-            return r
+        r2 = jax.tree_map(lambda x: x + 1, r1)
 
-        r2 = jax.tree_map(add_one, r1)
-
-        assert r1.value == 2
+        assert r1.value == 1
         assert r2.value == 2
-        assert r1 is r2
+        assert r1 is not r2
 
         r1.value = 3
 
         assert r1.value == 3
-        assert r2.value == 3
+        assert r2.value == 2
 
     def test_ref_trace_level(self):
-        r1: nnx.Variable[int] = nnx.Variable(1, "")
+        m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
         def f():
             with pytest.raises(
                 ValueError, match="Cannot mutate ref from different trace level"
             ):
-                r1.value = 2
-            return 1
+                m.a = 2
 
         f()
 
         @jax.jit
-        def g(derefed: nnx.DerefedMod[nnx.Partition, nnx.Seq[tp.Any]]):
-            r2, r3 = derefed.reref()
+        def g(dermod: nnx.DerefedMod[nnx.State, nnx.Map[int]]):
+            m = dermod.reref()
+            m.a = 2
+            return m.deref()
 
-            r2.value = 2
-            assert r1 is not r2
-            return nnx.Seq([r2]).deref()
+        m2 = g(m.deref()).reref()
 
-        m = nnx.Seq((r1, r1))
-        r2 = g(m.deref()).reref()[0]
-
-        assert r1.value == 1
-        assert r2.value == 2
-
-        r2.value = 3
-        assert r1.value == 1
-        assert r2.value == 3
-
-        r3 = g(nnx.Seq((r1, r1)).deref()).reref()[0]
-
-        assert r3 is not r2
-        assert r3.value == 2
+        assert m2.a == 2
 
     def test_ref_trace_level_grad(self):
-        r1: nnx.Variable[int] = nnx.Variable(1, "")
+        m = nnx.Map(a=nnx.param(1))
 
         @jax.grad
         def f(w):
@@ -76,7 +58,7 @@ class TestRef:
                 ValueError,
                 match="Cannot mutate ref with value that contains tracers from other",
             ):
-                r1.value = w
+                m.a = w
             return 1.0
 
         f(3.0)
@@ -88,7 +70,7 @@ class TestRef:
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(dermod: nnx.DerefedMod[nnx.Partition, nnx.Map[tp.Any]]):
+        def f(dermod: nnx.DerefedMod[nnx.State, nnx.Map[tp.Any]]):
             m = dermod.reref()
 
             assert m["a"][0] is not m["b"]
@@ -138,64 +120,54 @@ class TestRef:
         x = g()
 
     def test_cross_barrier(self):
-        r1: nnx.Variable[int] = nnx.Variable(1, "")
+        m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
-        def g(dermod: nnx.DerefedMod[nnx.Partition, nnx.Seq[tp.Any]]):
-            r2 = dermod.reref()[0]
-            r2.value += 1
-            assert r1 is not r2
-            return nnx.Seq([r2]).deref()
+        def g(dermod: nnx.DerefedMod[nnx.State, nnx.Map[int]]):
+            m = dermod.reref()
+            m.a += 1
+            return m.deref()
 
-        r2 = g(nnx.Seq([r1]).deref()).reref()[0]
-        assert r1 is not r2
-        assert r1.value == 1
-        assert r2.value == 2
+        m2 = g(m.deref()).reref()
+        assert m2 is not m
+        assert m.a == 1
+        assert m2.a == 2
 
-        r3 = g(nnx.Seq([r2]).deref()).reref()[0]
-        assert r1 is not r2
-        assert r2 is not r3
-        assert r1.value == 1
-        assert r2.value == 2
-        assert r3.value == 3
-
-        # test passing a reference to a jitted function without cross_barrier
+        # test passing a Module to a jitted function directly
         @jax.jit
-        def f(r1):
+        def f(m):
             return None
 
         with pytest.raises(TypeError, match="Cannot interpret value of type"):
-            f(r1)
-
-        assert isinstance(r1.value, int)
-        assert r1.value == 1
+            f(m)
 
     def test_no_rejit(self):
         n = 0
-        r1 = nnx.Variable(1, "a")
-        r2 = nnx.Variable(2, "b")
+        m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
         def g(dermod):
-            r3, r4, r5 = dermod.reref()
             nonlocal n
             n += 1
-            assert r3 is not r4
-            assert r4 is not r5
-            return nnx.Seq([r3]).deref()
+            m = dermod.reref()
+            m.a += 1
+            return m.deref()
 
-        r6 = g(nnx.Seq((r1, r1, r2)).deref()).reref()[0]
-        assert r6 is not r1
-        assert r6.value == r1.value
+        m2 = g(m.deref()).reref()
+
+        assert n == 1
+        assert m2 is not m
+        assert m.a == 1
+        assert m2.a == 2
+
+        g(m.deref())
         assert n == 1
 
-        g(nnx.Seq((r1, r1, r2)).deref())
+        g(m2.deref())
         assert n == 1
 
-        g(nnx.Seq((r2, r2, r1)).deref())
-        assert n == 2
-
-        g(nnx.Seq((r1, r1, r2)).deref())
+        m2.b = nnx.param(10)
+        g(m2.deref())
 
         assert n == 2
 
@@ -243,22 +215,18 @@ class TestRef:
                 r2.value = 4
 
     def test_clone(self):
-        r1 = nnx.Variable(1, "")
-        r2 = nnx.Variable(2, "")
-        v1 = 3
         m = nnx.Map(
-            {
-                "a": nnx.Seq([r1, r2, v1]),
-                "b": nnx.Map({"c": r1, "d": r2}),
-            }
+            a=nnx.Seq([nnx.param(1), nnx.param(2), 3]),
+            b=nnx.Map(c=nnx.param(1), d=nnx.param(2)),
         )
 
         m2 = m.clone()
 
-        assert m2["a"][0] is not m2["b"]["c"]
-        assert m2["a"][1] is not m2["b"]["d"]
+        assert m is not m2
+        assert m2.a[0] == m2.b.c
+        assert m2.a[1] == m2.b.d
 
-        assert m["a"][0] is not m2["a"][0]
-        assert m["a"][1] is not m2["a"][1]
-        assert m["b"]["c"] is not m2["b"]["c"]
-        assert m["b"]["d"] is not m2["b"]["d"]
+        assert m.a[0] == m2.a[0]
+        assert m.a[1] == m2.a[1]
+        assert m.b.c == m2.b.c
+        assert m.b.d == m2.b.d

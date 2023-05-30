@@ -342,7 +342,7 @@ class Decoder(nnx.Module):
             assert isinstance(self.layers, DecoderBlock)
 
             def scan_fn(
-                x, s: tp.Tuple[tp.Any, nnx.DerefedMod[nnx.Partition, DecoderBlock]]
+                x, s: tp.Tuple[tp.Any, nnx.DerefedMod[nnx.State, DecoderBlock]]
             ):
                 key, decoder_block = s
                 return decoder_block.apply(cfg, x, ctx=nnx.Context(dropout=key))

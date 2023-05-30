@@ -13,13 +13,9 @@ def has_collection(collection):
 
 class TestPartitioning:
     def test_partition_tree(self):
-        p1 = nnx.Variable(1, collection="params")
-        p2 = nnx.Variable(2, collection="params")
-        s1 = nnx.Variable(3, collection="batch_stats")
-
         m = nnx.Map(
-            a=nnx.Seq([p1, s1]),
-            b=p2,
+            a=nnx.Seq([nnx.param(1), nnx.ref("batch_stats", 2)]),
+            b=nnx.param(2),
             c=100,
         )
 
@@ -29,48 +25,40 @@ class TestPartitioning:
         assert len(rest) == 1
 
         # check params
-        assert params[("a", "0")].value == p1.value
-        assert params[("b",)].value == p2.value
+        assert params[("a", "0")].value == m.a[0]
+        assert params[("b",)].value == m.b
 
         # check rest
-        assert rest[("a", "1")].value == s1.value
+        assert rest[("a", "1")].value == m.a[1]
 
-        m = moddef.reref((params, rest))
+        m2 = moddef.reref((params, rest))
 
-        assert m["a"][0].value == p1.value
-        assert m["a"][1].value == s1.value
-        assert m["b"].value == p2.value
-        assert m["c"] == 100
+        assert m2.a[0] == m.a[0]
+        assert m2.a[1] == m.a[1]
+        assert m2.b == m.b
+        assert m2.c == 100
 
     def test_update_from(self):
-        p1 = nnx.Variable(1, collection="params")
-        p2 = nnx.Variable(2, collection="params")
-        s1 = nnx.Variable(3, collection="batch_stats")
-
         m = nnx.Map(
-            a=nnx.Seq([p1, s1]),
-            b=p2,
+            a=nnx.Seq([nnx.param(1), nnx.ref("batch_stats", 3)]),
+            b=nnx.param(2),
             c=100,
         )
 
-        partition, moddef = m.deref()
-        partition = jax.tree_map(lambda x: x * 2, partition)
+        state = m.deref()[0]
+        state = jax.tree_map(lambda x: x * 2, state)
 
-        m.update(partition)
+        m.update(state)
 
-        assert m["a"][0].value == 2
-        assert m["a"][1].value == 6
-        assert m["b"].value == 4
-        assert m["c"] == 100
+        assert m.a[0] == 2
+        assert m.a[1] == 6
+        assert m.b == 4
+        assert m.c == 100
 
     def test_update_from_with_array_leaf(self):
-        p1 = nnx.Variable(1, collection="params")
-        p2 = nnx.Variable(2, collection="params")
-        s1 = nnx.Variable(3, collection="batch_stats")
-
         m = nnx.Map(
-            a=nnx.Seq([p1, s1]),
-            b=p2,
+            a=nnx.Seq([nnx.param(1), nnx.ref("batch_stats", 3)]),
+            b=nnx.param(2),
             c=jax.numpy.array(100),
         )
 
@@ -79,18 +67,15 @@ class TestPartitioning:
 
         m.update(dermod.partitions)
 
-        assert m["a"][0].value == 2
-        assert m["a"][1].value == 6
-        assert m["b"].value == 4
-        assert m["c"] == 200
+        assert m.a[0] == 2
+        assert m.a[1] == 6
+        assert m.b == 4
+        assert m.c == 200
 
     def test_grad_example(self):
-        p1 = nnx.Variable(1.0, collection="params")
-        s1 = nnx.Variable(-10, collection="batch_stats")
-
         m = nnx.Map(
-            a=nnx.Seq([p1, s1]),
-            b=p1,
+            a=nnx.Seq([nnx.param(1.0), nnx.ref("batch_stats", -10)]),
+            b=nnx.param(2.0),
             c=100,
         )
 
@@ -102,28 +87,25 @@ class TestPartitioning:
         grads = jax.grad(loss)(params)
         m.update(grads)
 
-        assert m["a"][0].value == 2.0
-        assert m["a"][1].value == -10
-        assert m["b"].value == 2.0
-        assert m["c"] == 100
+        assert m.a[0] == 2.0
+        assert m.a[1] == -10
+        assert m.b == 2.0
+        assert m.c == 100
 
     def test_get_paritition(self):
-        p1 = nnx.Variable(10.0, "")
-        p2 = nnx.Variable(20.0, "")
-
         m = nnx.Map(
-            a=nnx.Seq([p1, p2]),
-            b=p1,
+            a=nnx.Seq([nnx.param(10.0), nnx.param(20.0)]),
+            b=nnx.param(10.0),
             c=7,
             d=5.0,
         )
 
-        # refs are not shared
-        assert m.a[0] is not m.b
+        # test Variables not shared
+        assert vars(m.a)["0"] is not vars(m)["b"]
 
-        partition = m.get(any_ref)
-        assert partition[("a", "0")].value == p1.value
-        assert partition[("a", "1")].value == p2.value
-        assert partition[("b",)].value == p1.value
-        assert partition[("b",)] is not partition[("a", "0")]
-        assert len(partition) == 3
+        state = m.get(any_ref)
+        assert state[("a", "0")].value == m.a[0]
+        assert state[("a", "1")].value == m.a[1]
+        assert state[("b",)].value == m.b
+        assert state[("b",)] is not state[("a", "0")]
+        assert len(state) == 3

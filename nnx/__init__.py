@@ -56,12 +56,12 @@ from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .reference import (
-    Partition,
+    State,
     Variable,
     param,
     ref,
-    RefMetadata,
-    ref_metadata,
+    VarMetadata,
+    var_metadata,
     with_partitioning,
 )
 from .transforms import grad, jit

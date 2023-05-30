@@ -5,7 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
-from nnx.reference import Partition, Variable
+from nnx.reference import State, Variable
 import typing as tp
 import jax.tree_util as jtu
 import builtins
@@ -15,18 +15,18 @@ A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
 P = tp.TypeVar(
     "P",
-    bound=tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
+    bound=tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
 )
 Path = tp.Tuple[str, ...]
-State = tp.Dict[Path, tp.Any]
-StateLike = tp.Mapping[Path, tp.Any]
+StateDict = tp.Dict[Path, tp.Any]
+StateMapping = tp.Mapping[Path, tp.Any]
 
 
 class ApplyCaller(tp.Protocol):
     def __getattr__(self, __name) -> "ApplyCaller":
         ...
 
-    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
         ...
 
 
@@ -83,33 +83,29 @@ class ModuleDef(tp.Generic[M]):
 
     def reref(
         self,
-        partitions: tp.Union[
-            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
-        ],
+        states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> M:
-        if not isinstance(partitions, (Partition, tuple, dict)):
+        if not isinstance(states, (State, tuple, dict)):
             raise TypeError(
                 f"partitions must be a Partition, tuple of Partitions, or dict of Partitions, "
-                f"got {type(partitions).__name__}"
+                f"got {type(states).__name__}"
             )
-        if isinstance(partitions, Partition):
-            partition = partitions
-        elif isinstance(partitions, tuple):
-            partition = _merge_state(partitions)
+        if isinstance(states, State):
+            state = states
+        elif isinstance(states, tuple):
+            state = _merge_state(states)
         else:
-            partition = _merge_state(partitions.values())
+            state = _merge_state(states.values())
 
-        return _reref(partition, self)
+        return _reref(state, self)
 
     def apply(
         self,
-        partitions: tp.Union[
-            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
-        ],
+        partitions: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> ApplyCaller:
         module: M = self.reref(partitions)
 
-        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, Partition]]:
+        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
             out = fn(*args, **kwargs)
             updates, _ = module.partition()
             return out, updates
@@ -215,20 +211,20 @@ class Module(ABC):
     def __hash__(self) -> int:
         return id(self)
 
-    def deref(self: M) -> DerefedMod[Partition, M]:
+    def deref(self: M) -> DerefedMod[State, M]:
         state, moduledef = _deref(self)
-        partition = Partition(state)
-        return DerefedMod((partition, moduledef))
+        state = State(state)
+        return DerefedMod((state, moduledef))
 
     def clone(self: M) -> M:
         return self.deref().reref()
 
     def partition_general(
         self: M, *filters: partitioning.CollectionFilter
-    ) -> DerefedMod[tp.Tuple[Partition, ...], M]:
-        partition, moduledef = self.deref()
-        partitions = _split_partition(partition, *filters)
-        return DerefedMod((partitions, moduledef))
+    ) -> DerefedMod[tp.Tuple[State, ...], M]:
+        state, moduledef = self.deref()
+        states = _split_state(state, *filters)
+        return DerefedMod((states, moduledef))
 
     @tp.overload
     def partition(
@@ -236,19 +232,19 @@ class Module(ABC):
         collection: None = None,
         second: None = None,
         /,
-    ) -> DerefedMod[tp.Dict[str, Partition], M]:
+    ) -> DerefedMod[tp.Dict[str, State], M]:
         ...
 
     @tp.overload
     def partition(
         self: M, collection: str, second: None = None, /
-    ) -> DerefedMod[Partition, M]:
+    ) -> DerefedMod[State, M]:
         ...
 
     @tp.overload
     def partition(
         self: M, collection: str, second: str, /, *collections: str
-    ) -> DerefedMod[tp.Tuple[Partition, ...], M]:
+    ) -> DerefedMod[tp.Tuple[State, ...], M]:
         ...
 
     def partition(
@@ -258,9 +254,9 @@ class Module(ABC):
         /,
         *collections: str,
     ) -> tp.Union[
-        DerefedMod[Partition, M],
-        DerefedMod[tp.Tuple[Partition, ...], M],
-        DerefedMod[tp.Dict[str, Partition], M],
+        DerefedMod[State, M],
+        DerefedMod[tp.Tuple[State, ...], M],
+        DerefedMod[tp.Dict[str, State], M],
     ]:
         if second is not None:
             collections = (second, *collections)
@@ -284,7 +280,7 @@ class Module(ABC):
         self,
         filter: partitioning.CollectionFilter,
         /,
-    ) -> Partition:
+    ) -> State:
         ...
 
     @tp.overload
@@ -294,12 +290,12 @@ class Module(ABC):
         filter2: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
-    ) -> tp.Tuple[Partition, ...]:
+    ) -> tp.Tuple[State, ...]:
         ...
 
     def get(
         self, *filters: partitioning.CollectionFilter
-    ) -> tp.Union[Partition, tp.Tuple[Partition, ...]]:
+    ) -> tp.Union[State, tp.Tuple[State, ...]]:
         if len(filters) == 0:
             raise ValueError("Expected at least one filter")
 
@@ -318,30 +314,28 @@ class Module(ABC):
     def update(
         self,
     ) -> tp.Callable[
-        [tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]]], None
+        [tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]]], None
     ]:
         return lambda partitions: self._update(partitions)
 
     @update.setter
     def update(
         self,
-        value: tp.Union[Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]],
+        value: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> None:
         self._update(value)
 
     def _update(
         self,
-        partitions: tp.Union[
-            Partition, tp.Tuple[Partition, ...], tp.Dict[str, Partition]
-        ],
+        partitions: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> None:
-        if isinstance(partitions, Partition):
+        if isinstance(partitions, State):
             new_state = partitions
         else:
             if isinstance(partitions, dict):
                 partitions = tuple(partitions.values())
 
-            new_state = _merge_partitions(partitions)
+            new_state = _merge_states(partitions)
 
         # sort by Values first, then by other values
         new_state = dict(
@@ -350,7 +344,7 @@ class Module(ABC):
             )
         )
 
-        current_state = self.ref_dict()
+        current_state = self.state_dict()
         context_trace = tracers.get_top_trace(
             [x.value if isinstance(x, Variable) else x for x in current_state.values()]
         )
@@ -361,31 +355,31 @@ class Module(ABC):
                     assert isinstance(current_state[path], Variable)
                     current_state[path].value = new_value.value
                 else:
-                    current_state[path] = new_value.to_ref(context_trace)
+                    current_state[path] = new_value.set_trace(context_trace)
                     _set_value_at_path(self, path, current_state[path])
             else:
                 _set_value_at_path(self, path, new_value)
 
     @tp.overload
-    def ref_dict(self) -> tp.Dict[Path, tp.Any]:
+    def state_dict(self) -> tp.Dict[Path, tp.Any]:
         ...
 
     @tp.overload
-    def ref_dict(self, sep: str) -> tp.Dict[str, tp.Any]:
+    def state_dict(self, sep: str) -> tp.Dict[str, tp.Any]:
         ...
 
-    def ref_dict(
+    def state_dict(
         self, sep: tp.Optional[str] = None
     ) -> tp.Union[tp.Dict[Path, tp.Any], tp.Dict[str, tp.Any]]:
-        state = _ref_dict(self)
+        state = _state_dict(self)
 
         if sep is not None:
             state = {sep.join(path): leaf for path, leaf in state.items()}
         return state
 
 
-def _deref(module: M) -> tp.Tuple[State, ModuleDef[M]]:
-    module_index: tp.Dict[Module, int] = {}
+def _deref(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
+    module_index: tp.Dict[int, int] = {}
     path: Path = ()
     state: tp.Dict[Path, tp.Any] = {}
 
@@ -397,12 +391,12 @@ def _deref(module: M) -> tp.Tuple[State, ModuleDef[M]]:
 
 def _deref_recursive(
     module: M,
-    module_index: tp.Dict[Module, int],
+    module_index: tp.Dict[int, int],
     path: Path,
     state: tp.Dict[Path, tp.Any],
 ) -> tp.Union[ModuleDef[M], int]:
-    if module in module_index:
-        return module_index[module]
+    if id(module) in module_index:
+        return module_index[id(module)]
 
     submodules = []
     static_fields = []
@@ -426,39 +420,41 @@ def _deref_recursive(
         submodules=tuple(submodules),
         static_fields=tuple(static_fields),
     )
-    module_index[module] = index
+    module_index[id(module)] = index
     return module_dag
 
 
-def _ref_dict(module: Module) -> State:
-    seen_modules: tp.Set[Module] = set()
+def _state_dict(module: Module) -> StateDict:
+    seen_modules: tp.Set[int] = set()
     path: Path = ()
-    state: State = {}
+    state: StateDict = {}
 
-    _ref_dict_recursive(module, seen_modules, path, state)
+    _state_dict_recursive(module, seen_modules, path, state)
     return state
 
 
-def _ref_dict_recursive(
+def _state_dict_recursive(
     module: Module,
-    seen_modules: tp.Set[Module],
+    seen_modules: tp.Set[int],
     path: Path,
     state: tp.Dict[Path, tp.Any],
 ) -> None:
-    if module in seen_modules:
+    if id(module) in seen_modules:
         return
+
+    seen_modules.add(id(module))
 
     for name, value in vars(module).items():
         value_path = (*path, name)
         if isinstance(value, Module):
-            _ref_dict_recursive(value, seen_modules, value_path, state)
+            _state_dict_recursive(value, seen_modules, value_path, state)
         elif isinstance(value, Variable):
             state[value_path] = value
         elif isinstance(value, (jax.Array, np.ndarray)):
             state[value_path] = value
 
 
-def _reref(state: StateLike, moduledef: ModuleDef[M]) -> M:
+def _reref(state: StateMapping, moduledef: ModuleDef[M]) -> M:
     index_module: tp.Dict[int, Module] = {}
     module = _build_module(moduledef, index_module)
     state = _reref_state(state)
@@ -476,13 +472,13 @@ def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _reref_state(state: StateLike) -> State:
-    new_state: State = {}
+def _reref_state(state: StateMapping) -> StateDict:
+    new_state: StateDict = {}
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
         if isinstance(value, Variable):
-            new_state[path] = value.to_ref(context_trace)
+            new_state[path] = value.set_trace(context_trace)
         else:
             new_state[path] = value
 
@@ -511,8 +507,8 @@ def _build_module(
     return module
 
 
-def _merge_state(partitions: tp.Iterable[StateLike]) -> State:
-    new_state: State = {}
+def _merge_state(partitions: tp.Iterable[StateMapping]) -> StateDict:
+    new_state: StateDict = {}
 
     for state in partitions:
         new_state.update(state)
@@ -521,44 +517,44 @@ def _merge_state(partitions: tp.Iterable[StateLike]) -> State:
 
 
 @tp.overload
-def _partition_by_collection(module: M) -> DerefedMod[tp.Dict[str, Partition], M]:
+def _partition_by_collection(module: M) -> DerefedMod[tp.Dict[str, State], M]:
     ...
 
 
 @tp.overload
-def _partition_by_collection(module: M, collection: str) -> DerefedMod[Partition, M]:
+def _partition_by_collection(module: M, collection: str) -> DerefedMod[State, M]:
     ...
 
 
 @tp.overload
 def _partition_by_collection(
     module: M, collection: str, second: str, *rest: str
-) -> DerefedMod[tp.Tuple[Partition, ...], M]:
+) -> DerefedMod[tp.Tuple[State, ...], M]:
     ...
 
 
 def _partition_by_collection(
     module: M, *collections: str
 ) -> tp.Union[
-    DerefedMod[Partition, M],
-    DerefedMod[tp.Tuple[Partition, ...], M],
-    DerefedMod[tp.Dict[str, Partition], M],
+    DerefedMod[State, M],
+    DerefedMod[tp.Tuple[State, ...], M],
+    DerefedMod[tp.Dict[str, State], M],
 ]:
-    partition, moddef = module.deref()
+    state, moddef = module.deref()
 
     num_collections = len(collections)
 
     if num_collections == 0:
         collections = tuple(
-            set(x.collection for x in partition.values() if isinstance(x, Variable))
+            set(x.collection for x in state.values() if isinstance(x, Variable))
         )
         if "rest" in collections:
             raise ValueError("Found reserved 'rest' collection name in module Refs")
 
-    partitions = _split_partition(partition, *collections)
+    states = _split_state(state, *collections)
 
-    if len(partitions[-1]) == 0:
-        partitions = partitions[:-1]
+    if len(states[-1]) == 0:
+        states = states[:-1]
     else:
         if num_collections == 0:
             collections = (*collections, "rest")
@@ -567,48 +563,48 @@ def _partition_by_collection(
                 f"Expected 'rest' collection to be in collections: {collections}"
             )
 
-    if len(collections) != len(partitions):
+    if len(collections) != len(states):
         raise ValueError(
             f"Expected the number of collections ({len(collections)}) "
-            f"to be equal to the number of partitions ({len(partitions)})."
+            f"to be equal to the number of partitions ({len(states)})."
         )
 
     if num_collections == 0:
-        partitions = dict(zip(collections, partitions))
+        states = dict(zip(collections, states))
     elif num_collections == 1:
-        partitions = partitions[0]
+        states = states[0]
 
-    return DerefedMod((partitions, moddef))  # type: ignore
+    return DerefedMod((states, moddef))  # type: ignore
 
 
-def _split_partition(
-    partition: Partition,
+def _split_state(
+    state: State,
     *filters: partitioning.CollectionFilter,
-) -> tp.Tuple[Partition, ...]:
+) -> tp.Tuple[State, ...]:
     predicates = tuple(map(partitioning.to_predicate, filters))
 
     # we have n + 1 partitions, where n is the number of predicates
-    # the last partition is for values that don't match any predicate
-    partitions: tp.Tuple[State, ...] = tuple({} for _ in range(len(predicates) + 1))
+    # the last state is for values that don't match any predicate
+    states: tp.Tuple[StateDict, ...] = tuple({} for _ in range(len(predicates) + 1))
 
-    for path, value in partition.items():
+    for path, value in state.items():
         for i, predicate in enumerate(predicates):
             if predicate(path, value):
-                partitions[i][path] = value
+                states[i][path] = value
                 break
         else:
-            # if we didn't break, set leaf to last partition
-            partitions[-1][path] = value
+            # if we didn't break, set leaf to last state
+            states[-1][path] = value
 
-    return tuple(Partition(x) for x in partitions)
+    return tuple(State(x) for x in states)
 
 
-def _merge_partitions(
-    partitions: tp.Iterable[Partition],
-) -> Partition:
-    state: State = {}
+def _merge_states(
+    states: tp.Iterable[State],
+) -> State:
+    new_state: StateDict = {}
 
-    for partition in partitions:
-        state.update(partition)
+    for state in states:
+        new_state.update(state)
 
-    return Partition(state)
+    return State(new_state)

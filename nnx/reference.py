@@ -17,7 +17,7 @@ Path = tp.Tuple[str, ...]
 Sharding = jax.sharding.PartitionSpec
 
 
-class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
+class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
     def __init__(
         self,
         __input: tp.Union[
@@ -42,7 +42,7 @@ class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
 
 
 def _partition_flatten_with_keys(
-    x: Partition,
+    x: State,
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[jtu.DictKey, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
 ]:
@@ -52,16 +52,16 @@ def _partition_flatten_with_keys(
 
 
 def _partition_unflatten(keys: tp.Tuple[Path, ...], leaves: tp.Tuple[Leaf, ...]):
-    return Partition(dict(zip(keys, leaves)))
+    return State(dict(zip(keys, leaves)))
 
 
 jax.tree_util.register_pytree_with_keys(
-    Partition, _partition_flatten_with_keys, _partition_unflatten
+    State, _partition_flatten_with_keys, _partition_unflatten
 )
 
 
 @dataclasses.dataclass
-class RefMetadata(tp.Generic[A]):
+class VarMetadata(tp.Generic[A]):
     value: A
     sharding: Sharding
 
@@ -72,20 +72,20 @@ def with_partitioning(
 ) -> initializers.Initializer:
     @functools.wraps(initializer)
     def wrapper(*args):
-        return RefMetadata(initializer(*args), sharding)
+        return VarMetadata(initializer(*args), sharding)
 
     return wrapper  # type: ignore
 
 
-def ref_metadata(value: A, sharding: Sharding) -> RefMetadata[A]:
-    return RefMetadata(value, sharding)
+def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
+    return VarMetadata(value, sharding)
 
 
 class Variable(tp.Generic[A]):
     __slots__ = (
+        "_value",
         "_collection",
         "_sharding",
-        "_value",
         "_jax_trace",
         "_context_trace",
         "_trace_set",
@@ -93,13 +93,13 @@ class Variable(tp.Generic[A]):
 
     def __init__(
         self,
-        value: tp.Union[A, RefMetadata[A]],
+        value: tp.Union[A, VarMetadata[A]],
         collection: str,
         *,
         sharding: tp.Optional[Sharding] = None,
         context_trace: tp.Optional[tracers.MainTrace] = None,
     ):
-        if isinstance(value, RefMetadata):
+        if isinstance(value, VarMetadata):
             if sharding is not None:
                 raise ValueError(
                     "Cannot specify sharding when initializing from RefMetadata"
@@ -114,6 +114,12 @@ class Variable(tp.Generic[A]):
         self._jax_trace = tracers.current_jax_trace()
         self._context_trace = context_trace or self._jax_trace
         self._trace_set = frozenset((self._jax_trace, self._context_trace))
+
+    def __repr__(self) -> str:
+        return (
+            f"Variable(value={self._value}, collection={self._collection}, "
+            f"sharding={self._sharding})"
+        )
 
     @property
     def collection(self) -> str:
@@ -153,7 +159,7 @@ class Variable(tp.Generic[A]):
 
         self._value = value
 
-    def to_ref(self, context_trace: tracers.MainTrace) -> "Variable[A]":
+    def set_trace(self, context_trace: tracers.MainTrace) -> "Variable[A]":
         return Variable(
             self._value,
             self._collection,
@@ -202,7 +208,7 @@ jtu.register_pytree_with_keys(
 
 def ref(
     collection: str,
-    value: tp.Union[A, RefMetadata[A]],
+    value: tp.Union[A, VarMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
@@ -216,7 +222,7 @@ def ref(
 
 
 def param(
-    value: tp.Union[A, RefMetadata[A]],
+    value: tp.Union[A, VarMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,

@@ -5,6 +5,14 @@ A = tp.TypeVar("A")
 
 
 class Map(Module, tp.Mapping[str, A]):
+    @tp.overload
+    def __init__(self, __iterable: tp.Iterable[tp.Tuple[str, A]]):
+        ...
+
+    @tp.overload
+    def __init__(self, __mapping: tp.Optional[tp.Mapping[str, A]] = None, **kwargs: A):
+        ...
+
     def __init__(self, *args, **kwargs):
         for name, value in dict(*args, **kwargs).items():
             setattr(self, name, value)

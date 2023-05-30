@@ -4,7 +4,7 @@ import typing as tp
 import jax
 import jax.stages
 from nnx.module import DerefedMod, Module, ModuleDef
-from nnx.reference import Partition
+from nnx.reference import State
 import jax.tree_util as jtu
 from nnx import context
 
@@ -29,7 +29,7 @@ class JitTransform(jax.stages.Wrapped):
     ):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(
-            dermod: DerefedMod[Partition, Module],
+            dermod: DerefedMod[State, Module],
             *args,
             **kwargs,
         ):
@@ -134,8 +134,8 @@ class GradTransform:
             reduce_axes=reduce_axes,
         )
         def grad_fn(
-            diff: Partition,
-            non_diff: Partition,
+            diff: State,
+            non_diff: State,
             moddef: ModuleDef[Module],
             *args: tp.Any,
         ):
@@ -162,7 +162,7 @@ class GradTransform:
         grads = self.grad_fn(diff, nondiff, moddef, *args)
 
         if self.stateful:
-            updates: Partition
+            updates: State
             if self.has_aux:
                 grads, (updates, aux) = grads
                 out = grads, aux
@@ -187,7 +187,7 @@ def grad(
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
-) -> tp.Callable[..., Partition]:
+) -> tp.Callable[..., State]:
     ...
 
 
@@ -201,7 +201,7 @@ def grad(
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
-) -> tp.Callable[..., tp.Tuple[Partition, tp.Any]]:
+) -> tp.Callable[..., tp.Tuple[State, tp.Any]]:
     ...
 
 
@@ -214,7 +214,7 @@ def grad(
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
-) -> tp.Callable[..., tp.Union[tp.Tuple[Partition, tp.Any], Partition]]:
+) -> tp.Callable[..., tp.Union[tp.Tuple[State, tp.Any], State]]:
     predicate = partitioning.to_predicate(wrt)
     ref_grad = GradTransform(
         fun,
