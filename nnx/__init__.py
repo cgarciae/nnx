@@ -57,7 +57,7 @@ from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .reference import (
     Partition,
-    Ref,
+    Variable,
     param,
     ref,
     RefMetadata,

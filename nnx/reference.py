@@ -81,7 +81,7 @@ def ref_metadata(value: A, sharding: Sharding) -> RefMetadata[A]:
     return RefMetadata(value, sharding)
 
 
-class Ref(tp.Generic[A]):
+class Variable(tp.Generic[A]):
     __slots__ = (
         "_collection",
         "_sharding",
@@ -153,16 +153,16 @@ class Ref(tp.Generic[A]):
 
         self._value = value
 
-    def to_ref(self, context_trace: tracers.MainTrace) -> "Ref[A]":
-        return Ref(
+    def to_ref(self, context_trace: tracers.MainTrace) -> "Variable[A]":
+        return Variable(
             self._value,
             self._collection,
             sharding=self._sharding,
             context_trace=context_trace,
         )
 
-    def copy(self) -> "Ref[A]":
-        ref = object.__new__(Ref)
+    def copy(self) -> "Variable[A]":
+        ref = object.__new__(Variable)
         ref._value = self._value
         ref._jax_trace = self._jax_trace
         ref._context_trace = self._context_trace
@@ -173,7 +173,7 @@ class Ref(tp.Generic[A]):
 
 
 def _ref_flatten(
-    x: Ref[A],
+    x: Variable[A],
     *,
     with_keys: bool,
 ):
@@ -187,13 +187,13 @@ def _ref_flatten(
 
 def _ref_unflatten(
     metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> Ref[A]:
+) -> Variable[A]:
     collection, sharding = metadata
-    return Ref(children[0], collection, sharding=sharding)
+    return Variable(children[0], collection, sharding=sharding)
 
 
 jtu.register_pytree_with_keys(
-    Ref,
+    Variable,
     partial(_ref_flatten, with_keys=True),
     _ref_unflatten,
     flatten_func=partial(_ref_flatten, with_keys=False),
@@ -207,7 +207,7 @@ def ref(
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> A:
-    return Ref(  # type: ignore
+    return Variable(  # type: ignore
         value,
         collection=collection,
         sharding=sharding,

@@ -4,18 +4,18 @@ import typing as tp
 
 
 def any_ref(path, x):
-    return isinstance(x, nnx.Ref)
+    return isinstance(x, nnx.Variable)
 
 
 def has_collection(collection):
-    return lambda path, x: isinstance(x, nnx.Ref) and x.collection == collection
+    return lambda path, x: isinstance(x, nnx.Variable) and x.collection == collection
 
 
 class TestPartitioning:
     def test_partition_tree(self):
-        p1 = nnx.Ref(1, collection="params")
-        p2 = nnx.Ref(2, collection="params")
-        s1 = nnx.Ref(3, collection="batch_stats")
+        p1 = nnx.Variable(1, collection="params")
+        p2 = nnx.Variable(2, collection="params")
+        s1 = nnx.Variable(3, collection="batch_stats")
 
         m = nnx.Map(
             a=nnx.Seq([p1, s1]),
@@ -43,9 +43,9 @@ class TestPartitioning:
         assert m["c"] == 100
 
     def test_update_from(self):
-        p1 = nnx.Ref(1, collection="params")
-        p2 = nnx.Ref(2, collection="params")
-        s1 = nnx.Ref(3, collection="batch_stats")
+        p1 = nnx.Variable(1, collection="params")
+        p2 = nnx.Variable(2, collection="params")
+        s1 = nnx.Variable(3, collection="batch_stats")
 
         m = nnx.Map(
             a=nnx.Seq([p1, s1]),
@@ -64,9 +64,9 @@ class TestPartitioning:
         assert m["c"] == 100
 
     def test_update_from_with_array_leaf(self):
-        p1 = nnx.Ref(1, collection="params")
-        p2 = nnx.Ref(2, collection="params")
-        s1 = nnx.Ref(3, collection="batch_stats")
+        p1 = nnx.Variable(1, collection="params")
+        p2 = nnx.Variable(2, collection="params")
+        s1 = nnx.Variable(3, collection="batch_stats")
 
         m = nnx.Map(
             a=nnx.Seq([p1, s1]),
@@ -85,8 +85,8 @@ class TestPartitioning:
         assert m["c"] == 200
 
     def test_grad_example(self):
-        p1 = nnx.Ref(1.0, collection="params")
-        s1 = nnx.Ref(-10, collection="batch_stats")
+        p1 = nnx.Variable(1.0, collection="params")
+        s1 = nnx.Variable(-10, collection="batch_stats")
 
         m = nnx.Map(
             a=nnx.Seq([p1, s1]),
@@ -108,8 +108,8 @@ class TestPartitioning:
         assert m["c"] == 100
 
     def test_get_paritition(self):
-        p1 = nnx.Ref(10.0, "")
-        p2 = nnx.Ref(20.0, "")
+        p1 = nnx.Variable(10.0, "")
+        p2 = nnx.Variable(20.0, "")
 
         m = nnx.Map(
             a=nnx.Seq([p1, p2]),

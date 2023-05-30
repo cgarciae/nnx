@@ -8,7 +8,7 @@ import nnx
 
 
 def collection(collection: str):
-    return lambda x: isinstance(x, nnx.Ref) and x.collection == collection
+    return lambda x: isinstance(x, nnx.Variable) and x.collection == collection
 
 
 class TestJIT:
@@ -70,11 +70,11 @@ class TestGrad:
 
         assert isinstance(grads, nnx.Partition)
         assert grads[("a", "0")].value == 1.0
-        assert isinstance(grads[("a", "0")], nnx.Ref)
+        assert isinstance(grads[("a", "0")], nnx.Variable)
         assert grads[("a", "1")].value == 1.0
-        assert isinstance(grads[("a", "1")], nnx.Ref)
+        assert isinstance(grads[("a", "1")], nnx.Variable)
         assert grads[("b",)].value == 1.0
-        assert isinstance(grads[("b",)], nnx.Ref)
+        assert isinstance(grads[("b",)], nnx.Variable)
         assert len(grads) == 3
 
         m.update(grads)
@@ -86,8 +86,8 @@ class TestGrad:
         assert m["d"] == 5.0
 
     def test_grad_with_multiple_ref_types(self):
-        p1 = nnx.Ref(10.0, collection="params")
-        p2 = nnx.Ref(20.0, collection="batch_stats")
+        p1 = nnx.Variable(10.0, collection="params")
+        p2 = nnx.Variable(20.0, collection="batch_stats")
 
         m = nnx.Map(
             a=nnx.Seq([p1, p2]),
@@ -105,7 +105,7 @@ class TestGrad:
 
         assert isinstance(grads, nnx.Partition)
         assert grads[("a", "0")].value == 2.0
-        assert isinstance(grads[("a", "0")], nnx.Ref)
+        assert isinstance(grads[("a", "0")], nnx.Variable)
         assert grads[("a", "0")].collection == "params"
         assert isinstance(grads[("b",)], nnx.Index)
         assert grads[("b",)].collection == "params"
@@ -139,7 +139,7 @@ class TestGrad:
 
         assert isinstance(grads, nnx.Partition)
         assert grads[("a", "1")].value == 1.0
-        assert isinstance(grads[("a", "1")], nnx.Ref)
+        assert isinstance(grads[("a", "1")], nnx.Variable)
         assert grads[("a", "1")].collection == "batch_stats"
         assert len(grads) == 1
 

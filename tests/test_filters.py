@@ -8,12 +8,12 @@ import nnx
 
 
 def collection(collection: str):
-    return lambda x: isinstance(x, nnx.Ref) and x.collection == collection
+    return lambda x: isinstance(x, nnx.Variable) and x.collection == collection
 
 
 class TestFilters:
     def test_trace_level(self):
-        r1: nnx.Ref[int] = nnx.param(1)
+        r1: nnx.Variable[int] = nnx.param(1)
 
         @jax.jit
         def f():

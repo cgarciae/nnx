@@ -9,11 +9,11 @@ A = tp.TypeVar("A")
 
 class TestRef:
     def test_slots(self):
-        ref = nnx.Ref(1, "")
+        ref = nnx.Variable(1, "")
         assert not hasattr(ref, "__dict__")
 
     def test_ref(self):
-        r1 = nnx.Ref(1, "")
+        r1 = nnx.Variable(1, "")
         assert r1.value == 1
 
         def add_one(r):
@@ -32,7 +32,7 @@ class TestRef:
         assert r2.value == 3
 
     def test_ref_trace_level(self):
-        r1: nnx.Ref[int] = nnx.Ref(1, "")
+        r1: nnx.Variable[int] = nnx.Variable(1, "")
 
         @jax.jit
         def f():
@@ -68,7 +68,7 @@ class TestRef:
         assert r3.value == 2
 
     def test_ref_trace_level_grad(self):
-        r1: nnx.Ref[int] = nnx.Ref(1, "")
+        r1: nnx.Variable[int] = nnx.Variable(1, "")
 
         @jax.grad
         def f(w):
@@ -82,8 +82,8 @@ class TestRef:
         f(3.0)
 
     def test_deref_through_jit(self):
-        r1 = nnx.Ref(1, "")
-        r2 = nnx.Ref(2, "")
+        r1 = nnx.Variable(1, "")
+        r2 = nnx.Variable(2, "")
 
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
@@ -107,13 +107,13 @@ class TestRef:
         assert m["b"] is not m0["b"]
 
     def test_barrier_edge_case(self):
-        r1: tp.Optional[nnx.Ref[tp.Any]] = None
+        r1: tp.Optional[nnx.Variable[tp.Any]] = None
 
         @jax.jit
         def f():
             nonlocal r1
             x = jax.numpy.empty(1)
-            r1 = nnx.Ref(x, "")
+            r1 = nnx.Variable(x, "")
             return x
 
         x = f()
@@ -138,7 +138,7 @@ class TestRef:
         x = g()
 
     def test_cross_barrier(self):
-        r1: nnx.Ref[int] = nnx.Ref(1, "")
+        r1: nnx.Variable[int] = nnx.Variable(1, "")
 
         @jax.jit
         def g(dermod: nnx.DerefedMod[nnx.Partition, nnx.Seq[tp.Any]]):
@@ -172,8 +172,8 @@ class TestRef:
 
     def test_no_rejit(self):
         n = 0
-        r1 = nnx.Ref(1, "a")
-        r2 = nnx.Ref(2, "b")
+        r1 = nnx.Variable(1, "a")
+        r2 = nnx.Variable(2, "b")
 
         @jax.jit
         def g(dermod):
@@ -200,8 +200,8 @@ class TestRef:
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = nnx.Ref(1, "")
-        r2 = nnx.Ref(2, "")
+        r1 = nnx.Variable(1, "")
+        r2 = nnx.Variable(2, "")
         v1 = 3
         m = nnx.Map(
             {
@@ -216,8 +216,8 @@ class TestRef:
 
     def test_deref_arrays_are_nodes(self):
         # test arrays are nodes
-        r1 = nnx.Ref(1, "")
-        r2 = nnx.Ref(2, "")
+        r1 = nnx.Variable(1, "")
+        r2 = nnx.Variable(2, "")
         v1 = jax.numpy.array(3)
         m = nnx.Map(
             {
@@ -232,8 +232,8 @@ class TestRef:
 
     @pytest.mark.skip(reason="TODO: removing support for now")
     def test_mutable(self):
-        r1 = nnx.Ref(1, collection="params")
-        r2 = nnx.Ref(2, collection="batch_stats")
+        r1 = nnx.Variable(1, collection="params")
+        r2 = nnx.Variable(2, collection="batch_stats")
 
         with nnx.mutable(lambda c: c == "params"):
             r1.value = 3
@@ -243,8 +243,8 @@ class TestRef:
                 r2.value = 4
 
     def test_clone(self):
-        r1 = nnx.Ref(1, "")
-        r2 = nnx.Ref(2, "")
+        r1 = nnx.Variable(1, "")
+        r2 = nnx.Variable(2, "")
         v1 = 3
         m = nnx.Map(
             {

@@ -5,7 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
-from nnx.reference import Partition, Ref
+from nnx.reference import Partition, Variable
 import typing as tp
 import jax.tree_util as jtu
 import builtins
@@ -192,7 +192,7 @@ class Module(ABC):
 
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, Ref):
+            if isinstance(value, Variable):
                 return value.value
             return value
 
@@ -203,12 +203,12 @@ class Module(ABC):
         vars_dict = vars(self)
         if (
             name in vars_dict
-            and isinstance(vars_dict[name], Ref)
-            and not isinstance(value, Ref)
+            and isinstance(vars_dict[name], Variable)
+            and not isinstance(value, Variable)
         ):
             vars_dict[name].value = value
         else:
-            if isinstance(value, Ref):
+            if isinstance(value, Variable):
                 value = value.copy()
             object.__setattr__(self, name, value)
 
@@ -345,18 +345,20 @@ class Module(ABC):
 
         # sort by Values first, then by other values
         new_state = dict(
-            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Ref) else 2)
+            sorted(
+                new_state.items(), key=lambda x: 1 if isinstance(x[1], Variable) else 2
+            )
         )
 
         current_state = self.ref_dict()
         context_trace = tracers.get_top_trace(
-            [x.value if isinstance(x, Ref) else x for x in current_state.values()]
+            [x.value if isinstance(x, Variable) else x for x in current_state.values()]
         )
 
         for path, new_value in new_state.items():
-            if isinstance(new_value, Ref):
+            if isinstance(new_value, Variable):
                 if path in current_state:
-                    assert isinstance(current_state[path], Ref)
+                    assert isinstance(current_state[path], Variable)
                     current_state[path].value = new_value.value
                 else:
                     current_state[path] = new_value.to_ref(context_trace)
@@ -410,7 +412,7 @@ def _deref_recursive(
         if isinstance(value, Module):
             submodule_dag = _deref_recursive(value, module_index, value_path, state)
             submodules.append((name, submodule_dag))
-        elif isinstance(value, Ref):
+        elif isinstance(value, Variable):
             state[value_path] = value.copy()
         elif isinstance(value, (jax.Array, np.ndarray)):
             state[value_path] = value
@@ -450,7 +452,7 @@ def _ref_dict_recursive(
         value_path = (*path, name)
         if isinstance(value, Module):
             _ref_dict_recursive(value, seen_modules, value_path, state)
-        elif isinstance(value, Ref):
+        elif isinstance(value, Variable):
             state[value_path] = value
         elif isinstance(value, (jax.Array, np.ndarray)):
             state[value_path] = value
@@ -479,7 +481,7 @@ def _reref_state(state: StateLike) -> State:
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if isinstance(value, Ref):
+        if isinstance(value, Variable):
             new_state[path] = value.to_ref(context_trace)
         else:
             new_state[path] = value
@@ -548,7 +550,7 @@ def _partition_by_collection(
 
     if num_collections == 0:
         collections = tuple(
-            set(x.collection for x in partition.values() if isinstance(x, Ref))
+            set(x.collection for x in partition.values() if isinstance(x, Variable))
         )
         if "rest" in collections:
             raise ValueError("Found reserved 'rest' collection name in module Refs")
