@@ -26,28 +26,17 @@ class TestFilters:
         f()
 
     def test_jit(self):
-        r1: nnx.Ref[int] = nnx.param(1)
+        m = nnx.Map(
+            a=nnx.param(1),
+            b=nnx.param(2),
+        )
 
         @nnx.jit_filter
-        def g(m: nnx.Seq[nnx.Ref[int]]):
-            r2, r3 = m
-            assert r2 is r3
+        def g(m: nnx.Map[int]):
+            m.a = 10
+            return m
 
-            r2.value = 2
-            assert r1 is not r2
-            assert r3.value == 2
-            return nnx.Seq([r2])
+        m = g(m)
 
-        r2 = g(nnx.Seq((r1, r1)))[0]
-
-        assert r1.value == 1
-        assert r2.value == 2
-
-        r2.value = 3
-        assert r1.value == 1
-        assert r2.value == 3
-
-        r3 = g(nnx.Seq((r1, r1)))[0]
-
-        assert r3 is not r2
-        assert r3.value == 2
+        assert m.a == 10
+        assert m.b == 2

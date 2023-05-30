@@ -56,8 +56,6 @@ from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .reference import (
-    Deref,
-    Index,
     Partition,
     Ref,
     Referential,

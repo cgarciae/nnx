@@ -5,9 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
-from zmq import has
-from ideas.pure import module
-from nnx.reference import Deref, Index, Partition, Ref, Referential, Value
+from nnx.reference import Partition, Ref, Value
 import typing as tp
 import jax.tree_util as jtu
 import builtins
@@ -189,35 +187,6 @@ class CallableProxy:
         return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
 
 
-@dataclasses.dataclass
-class RefUpdater(tp.Generic[M]):
-    module: M
-
-    def __getitem__(self, name: str) -> Ref[tp.Any]:
-        vars_dict = vars(self.module)
-
-        if name not in vars_dict:
-            raise AttributeError(f"Module has no attribute '{name}'")
-
-        value = vars_dict[name]
-        if not isinstance(value, Ref):
-            raise TypeError(f"'{name}' is not a Ref")
-
-        return value
-
-    def __getattr__(self, name: str) -> Ref[tp.Any]:
-        return self[name]
-
-    def __setattr__(self, __name: str, __value: Any) -> None:
-        self[__name] = __value
-
-    def __setitem__(self, name: str, value: Ref[tp.Any]) -> None:
-        if not isinstance(value, Ref):
-            raise TypeError(f"Expected Ref, got {type(value).__name__}")
-
-        vars(self.module)[name] = value
-
-
 class Module(ABC):
     if not tp.TYPE_CHECKING:
 
@@ -228,19 +197,20 @@ class Module(ABC):
             return value
 
         def __setattr__(self, name: str, value: Any) -> None:
-            vars_dict = vars(self)
-            if (
-                name in vars_dict
-                and isinstance(vars_dict[name], Ref)
-                and not isinstance(value, Ref)
-            ):
-                vars_dict[name].value = value
-            else:
-                object.__setattr__(self, name, value)
+            self._setattr(name, value)
 
-    @property
-    def ref(self: M) -> RefUpdater[M]:
-        return RefUpdater(self)
+    def _setattr(self, name: str, value: Any) -> None:
+        vars_dict = vars(self)
+        if (
+            name in vars_dict
+            and isinstance(vars_dict[name], Ref)
+            and not isinstance(value, Ref)
+        ):
+            vars_dict[name].value = value
+        else:
+            if isinstance(value, Ref):
+                value = value.copy()
+            object.__setattr__(self, name, value)
 
     def __hash__(self) -> int:
         return id(self)
@@ -252,13 +222,6 @@ class Module(ABC):
 
     def clone(self: M) -> M:
         return self.deref().reref()
-
-    def collections(self) -> tp.Set[str]:
-        return {
-            x.collection
-            for x in jtu.tree_leaves(self, is_leaf=lambda x: isinstance(x, Referential))
-            if isinstance(x, Referential)
-        }
 
     def partition_general(
         self: M, *filters: partitioning.CollectionFilter
@@ -398,15 +361,6 @@ class Module(ABC):
                 else:
                     current_state[path] = new_value.to_ref(context_trace)
                     _set_value_at_path(self, path, current_state[path])
-            elif isinstance(new_value, Index):
-                if path not in current_state:
-                    if new_value.val_path not in current_state:
-                        raise ValueError(
-                            f"No Value for Index at path {path}, "
-                            f"expected Value at {new_value.val_path}"
-                        )
-
-                    _set_value_at_path(self, path, current_state[new_value.val_path])
             else:
                 _set_value_at_path(self, path, new_value)
 
@@ -430,11 +384,10 @@ class Module(ABC):
 
 def _deref(module: M) -> tp.Tuple[State, ModuleDef[M]]:
     module_index: tp.Dict[Module, int] = {}
-    ref_path: tp.Dict[Ref[tp.Any], Path] = {}
     path: Path = ()
     state: tp.Dict[Path, tp.Any] = {}
 
-    moduledef = _deref_recursive(module, module_index, ref_path, path, state)
+    moduledef = _deref_recursive(module, module_index, path, state)
     assert isinstance(moduledef, ModuleDef)
 
     return state, moduledef
@@ -443,7 +396,6 @@ def _deref(module: M) -> tp.Tuple[State, ModuleDef[M]]:
 def _deref_recursive(
     module: M,
     module_index: tp.Dict[Module, int],
-    ref_path: tp.Dict[Ref[tp.Any], Path],
     path: Path,
     state: tp.Dict[Path, tp.Any],
 ) -> tp.Union[ModuleDef[M], int]:
@@ -456,18 +408,10 @@ def _deref_recursive(
     for name, value in vars(module).items():
         value_path = (*path, name)
         if isinstance(value, Module):
-            submodule_dag = _deref_recursive(
-                value, module_index, ref_path, value_path, state
-            )
+            submodule_dag = _deref_recursive(value, module_index, value_path, state)
             submodules.append((name, submodule_dag))
         elif isinstance(value, Ref):
-            if value not in ref_path:
-                ref_path[value] = value_path
-                value = value.to_value()
-            else:
-                value = value.to_index(ref_path[value])
-
-            state[value_path] = value
+            state[value_path] = value.to_value()
         elif isinstance(value, (jax.Array, np.ndarray)):
             state[value_path] = value
         else:
@@ -525,33 +469,18 @@ def _reref(state: StateLike, moduledef: ModuleDef[M]) -> M:
 
 def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
     if len(path) == 1:
-        vars(module)[path[0]] = value
+        setattr(module, path[0], value)
     else:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
 def _reref_state(state: StateLike) -> State:
     new_state: State = {}
-
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if path in new_state:
-            continue
-        elif isinstance(value, Value):
+        if isinstance(value, Value):
             new_state[path] = value.to_ref(context_trace)
-        elif isinstance(value, Index):
-            if value.val_path in new_state:
-                assert isinstance(new_state[value.val_path], Ref)
-                new_state[path] = new_state[value.val_path]
-            else:
-                # if we visite an index before its value, we need to
-                # create the ref and add both paths to the new state
-                deref_value = state[value.val_path]
-                assert isinstance(deref_value, Value)
-                ref = deref_value.to_ref(context_trace)
-                new_state[value.val_path] = ref
-                new_state[path] = ref
         else:
             new_state[path] = value
 
@@ -619,7 +548,7 @@ def _partition_by_collection(
 
     if num_collections == 0:
         collections = tuple(
-            set(x.collection for x in partition.values() if isinstance(x, Deref))
+            set(x.collection for x in partition.values() if isinstance(x, Value))
         )
         if "rest" in collections:
             raise ValueError("Found reserved 'rest' collection name in module Refs")

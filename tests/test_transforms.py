@@ -13,53 +13,39 @@ def collection(collection: str):
 
 class TestJIT:
     def test_jit(self):
-        r1: nnx.Ref[int] = nnx.param(1)
-        m = nnx.Seq((r1, r1))
+        m = nnx.Map(a=nnx.param(1))
 
-        @nnx.jit
-        def f(m):
+        @jax.jit
+        def f():
             with pytest.raises(
                 ValueError, match="Cannot mutate ref from different trace level"
             ):
-                r1.value = 2
+                m.a = 2
             return 1
 
-        f(m)
+        f()
 
         @nnx.jit
-        def g(m: nnx.Seq):
-            r2, r3 = m
-            assert r2 is r3
-
-            r2.value = 2
-            assert r1 is not r2
-            assert r3.value == 2
+        def g(m: nnx.Map):
+            m.a = 2
             return 1.0
 
         out = g(m)
 
-        assert m[0].value == 2
-        assert m[1].value == 2
+        assert m.a == 2
         assert out == 1.0
 
     def test_jit_stateless(self):
-        r1 = nnx.param(1)
-        m = nnx.Seq((r1, r1))
+        m = nnx.Map(a=nnx.param(1))
 
-        @partial(nnx.jit, stateful=False)
-        def g(m: nnx.Seq):
-            r2, r3 = m
-            assert r2 is r3
-
-            r2.value = 2
-            assert r1 is not r2
-            assert r3.value == 2
+        @nnx.jit_filter
+        def g(m: nnx.Map):
+            m.a = 2
             return 1.0
 
         out = g(m)
 
-        assert m[0].value == 1
-        assert m[1].value == 1
+        assert m.a == 1
         assert out == 1.0
 
 
@@ -78,23 +64,24 @@ class TestGrad:
         @nnx.grad
         def f(m: nnx.Map):
             # sum all params
-            return m["a"][0].value + m["a"][1].value + m["b"].value
+            return m["a"][0] + m["a"][1] + m["b"]
 
         grads = f(m)
 
         assert isinstance(grads, nnx.Partition)
-        assert grads[("a", "0")].value == 2.0
+        assert grads[("a", "0")].value == 1.0
         assert isinstance(grads[("a", "0")], nnx.Value)
         assert grads[("a", "1")].value == 1.0
         assert isinstance(grads[("a", "1")], nnx.Value)
-        assert isinstance(grads[("b",)], nnx.Index)
+        assert grads[("b",)].value == 1.0
+        assert isinstance(grads[("b",)], nnx.Value)
         assert len(grads) == 3
 
         m.update(grads)
 
-        assert m["a"][0].value == 2.0
-        assert m["a"][1].value == 1.0
-        assert m["b"].value == 2.0
+        assert m["a"][0] == 1.0
+        assert m["a"][1] == 1.0
+        assert m["b"] == 1.0
         assert m["c"] == 7
         assert m["d"] == 5.0
 

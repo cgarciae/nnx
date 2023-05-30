@@ -13,8 +13,6 @@ class TestRef:
         assert not hasattr(ref, "__dict__")
         value = nnx.Value(1, "", None)
         assert not hasattr(value, "__dict__")
-        index = nnx.Index((), "", None)
-        assert not hasattr(index, "__dict__")
 
     def test_ref(self):
         r1 = nnx.Ref(1, "")
@@ -35,13 +33,6 @@ class TestRef:
         assert r1.value == 3
         assert r2.value == 3
 
-    def test_value_and_index_are_deref(self):
-        value = nnx.Value(1, "", None)
-        index = nnx.Index((), "", None)
-
-        assert isinstance(value, nnx.Deref)
-        assert isinstance(index, nnx.Deref)
-
     def test_ref_trace_level(self):
         r1: nnx.Ref[int] = nnx.Ref(1, "")
 
@@ -58,11 +49,9 @@ class TestRef:
         @jax.jit
         def g(derefed: nnx.DerefedMod[nnx.Partition, nnx.Seq[tp.Any]]):
             r2, r3 = derefed.reref()
-            assert r2 is r3
 
             r2.value = 2
             assert r1 is not r2
-            assert r3.value == 2
             return nnx.Seq([r2]).deref()
 
         m = nnx.Seq((r1, r1))
@@ -104,14 +93,14 @@ class TestRef:
         def f(dermod: nnx.DerefedMod[nnx.Partition, nnx.Map[tp.Any]]):
             m = dermod.reref()
 
-            assert m["a"][0] is m["b"]
+            assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
 
             return m.deref()
 
         m = f(m.deref()).reref()
 
-        assert m["a"][0] is m["b"]
+        assert m["a"][0] is not m["b"]
         assert m["a"][1] is not m["b"]
 
         # compare with pytree0
@@ -185,15 +174,15 @@ class TestRef:
 
     def test_no_rejit(self):
         n = 0
-        r1 = nnx.Ref(1, "")
-        r2 = nnx.Ref(2, "")
+        r1 = nnx.Ref(1, "a")
+        r2 = nnx.Ref(2, "b")
 
         @jax.jit
         def g(dermod):
             r3, r4, r5 = dermod.reref()
             nonlocal n
             n += 1
-            assert r3 is r4
+            assert r3 is not r4
             assert r4 is not r5
             return nnx.Seq([r3]).deref()
 
@@ -206,10 +195,9 @@ class TestRef:
         assert n == 1
 
         g(nnx.Seq((r2, r2, r1)).deref())
-        assert n == 1
+        assert n == 2
 
-        with pytest.raises(AssertionError):
-            g(nnx.Seq((r1, r2, r1)).deref())
+        g(nnx.Seq((r1, r1, r2)).deref())
 
         assert n == 2
 
@@ -226,7 +214,7 @@ class TestRef:
 
         p, moddef = m.deref()
         assert len(p) == 4
-        assert len(jax.tree_util.tree_leaves(p)) == 2
+        assert len(jax.tree_util.tree_leaves(p)) == 4
 
     def test_deref_arrays_are_nodes(self):
         # test arrays are nodes
@@ -242,7 +230,7 @@ class TestRef:
 
         p, moddef = m.deref()
         assert len(p) == 5
-        assert len(jax.tree_util.tree_leaves(p)) == 3
+        assert len(jax.tree_util.tree_leaves(p)) == 5
 
     @pytest.mark.skip(reason="TODO: removing support for now")
     def test_mutable(self):
@@ -269,8 +257,8 @@ class TestRef:
 
         m2 = m.clone()
 
-        assert m2["a"][0] is m2["b"]["c"]
-        assert m2["a"][1] is m2["b"]["d"]
+        assert m2["a"][0] is not m2["b"]["c"]
+        assert m2["a"][1] is not m2["b"]["d"]
 
         assert m["a"][0] is not m2["a"][0]
         assert m["a"][1] is not m2["a"][1]

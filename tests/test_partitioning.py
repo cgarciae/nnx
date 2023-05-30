@@ -118,8 +118,12 @@ class TestPartitioning:
             d=5.0,
         )
 
+        # refs are not shared
+        assert m.a[0] is not m.b
+
         partition = m.get(any_ref)
         assert partition[("a", "0")].value == p1.value
         assert partition[("a", "1")].value == p2.value
-        assert isinstance(partition[("b",)], nnx.Index)
+        assert partition[("b",)].value == p1.value
+        assert partition[("b",)] is not partition[("a", "0")]
         assert len(partition) == 3

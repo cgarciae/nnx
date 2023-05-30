@@ -81,10 +81,6 @@ class Referential(tp.Generic[A], ABC):
         return self._sharding
 
 
-class Deref(Referential[A]):
-    __slots__ = ()
-
-
 @dataclasses.dataclass
 class RefMetadata(tp.Generic[A]):
     value: A
@@ -132,6 +128,16 @@ class Ref(Referential[A]):
         self._trace_set = frozenset((self._jax_trace, self._context_trace))
         super().__init__(collection, sharding)
 
+    def copy(self) -> "Ref[A]":
+        ref = object.__new__(Ref)
+        ref._value = self._value
+        ref._jax_trace = self._jax_trace
+        ref._context_trace = self._context_trace
+        ref._trace_set = self._trace_set
+        ref._collection = self._collection
+        ref._sharding = self._sharding
+        return ref
+
     @property
     def value(self) -> A:
         # TODO: passing references as a constant to a function as a capture should
@@ -165,9 +171,6 @@ class Ref(Referential[A]):
     def to_value(self) -> "Value[A]":
         return Value(self._value, self._collection, self._sharding)
 
-    def to_index(self, val_path: tp.Tuple[str, ...]) -> "Index[A]":
-        return Index(val_path, self._collection, self._sharding)
-
 
 def ref(
     collection: str,
@@ -198,7 +201,7 @@ def param(
     )
 
 
-class Value(Deref[A]):
+class Value(Referential[A]):
     __slots__ = ("_value",)
 
     def __init__(
@@ -254,43 +257,3 @@ jtu.register_pytree_with_keys(
     _value_unflatten,
     flatten_func=partial(_value_flatten, with_keys=False),
 )
-
-
-class Index(Deref[A]):
-    __slots__ = ("_val_path",)
-
-    def __init__(
-        self,
-        val_path: tp.Tuple[str, ...],
-        collection: str,
-        sharding: tp.Optional[Sharding],
-    ):
-        self._val_path = val_path
-        super().__init__(collection, sharding)
-
-    @property
-    def val_path(self) -> tp.Tuple[str, ...]:
-        return self._val_path
-
-    @property
-    def value(self) -> A:
-        raise ValueError(f"Cannot get value from '{type(self).__name__}' instances")
-
-    def __repr__(self) -> str:
-        return (
-            f"Index(collection={self.collection}, val_path={self._val_path}, "
-            f"sharding={self.sharding})"
-        )
-
-
-def _index_flatten(x: Index[A]):
-    return (), (x._val_path, x._collection, x._sharding)
-
-
-def _index_unflatten(
-    metadata: tp.Tuple[tp.Tuple[str, ...], str, tp.Optional[Sharding]], _: tp.Tuple[()]
-) -> Index[A]:
-    return Index(*metadata)
-
-
-jtu.register_pytree_node(Index, _index_flatten, _index_unflatten)
