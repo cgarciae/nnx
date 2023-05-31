@@ -313,6 +313,37 @@ class Module(ABC):
         else:
             return tuple(states)
 
+    @tp.overload
+    def pop(
+        self,
+        filter: partitioning.CollectionFilter,
+        /,
+    ) -> State:
+        ...
+
+    @tp.overload
+    def pop(
+        self,
+        filter: partitioning.CollectionFilter,
+        filter2: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple[State, ...]:
+        ...
+
+    def pop(
+        self, *filters: partitioning.CollectionFilter
+    ) -> tp.Union[State, tp.Tuple[State, ...]]:
+        if len(filters) == 0:
+            raise ValueError("Expected at least one filter")
+
+        states = _pop(self, filters)
+
+        if len(states) == 1:
+            return states[0]
+        else:
+            return states
+
     @property
     def update(
         self,
@@ -402,13 +433,13 @@ def _deref(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
 
 def _deref_recursive(
     module: M,
-    module_index: tp.Dict[Module, int],
+    module_index: tp.Dict[int, int],
     ref_path: tp.Dict[Ref[tp.Any], Path],
     path: Path,
     state: tp.Dict[Path, tp.Any],
 ) -> tp.Union[ModuleDef[M], int]:
-    if module in module_index:
-        return module_index[module]
+    if id(module) in module_index:
+        return module_index[id(module)]
 
     submodules = []
     static_fields = []
@@ -440,12 +471,12 @@ def _deref_recursive(
         submodules=tuple(submodules),
         static_fields=tuple(static_fields),
     )
-    module_index[module] = index
+    module_index[id(module)] = index
     return module_dag
 
 
 def _ref_dict(module: Module) -> StateDict:
-    seen_modules: tp.Set[Module] = set()
+    seen_modules: tp.Set[int] = set()
     path: Path = ()
     state: StateDict = {}
 
@@ -455,12 +486,14 @@ def _ref_dict(module: Module) -> StateDict:
 
 def _ref_dict_recursive(
     module: Module,
-    seen_modules: tp.Set[Module],
+    seen_modules: tp.Set[int],
     path: Path,
     state: tp.Dict[Path, tp.Any],
 ) -> None:
-    if module in seen_modules:
+    if id(module) in seen_modules:
         return
+
+    seen_modules.add(id(module))
 
     for name, value in vars(module).items():
         value_path = (*path, name)
@@ -599,3 +632,54 @@ def _merge_partitions(states: tp.Iterable[State]) -> State:
         new_state.update(partition)
 
     return State(new_state)
+
+
+def _pop(
+    module: Module,
+    filters: tp.Tuple[partitioning.CollectionFilter, ...],
+) -> tp.Tuple[State, ...]:
+    module_index: tp.Dict[int, int] = {}
+    ref_path: tp.Dict[Ref[tp.Any], Path] = {}
+    path: Path = ()
+    predicates = tuple(partitioning.to_predicate(filter) for filter in filters)
+    states = tuple({} for _ in predicates)
+    _pop_recursive(module, module_index, ref_path, path, states, predicates)
+
+    return tuple(State(x) for x in states)
+
+
+def _pop_recursive(
+    module: Module,
+    module_index: tp.Dict[int, int],
+    ref_path: tp.Dict[Ref[tp.Any], Path],
+    path: Path,
+    states: tp.Tuple[tp.Dict[Path, tp.Any]],
+    predicates: tp.Tuple[partitioning.Predicate, ...],
+) -> None:
+    if id(module) in module_index:
+        return
+
+    for name, value in list(vars(module).items()):
+        value_path = (*path, name)
+        if isinstance(value, Module):
+            _pop_recursive(
+                value, module_index, ref_path, value_path, states, predicates
+            )
+            continue
+        elif isinstance(value, Ref):
+            if value not in ref_path:
+                ref_path[value] = value_path
+                value = value.to_value()
+            else:
+                value = value.to_index(ref_path[value])
+
+        elif not isinstance(value, (jax.Array, np.ndarray)):
+            continue
+
+        for state, predicate in zip(states, predicates):
+            if predicate(value_path, value):
+                state[value_path] = value
+                delattr(module, name)
+                break
+
+    module_index[id(module)] = len(module_index)

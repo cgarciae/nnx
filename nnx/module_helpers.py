@@ -1,7 +1,13 @@
-from nnx.module import Module
 import typing as tp
 
+import jax.numpy as jnp
+import optax
+
+from nnx.module import Module
+import nnx
+
 A = tp.TypeVar("A")
+M = tp.TypeVar("M", bound=Module)
 
 
 class Map(Module, tp.Mapping[str, A]):
@@ -34,3 +40,23 @@ class Seq(Module, tp.Generic[A]):
 
     def __len__(self) -> int:
         return len(vars(self))
+
+
+from flax.training import train_state
+
+
+class TrainState(Module, tp.Generic[M]):
+    def __init__(self, model: M, tx: optax.GradientTransformation, *, step: int = 0):
+        self.model = model
+        self.tx = tx
+        self.opt_state = nnx.ref("opt_state", tx.init(model.get("params")))
+        self.step = jnp.asarray(step)
+
+    def apply_gradients(self, grads: nnx.State):
+        params: nnx.State = self.model.get("params")
+        updates, self.opt_state.value = self.tx.update(
+            grads, self.opt_state.value, params
+        )
+        params = optax.apply_updates(params, updates)  # type: ignore
+        self.model.update(params)
+        self.step += 1

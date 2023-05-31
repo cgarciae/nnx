@@ -4,7 +4,7 @@
 name = "absl-py"
 version = "1.4.0"
 description = "Abseil Python Common Libraries, see https://github.com/abseil/abseil-py."
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.6"
 files = [
@@ -449,7 +449,7 @@ files = [
 name = "chex"
 version = "0.1.7"
 description = "Chex: Testing made fun, in JAX!"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -770,7 +770,7 @@ graph = ["objgraph (>=1.7.2)"]
 name = "dm-tree"
 version = "0.1.8"
 description = "Tree is a library for working with nested data structures."
-category = "dev"
+category = "main"
 optional = false
 python-versions = "*"
 files = [
@@ -1582,8 +1582,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">1.20", markers = "python_version <= \"3.9\""},
-    {version = ">=1.23.3", markers = "python_version > \"3.10\""},
     {version = ">=1.21.2", markers = "python_version > \"3.9\""},
+    {version = ">=1.23.3", markers = "python_version > \"3.10\""},
 ]
 
 [package.extras]
@@ -1858,7 +1858,7 @@ tests = ["pytest", "pytest-cov", "pytest-pep8"]
 name = "optax"
 version = "0.1.5"
 description = "A gradient processing and optimisation library in JAX."
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.8"
 files = [
@@ -2709,7 +2709,7 @@ files = [
 name = "toolz"
 version = "0.12.0"
 description = "List processing tools and functional utilities"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.5"
 files = [
@@ -2779,7 +2779,7 @@ test = ["argcomplete (>=2.0)", "pre-commit", "pytest", "pytest-mock"]
 name = "typing-extensions"
 version = "4.6.2"
 description = "Backported and Experimental Type Hints for Python 3.7+"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -3044,4 +3044,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "cf282d96017bbd1d616272c5b57aa7be769ec63ab90cb2bff9bcfb839c355c9e"
+content-hash = "2728f5b6632834aa4475a5dab1c32fcc700385e921edd6b32e35c1bb84435f75"

@@ -9,6 +9,7 @@ readme = "README.md"
 python = ">=3.8,<3.12"
 jax = "*"
 jaxlib = "*"
+optax = "^0.1.5"
 
 
 [tool.poetry.group.test.dependencies]
