@@ -307,6 +307,37 @@ class Module(ABC):
         else:
             return tuple(states)
 
+    @tp.overload
+    def pop(
+        self,
+        filter: partitioning.CollectionFilter,
+        /,
+    ) -> State:
+        ...
+
+    @tp.overload
+    def pop(
+        self,
+        filter: partitioning.CollectionFilter,
+        filter2: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple[State, ...]:
+        ...
+
+    def pop(
+        self, *filters: partitioning.CollectionFilter
+    ) -> tp.Union[State, tp.Tuple[State, ...]]:
+        if len(filters) == 0:
+            raise ValueError("Expected at least one filter")
+
+        states = _pop(self, filters)
+
+        if len(states) == 1:
+            return states[0]
+        else:
+            return states
+
     @property
     def update(
         self,
@@ -580,3 +611,45 @@ def _merge_states(
         new_state.update(state)
 
     return State(new_state)
+
+
+def _pop(
+    module: Module,
+    filters: tp.Tuple[partitioning.CollectionFilter, ...],
+) -> tp.Tuple[State, ...]:
+    module_index: tp.Dict[int, int] = {}
+    path: Path = ()
+    predicates = tuple(partitioning.to_predicate(filter) for filter in filters)
+    states = tuple({} for _ in predicates)
+    _pop_recursive(module, module_index, path, states, predicates)
+
+    return tuple(State(x) for x in states)
+
+
+def _pop_recursive(
+    module: Module,
+    module_index: tp.Dict[int, int],
+    path: Path,
+    states: tp.Tuple[tp.Dict[Path, tp.Any]],
+    predicates: tp.Tuple[partitioning.Predicate, ...],
+) -> None:
+    if id(module) in module_index:
+        return
+
+    for name, value in list(vars(module).items()):
+        value_path = (*path, name)
+        if isinstance(value, Module):
+            _pop_recursive(value, module_index, value_path, states, predicates)
+            continue
+        elif isinstance(value, Variable):
+            value = value.to_value()
+        elif not isinstance(value, (jax.Array, np.ndarray)):
+            continue
+
+        for state, predicate in zip(states, predicates):
+            if predicate(value_path, value):
+                state[value_path] = value
+                delattr(module, name)
+                break
+
+    module_index[id(module)] = len(module_index)
