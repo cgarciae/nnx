@@ -52,7 +52,7 @@ def train_step(model: MLP, batch):
         return jnp.mean((y - y_pred) ** 2)
 
     #                                      |--default--|
-    grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
+    grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     #                           |-------- sgd ---------|
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grad)
 

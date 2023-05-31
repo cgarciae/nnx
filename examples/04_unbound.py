@@ -41,7 +41,7 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any, MLP]:
+def train_step(derefmod: nnx.StateDef[Any, MLP], batch) -> nnx.StateDef[Any, MLP]:
     x, y = batch
     model = derefmod.reref()
 
@@ -58,7 +58,7 @@ def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any,
 
 
 @jax.jit
-def test_step(unbound: nnx.DerefedMod[Any, MLP], batch):
+def test_step(unbound: nnx.StateDef[Any, MLP], batch):
     x, y = batch
     model = unbound.reref()
     y_pred = model(x)

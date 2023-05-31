@@ -56,7 +56,7 @@ class TestRef:
         f()
 
         @jax.jit
-        def g(derefed: nnx.DerefedMod[nnx.Partition, nnx.Seq[tp.Any]]):
+        def g(derefed: nnx.StateDef[nnx.State, nnx.Seq[tp.Any]]):
             r2, r3 = derefed.reref()
             assert r2 is r3
 
@@ -101,7 +101,7 @@ class TestRef:
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(dermod: nnx.DerefedMod[nnx.Partition, nnx.Map[tp.Any]]):
+        def f(dermod: nnx.StateDef[nnx.State, nnx.Map[tp.Any]]):
             m = dermod.reref()
 
             assert m["a"][0] is m["b"]
@@ -154,7 +154,7 @@ class TestRef:
         r1: nnx.Ref[int] = nnx.Ref(1, "")
 
         @jax.jit
-        def g(dermod: nnx.DerefedMod[nnx.Partition, nnx.Seq[tp.Any]]):
+        def g(dermod: nnx.StateDef[nnx.State, nnx.Seq[tp.Any]]):
             r2 = dermod.reref()[0]
             r2.value += 1
             assert r1 is not r2

@@ -119,8 +119,8 @@ dropout_stream = nnx.RngStream(jax.random.split(dropout_key, n_layers))
 
 
 def scan_fn(
-    carry: Tuple[jax.Array, nnx.Partition],
-    inputs: Tuple[nnx.Partition, nnx.RngStream],
+    carry: Tuple[jax.Array, nnx.State],
+    inputs: Tuple[nnx.State, nnx.RngStream],
 ):
     # extract args
     x, batch_stats = carry

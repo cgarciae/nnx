@@ -3,7 +3,7 @@ __version__ = "0.0.0"
 
 from .context import Context, RngStream
 from .filters import jit_filter
-from .module import Module, ModuleDef, DerefedMod
+from .module import Module, ModuleDef, StateDef
 from .nn.activations import (
     celu,
     elu,
@@ -58,7 +58,7 @@ from .nn.stochastic import Dropout
 from .reference import (
     Deref,
     Index,
-    Partition,
+    State,
     Ref,
     Referential,
     Value,

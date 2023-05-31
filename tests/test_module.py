@@ -58,13 +58,13 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        partitions, moddef = foo.partition()
+        states, moddef = foo.partition()
 
-        assert "params" in partitions
-        assert "rest" in partitions
+        assert "params" in states
+        assert "rest" in states
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, partitions = moddef.apply(partitions)(x=2.0, ctx=ctx)
+        y, states = moddef.apply(states)(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)
 
@@ -85,10 +85,10 @@ class TestModuleDef:
 
         dermod = foo.partition()
 
-        assert "params" in dermod.partitions
-        assert "rest" in dermod.partitions
+        assert "params" in dermod.states
+        assert "rest" in dermod.states
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, partitions = dermod.apply(x=2.0, ctx=ctx)
+        y, states = dermod.apply(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)

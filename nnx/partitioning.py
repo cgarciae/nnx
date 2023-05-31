@@ -1,3 +1,4 @@
+import builtins
 import dataclasses
 import functools
 import typing as tp
@@ -6,21 +7,29 @@ import jax.tree_util as jtu
 
 from nnx.reference import Referential
 
+if tp.TYPE_CHECKING:
+    ellipsis = builtins.ellipsis
+else:
+    ellipsis = tp.Any
+
 Predicate = tp.Callable[[tp.Tuple[str, ...], tp.Any], bool]
 CollectionFilter = tp.Union[
     str,
     tp.Sequence[str],
     Predicate,
+    ellipsis,
 ]
 
 
 def to_predicate(collection_filter: CollectionFilter) -> Predicate:
     if isinstance(collection_filter, str):
         return Is(collection_filter)
-    elif isinstance(collection_filter, tp.Sequence):
-        return Any(collection_filter)
+    elif collection_filter is ...:
+        return Everything()
     elif callable(collection_filter):
         return collection_filter
+    elif isinstance(collection_filter, tp.Sequence):
+        return Any(collection_filter)
     else:
         raise TypeError(f"Invalid collection filter: {collection_filter}")
 
@@ -51,3 +60,8 @@ class Not:
 
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
         return not self.predicate(path, x)
+
+
+class Everything:
+    def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
+        return True

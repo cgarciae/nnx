@@ -82,7 +82,7 @@ class TestGrad:
 
         grads = f(m)
 
-        assert isinstance(grads, nnx.Partition)
+        assert isinstance(grads, nnx.State)
         assert grads[("a", "0")].value == 2.0
         assert isinstance(grads[("a", "0")], nnx.Value)
         assert grads[("a", "1")].value == 1.0
@@ -116,7 +116,7 @@ class TestGrad:
 
         grads = f(m)
 
-        assert isinstance(grads, nnx.Partition)
+        assert isinstance(grads, nnx.State)
         assert grads[("a", "0")].value == 2.0
         assert isinstance(grads[("a", "0")], nnx.Value)
         assert grads[("a", "0")].collection == "params"
@@ -150,7 +150,7 @@ class TestGrad:
 
         grads = f(m)
 
-        assert isinstance(grads, nnx.Partition)
+        assert isinstance(grads, nnx.State)
         assert grads[("a", "1")].value == 1.0
         assert isinstance(grads[("a", "1")], nnx.Value)
         assert grads[("a", "1")].collection == "batch_stats"
@@ -183,4 +183,4 @@ class TestGrad:
             return m["a"][0].value + m["a"][1].value + m["b"].value + noise
 
         grad = f(m)
-        assert isinstance(grad, nnx.Partition)
+        assert isinstance(grad, nnx.State)

@@ -23,7 +23,7 @@ class TestPartitioning:
             c=100,
         )
 
-        (params, rest), moddef = m.partition_general("params")
+        (params, rest), moddef = m.partition("params", ...)
 
         assert len(params) == 2
         assert len(rest) == 1
@@ -53,10 +53,10 @@ class TestPartitioning:
             c=100,
         )
 
-        partition, moddef = m.deref()
-        partition = jax.tree_map(lambda x: x * 2, partition)
+        state, moddef = m.deref()
+        state = jax.tree_map(lambda x: x * 2, state)
 
-        m.update(partition)
+        m.update(state)
 
         assert m["a"][0].value == 2
         assert m["a"][1].value == 6
@@ -74,10 +74,10 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        dermod: nnx.DerefedMod = m.deref()
+        dermod: nnx.StateDef = m.deref()
         dermod = jax.tree_map(lambda x: x * 2, dermod)
 
-        m.update(dermod.partitions)
+        m.update(dermod.states)
 
         assert m["a"][0].value == 2
         assert m["a"][1].value == 6
@@ -118,8 +118,8 @@ class TestPartitioning:
             d=5.0,
         )
 
-        partition = m.get(any_ref)
-        assert partition[("a", "0")].value == p1.value
-        assert partition[("a", "1")].value == p2.value
-        assert isinstance(partition[("b",)], nnx.Index)
-        assert len(partition) == 3
+        state = m.get(any_ref)
+        assert state[("a", "0")].value == p1.value
+        assert state[("a", "1")].value == p2.value
+        assert isinstance(state[("b",)], nnx.Index)
+        assert len(state) == 3

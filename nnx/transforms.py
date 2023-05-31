@@ -3,8 +3,8 @@ import typing as tp
 
 import jax
 import jax.stages
-from nnx.module import DerefedMod, Module, ModuleDef
-from nnx.reference import Partition
+from nnx.module import StateDef, Module, ModuleDef
+from nnx.reference import State
 import jax.tree_util as jtu
 from nnx import context
 
@@ -29,14 +29,14 @@ class JitTransform(jax.stages.Wrapped):
     ):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(
-            dermod: DerefedMod[Partition, Module],
+            dermod: StateDef[State, Module],
             *args,
             **kwargs,
         ):
             module = dermod.reref()
             out = fun(module, *args, **kwargs)
             if self.stateful:
-                out = (module.deref().partitions, out)
+                out = (module.deref().states, out)
             return out
 
         self.jitted_fn = jitted_fn
@@ -134,8 +134,8 @@ class GradTransform:
             reduce_axes=reduce_axes,
         )
         def grad_fn(
-            diff: Partition,
-            non_diff: Partition,
+            diff: State,
+            non_diff: State,
             moddef: ModuleDef[Module],
             *args: tp.Any,
         ):
@@ -143,7 +143,7 @@ class GradTransform:
             out = fun(module, *args)
 
             if self.stateful:
-                updates = module.deref().partitions
+                updates = module.deref().states
                 if self.has_aux:
                     loss, aux = out
                     out = (loss, (updates, aux))
@@ -158,11 +158,11 @@ class GradTransform:
         self.stateful = stateful
 
     def __call__(self, module: Module, *args: tp.Any):
-        (diff, nondiff), moddef = module.partition_general(self.predicate)
+        (diff, nondiff), moddef = module.partition(self.predicate, ...)
         grads = self.grad_fn(diff, nondiff, moddef, *args)
 
         if self.stateful:
-            updates: Partition
+            updates: State
             if self.has_aux:
                 grads, (updates, aux) = grads
                 out = grads, aux
@@ -187,7 +187,7 @@ def grad(
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
-) -> tp.Callable[..., Partition]:
+) -> tp.Callable[..., State]:
     ...
 
 
@@ -201,7 +201,7 @@ def grad(
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
-) -> tp.Callable[..., tp.Tuple[Partition, tp.Any]]:
+) -> tp.Callable[..., tp.Tuple[State, tp.Any]]:
     ...
 
 
@@ -214,7 +214,7 @@ def grad(
     holomorphic: bool = False,
     allow_int: bool = False,
     reduce_axes: tp.Sequence[AxisName] = (),
-) -> tp.Callable[..., tp.Union[tp.Tuple[Partition, tp.Any], Partition]]:
+) -> tp.Callable[..., tp.Union[tp.Tuple[State, tp.Any], State]]:
     predicate = partitioning.to_predicate(wrt)
     ref_grad = GradTransform(
         fun,

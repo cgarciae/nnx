@@ -17,7 +17,7 @@ Path = tp.Tuple[str, ...]
 Sharding = jax.sharding.PartitionSpec
 
 
-class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
+class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
     def __init__(
         self,
         __input: tp.Union[
@@ -38,11 +38,11 @@ class Partition(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         return len(self._mapping)
 
     def __repr__(self) -> str:
-        return f"Partition({self._mapping})"
+        return f"State({self._mapping})"
 
 
 def _partition_flatten_with_keys(
-    x: Partition,
+    x: State,
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[jtu.DictKey, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
 ]:
@@ -52,11 +52,11 @@ def _partition_flatten_with_keys(
 
 
 def _partition_unflatten(keys: tp.Tuple[Path, ...], leaves: tp.Tuple[Leaf, ...]):
-    return Partition(dict(zip(keys, leaves)))
+    return State(dict(zip(keys, leaves)))
 
 
 jax.tree_util.register_pytree_with_keys(
-    Partition, _partition_flatten_with_keys, _partition_unflatten
+    State, _partition_flatten_with_keys, _partition_unflatten
 )
 
 
