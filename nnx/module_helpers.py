@@ -42,9 +42,6 @@ class Seq(Module, tp.Generic[A]):
         return len(vars(self))
 
 
-from flax.training import train_state
-
-
 class TrainState(Module, tp.Generic[M]):
     def __init__(self, model: M, tx: optax.GradientTransformation, *, step: int = 0):
         self.model = model
