@@ -66,4 +66,4 @@ from .state import (
     with_partitioning,
 )
 from .transforms import grad, jit
-from .module_helpers import Map, Seq
+from .module_helpers import Map, Seq, TrainState
