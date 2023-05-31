@@ -9,7 +9,6 @@ import numpy as np
 import optax
 from datasets import load_dataset
 import nnx
-from flax.training.train_state import TrainState
 
 
 np.random.seed(42)
@@ -31,9 +30,8 @@ X_test = (X_test > 0).astype(jnp.float32)
 print("X_train:", X_train.shape, X_train.dtype)
 print("X_test:", X_test.shape, X_test.dtype)
 
+
 # %%
-
-
 class Encoder(nnx.Module):
     def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
         self.linear1 = nnx.Linear(din, dmid, ctx=ctx)
@@ -50,7 +48,9 @@ class Encoder(nnx.Module):
 
         self.kl_loss = nnx.var(
             "losses",
-            0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2),
+            jnp.mean(
+                0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2, axis=-1)
+            ),
         )
 
         key = ctx.make_rng("noise")
@@ -101,53 +101,51 @@ class VAE(nnx.Module):
         return nnx.sigmoid(logits)
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = VAE(
-    din=int(np.prod(image_shape)),
-    hidden_size=256,
-    latent_size=latent_size,
-    output_shape=image_shape,
-    ctx=ctx,
-)
-params, moddef = model.partition("params")
-state = TrainState.create(
-    apply_fn=moddef.apply,
-    params=params,
+statedef = nnx.TrainState(
+    VAE(
+        din=int(np.prod(image_shape)),
+        hidden_size=256,
+        latent_size=latent_size,
+        output_shape=image_shape,
+        ctx=nnx.Context(jax.random.PRNGKey(0)),
+    ),
     tx=optax.adam(1e-3),
-)
+).deref()
 
 
 # %%
 @jax.jit
-def train_step(
-    state: TrainState, x: jax.Array, key: jax.Array
-) -> tp.Tuple[TrainState, jax.Array]:
-    def loss_fn(params: nnx.State) -> jax.Array:
+def train_step(statedef: nnx.Deref[nnx.TrainState[VAE]], x: jax.Array, key: jax.Array):
+    state = statedef.reref()
+
+    def loss_fn(model: VAE):
         ctx = nnx.Context(noise=jax.random.fold_in(key, state.step))
-        logits, updates = moddef.apply(params)(x, ctx=ctx)
+        logits = model(x, ctx=ctx)
 
-        kl_loss = sum(jax.tree_util.tree_leaves(updates["losses"]), 0.0)
+        losses = model.pop("losses")
+        kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
         reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
+        loss = reconstruction_loss + 0.1 * kl_loss
 
-        return reconstruction_loss + 0.1 * kl_loss
+        return loss, loss
 
-    grad_fn = jax.value_and_grad(loss_fn)
-    loss, grads = grad_fn(state.params)
-    state = state.apply_gradients(grads=grads)
+    grad_fn = nnx.grad(loss_fn, has_aux=True)
+    grads, loss = grad_fn(state.model)
+    state.apply_gradients(grads=grads)
 
-    return state, loss
+    return state.deref(), loss
 
 
 @partial(jax.jit, donate_argnums=(0,))
-def forward(state: TrainState, x: jax.Array, key: jax.Array) -> jax.Array:
+def forward(statedef: nnx.StateDef, x: jax.Array, key: jax.Array) -> jax.Array:
     ctx = nnx.Context(noise=key)
-    y_pred = moddef.apply(state.params)(x, ctx=ctx)[0]
+    y_pred = statedef.apply.model(x, ctx=ctx)[0]
     return jax.nn.sigmoid(y_pred)
 
 
 @jax.jit
-def sample(state: TrainState, z: jax.Array) -> jax.Array:
-    return moddef.apply(state.params).generate(z)[0]
+def sample(statedef: nnx.StateDef, z: jax.Array) -> jax.Array:
+    return statedef.apply.model.generate(z)[0]
 
 
 # %%
@@ -159,7 +157,7 @@ for epoch in range(epochs):
         idxs = np.random.randint(0, len(X_train), size=(batch_size,))
         x_batch = X_train[idxs]
 
-        state, loss = train_step(state, x_batch, key)
+        statedef, loss = train_step(statedef, x_batch, key)
         losses.append(np.asarray(loss))
 
     print(f"Epoch {epoch} loss: {np.mean(losses)}")
@@ -170,7 +168,7 @@ idxs = np.random.randint(0, len(X_test), size=(5,))
 x_sample = X_test[idxs]
 
 # get predictions
-y_pred = forward(state, x_sample, key)
+y_pred = forward(statedef, x_sample, key)
 
 # plot reconstruction
 figure = plt.figure(figsize=(3 * 5, 3 * 2))
@@ -187,7 +185,7 @@ plt.show()
 # %%
 # plot generative samples
 z_samples = np.random.normal(scale=1.5, size=(12, latent_size))
-samples = sample(state, z_samples)
+samples = sample(statedef, z_samples)
 
 figure = plt.figure(figsize=(3 * 5, 3 * 2))
 plt.title("Generative Samples")
