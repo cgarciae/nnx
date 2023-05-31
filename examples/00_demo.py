@@ -1,5 +1,6 @@
-# 1. Shared leafs vs shared Modules?
-# 2. Explicit vs sugar syntax?
+# shared leafs   + explicit refs
+# ------------ vs --------------
+# shared Modules + implicit vars
 
 import jax
 import jax.numpy as jnp
