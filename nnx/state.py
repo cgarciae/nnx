@@ -159,13 +159,8 @@ class Variable(tp.Generic[A]):
 
         self._value = value
 
-    def set_trace(self, context_trace: tracers.MainTrace) -> "Variable[A]":
-        return Variable(
-            self._value,
-            self._collection,
-            sharding=self._sharding,
-            context_trace=context_trace,
-        )
+    def to_value(self) -> "Value[A]":
+        return Value(self._value, self._collection, self._sharding)
 
     def copy(self) -> "Variable[A]":
         ref = object.__new__(Variable)
@@ -178,8 +173,48 @@ class Variable(tp.Generic[A]):
         return ref
 
 
-def _ref_flatten(
-    x: Variable[A],
+class Value(tp.Generic[A]):
+    __slots__ = ("_value", "_collection", "_sharding")
+
+    def __init__(
+        self,
+        value: A,
+        collection: str,
+        sharding: tp.Optional[Sharding],
+    ):
+        self._value = value
+        self._collection = collection
+        self._sharding = sharding
+
+    @property
+    def value(self) -> A:
+        return self._value
+
+    @property
+    def collection(self) -> str:
+        return self._collection
+
+    @property
+    def sharding(self) -> tp.Optional[Sharding]:
+        return self._sharding
+
+    def __repr__(self) -> str:
+        return (
+            f"Value(value={self._value}, collection={self._collection}, "
+            f"sharding={self._sharding})"
+        )
+
+    def to_var(self, context_trace: tracers.MainTrace) -> Variable[A]:
+        return Variable(
+            self._value,
+            self._collection,
+            sharding=self._sharding,
+            context_trace=context_trace,
+        )
+
+
+def _value_flatten(
+    x: Value[tp.Any],
     *,
     with_keys: bool,
 ):
@@ -191,18 +226,17 @@ def _ref_flatten(
     return (node,), (x._collection, x._sharding)
 
 
-def _ref_unflatten(
+def _value_unflatten(
     metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> Variable[A]:
-    collection, sharding = metadata
-    return Variable(children[0], collection, sharding=sharding)
+) -> Value[A]:
+    return Value(children[0], *metadata)
 
 
 jtu.register_pytree_with_keys(
-    Variable,
-    partial(_ref_flatten, with_keys=True),
-    _ref_unflatten,
-    flatten_func=partial(_ref_flatten, with_keys=False),
+    Value,
+    partial(_value_flatten, with_keys=True),
+    _value_unflatten,
+    flatten_func=partial(_value_flatten, with_keys=False),
 )
 
 

@@ -4,7 +4,7 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx.state import Variable
+from nnx.state import Value, Variable
 
 
 Predicate = tp.Callable[[tp.Tuple[str, ...], tp.Any], bool]
@@ -31,7 +31,7 @@ class Is:
     collection: str
 
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
-        if isinstance(x, Variable):
+        if isinstance(x, Value):
             return x.collection == self.collection
         return False
 

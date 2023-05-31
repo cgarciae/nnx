@@ -5,7 +5,7 @@ from typing import Any
 
 import jax
 import numpy as np
-from nnx.state import State, Variable
+from nnx.state import State, Value, Variable
 import typing as tp
 import jax.tree_util as jtu
 import builtins
@@ -97,7 +97,7 @@ class ModuleDef(tp.Generic[M]):
         else:
             state = _merge_state(states.values())
 
-        return _unflatten(state, self)
+        return _reref(state, self)
 
     def apply(
         self,
@@ -215,7 +215,7 @@ class Module(ABC):
         return id(self)
 
     def deref(self: M) -> Deref[M]:
-        state, moduledef = _flatten(self)
+        state, moduledef = _deref(self)
         state = State(state)
         return StateDef((state, moduledef))
 
@@ -342,9 +342,7 @@ class Module(ABC):
 
         # sort by Values first, then by other values
         new_state = dict(
-            sorted(
-                new_state.items(), key=lambda x: 1 if isinstance(x[1], Variable) else 2
-            )
+            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Value) else 2)
         )
 
         current_state = self.state_dict()
@@ -353,12 +351,12 @@ class Module(ABC):
         )
 
         for path, new_value in new_state.items():
-            if isinstance(new_value, Variable):
+            if isinstance(new_value, Value):
                 if path in current_state:
                     assert isinstance(current_state[path], Variable)
                     current_state[path].value = new_value.value
                 else:
-                    current_state[path] = new_value.set_trace(context_trace)
+                    current_state[path] = new_value.to_var(context_trace)
                     _set_value_at_path(self, path, current_state[path])
             else:
                 _set_value_at_path(self, path, new_value)
@@ -381,18 +379,18 @@ class Module(ABC):
         return state
 
 
-def _flatten(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
+def _deref(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
     module_index: tp.Dict[int, int] = {}
     path: Path = ()
     state: tp.Dict[Path, tp.Any] = {}
 
-    moduledef = _flatten_recursive(module, module_index, path, state)
+    moduledef = _deref_recursive(module, module_index, path, state)
     assert isinstance(moduledef, ModuleDef)
 
     return state, moduledef
 
 
-def _flatten_recursive(
+def _deref_recursive(
     module: M,
     module_index: tp.Dict[int, int],
     path: Path,
@@ -407,10 +405,10 @@ def _flatten_recursive(
     for name, value in vars(module).items():
         value_path = (*path, name)
         if isinstance(value, Module):
-            submodule_dag = _flatten_recursive(value, module_index, value_path, state)
+            submodule_dag = _deref_recursive(value, module_index, value_path, state)
             submodules.append((name, submodule_dag))
         elif isinstance(value, Variable):
-            state[value_path] = value.copy()
+            state[value_path] = value.to_value()
         elif isinstance(value, (jax.Array, np.ndarray)):
             state[value_path] = value
         else:
@@ -457,10 +455,10 @@ def _state_dict_recursive(
             state[value_path] = value
 
 
-def _unflatten(state: StateMapping, moduledef: ModuleDef[M]) -> M:
+def _reref(state: StateMapping, moduledef: ModuleDef[M]) -> M:
     index_module: tp.Dict[int, Module] = {}
     module = _build_module(moduledef, index_module)
-    state = _set_context_trace(state)
+    state = _reref_state(state)
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)
@@ -475,13 +473,13 @@ def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _set_context_trace(state: StateMapping) -> StateDict:
+def _reref_state(state: StateMapping) -> StateDict:
     new_state: StateDict = {}
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if isinstance(value, Variable):
-            new_state[path] = value.set_trace(context_trace)
+        if isinstance(value, Value):
+            new_state[path] = value.to_var(context_trace)
         else:
             new_state[path] = value
 
@@ -549,7 +547,7 @@ def _partition_by_collection(
 
     if num_collections == 0:
         collections = tuple(
-            set(x.collection for x in state.values() if isinstance(x, Variable))
+            set(x.collection for x in state.values() if isinstance(x, Value))
         )
         if "rest" in collections:
             raise ValueError("Found reserved 'rest' collection name in module Refs")

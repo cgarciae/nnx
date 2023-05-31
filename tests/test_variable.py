@@ -12,8 +12,8 @@ class TestVariable:
         ref = nnx.Variable(1, "")
         assert not hasattr(ref, "__dict__")
 
-    def test_ref(self):
-        r1 = nnx.Variable(1, "")
+    def test_value(self):
+        r1 = nnx.Value(1, "", None)
         assert r1.value == 1
 
         r2 = jax.tree_map(lambda x: x + 1, r1)
@@ -21,11 +21,6 @@ class TestVariable:
         assert r1.value == 1
         assert r2.value == 2
         assert r1 is not r2
-
-        r1.value = 3
-
-        assert r1.value == 3
-        assert r2.value == 2
 
     def test_ref_trace_level(self):
         m = nnx.Map(a=nnx.param(1))

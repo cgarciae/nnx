@@ -4,11 +4,11 @@ import typing as tp
 
 
 def any_ref(path, x):
-    return isinstance(x, nnx.Variable)
+    return isinstance(x, nnx.Value)
 
 
 def has_collection(collection):
-    return lambda path, x: isinstance(x, nnx.Variable) and x.collection == collection
+    return lambda path, x: isinstance(x, nnx.Value) and x.collection == collection
 
 
 class TestPartitioning:
