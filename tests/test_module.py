@@ -28,7 +28,7 @@ class TestModule:
         m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
         m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
 
-        m3 = m2.flatten().unflatten()
+        m3 = m2.deref().reref()
 
         assert m3["x"] is m3["y"]
         assert m3["x"]["a"] is m3["y"]["a"]
@@ -74,12 +74,12 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        dermod = foo.partition()
+        statedef = foo.partition()
 
-        assert "params" in dermod.partitions
-        assert "rest" in dermod.partitions
+        assert "params" in statedef.partitions
+        assert "rest" in statedef.partitions
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, partitions = dermod.apply(x=2.0, ctx=ctx)
+        y, partitions = statedef.apply(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)

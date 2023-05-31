@@ -31,7 +31,7 @@ class TestPartitioning:
         # check rest
         assert rest[("a", "1")].value == m.a[1]
 
-        m2 = moddef.unflatten((params, rest))
+        m2 = moddef.reref((params, rest))
 
         assert m2.a[0] == m.a[0]
         assert m2.a[1] == m.a[1]
@@ -45,7 +45,7 @@ class TestPartitioning:
             c=100,
         )
 
-        state = m.flatten()[0]
+        state = m.deref()[0]
         state = jax.tree_map(lambda x: x * 2, state)
 
         m.update(state)
@@ -62,10 +62,10 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        dermod: nnx.FlatMod = m.flatten()
-        dermod = jax.tree_map(lambda x: x * 2, dermod)
+        statedef: nnx.Deref = m.deref()
+        statedef = jax.tree_map(lambda x: x * 2, statedef)
 
-        m.update(dermod.partitions)
+        m.update(statedef.partitions)
 
         assert m.a[0] == 2
         assert m.a[1] == 6

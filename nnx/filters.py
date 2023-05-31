@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 from nnx import context
-from nnx.module import FlatMod, Module
+from nnx.module import StateDef, Module
 from nnx.transforms import UNSPECIFIED
 
 A = tp.TypeVar("A")
@@ -27,14 +27,12 @@ class JitTransform(jax.stages.Wrapped):
             **kwargs,
         ):
             args, kwargs = jax.tree_map(
-                lambda x: x.unflatten() if isinstance(x, FlatMod) else x,
+                lambda x: x.reref() if isinstance(x, StateDef) else x,
                 (args, kwargs),
-                is_leaf=lambda x: isinstance(x, FlatMod),
+                is_leaf=lambda x: isinstance(x, StateDef),
             )
             out = fun(*args, **kwargs)
-            out = jax.tree_map(
-                lambda x: x.flatten() if isinstance(x, Module) else x, out
-            )
+            out = jax.tree_map(lambda x: x.deref() if isinstance(x, Module) else x, out)
             return out
 
         self.jitted_fn = jitted_fn
@@ -44,14 +42,14 @@ class JitTransform(jax.stages.Wrapped):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
         args, kwargs = jax.tree_map(
-            lambda x: x.flatten() if isinstance(x, Module) else x,
+            lambda x: x.deref() if isinstance(x, Module) else x,
             (args, kwargs),
         )
         out = self.jitted_fn(*args, **kwargs)
         out = jax.tree_map(
-            lambda x: x.unflatten() if isinstance(x, FlatMod) else x,
+            lambda x: x.reref() if isinstance(x, StateDef) else x,
             out,
-            is_leaf=lambda x: isinstance(x, FlatMod),
+            is_leaf=lambda x: isinstance(x, StateDef),
         )
         return out
 
