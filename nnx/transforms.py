@@ -30,7 +30,7 @@ class JitTransform(jax.stages.Wrapped):
             module = statedef.reref()
             out = fun(module, *args, **kwargs)
             if self.stateful:
-                out = (module.deref().partitions, out)
+                out = (module.deref().states, out)
             return out
 
         self.jitted_fn = jitted_fn
@@ -137,7 +137,7 @@ class GradTransform:
             out = fun(module, *args)
 
             if self.stateful:
-                updates = module.deref().partitions
+                updates = module.deref().states
                 if self.has_aux:
                     loss, aux = out
                     out = (loss, (updates, aux))
@@ -152,7 +152,7 @@ class GradTransform:
         self.stateful = stateful
 
     def __call__(self, module: Module, *args: tp.Any):
-        (diff, nondiff), moddef = module.partition_general(self.predicate)
+        (diff, nondiff), moddef = module.partition(self.predicate, ...)
         grads = self.grad_fn(diff, nondiff, moddef, *args)
 
         if self.stateful:

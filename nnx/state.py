@@ -38,7 +38,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         return len(self._mapping)
 
     def __repr__(self) -> str:
-        return f"Partition({self._mapping})"
+        return f"State({self._mapping})"
 
 
 def _partition_flatten_with_keys(

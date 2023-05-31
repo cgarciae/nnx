@@ -56,7 +56,7 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
@@ -95,15 +95,15 @@ model = Linear(din=12, dout=2, ctx=ctx)
 
 #### GetItem and SetItem Syntactic Sugar
 
-`Module` implements `__getitem__` and `__setitem__` to provide syntactic sugar for creating and updating `Partition`s. Although it may appear otherwise, `__setitem__` does not modify the Module's structure. Instead, it updates the values of the references, as demonstrated in this simplified implementation:
+`Module` implements `__getitem__` and `__setitem__` to provide syntactic sugar for creating and updating `State`s. Although it may appear otherwise, `__setitem__` does not modify the Module's structure. Instead, it updates the values of the references, as demonstrated in this simplified implementation:
 
 ```python
 class Module(nnx.Pytree):
     ...
-    def __getitem__(self, collection: str) -> nnx.Partition:
+    def __getitem__(self, collection: str) -> nnx.State:
         return nnx.get_partition(self, collection)
 
-    def __setitem__(self, _: SetItemType, value: nnx.Partition):
+    def __setitem__(self, _: SetItemType, value: nnx.State):
         nnx.update_refs(self, value)
 ```
 
@@ -114,7 +114,7 @@ Sample usage might look like this:
 model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 ```
 
-In this example, `model.get("params")` returns a `Partition` that contains all the references in the `params` collection. `grads` is a `Partition` with the same structure as `model.get("params")`, but with gradients instead of parameters. The statement `model.update = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
+In this example, `model.get("params")` returns a `State` that contains all the references in the `params` collection. `grads` is a `State` with the same structure as `model.get("params")`, but with gradients instead of parameters. The statement `model.update = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
 ### Transformations
 
@@ -145,7 +145,7 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
@@ -180,7 +180,7 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grads: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
     
@@ -193,7 +193,7 @@ Filtered transformations must output any state they want to propagate but have m
 
 #### Partition API
 
-The partition API enables splitting a Module's state into sets of reference-less `Partition`s, this provides a general way of interacting with vanilla JAX transformations.
+The partition API enables splitting a Module's state into sets of reference-less `State`s, this provides a general way of interacting with vanilla JAX transformations.
 
 
 ![partition-api](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/partition-api.png)
@@ -201,19 +201,19 @@ The partition API enables splitting a Module's state into sets of reference-less
 Here's an example of how a `train_step` function can be implemented using the partition API:
 
 ```python
-partitions, moddef = model.partition()
-params: nnx.Partition = partitions["params"]
+states, moddef = model.partition()
+params: nnx.State = states["params"]
 
 @jax.jit
-def train_step(params: nnx.Partition, x, y):
+def train_step(params: nnx.State, x, y):
 
-    def loss_fn(params: nnx.Partition):
+    def loss_fn(params: nnx.State):
         model: Linear = moddef.reref(params)
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient
-    grads: nnx.Partition = jax.grad(loss_fn)(params)
+    grads: nnx.State = jax.grad(loss_fn)(params)
     # SGD update
     params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
     

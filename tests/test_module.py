@@ -76,10 +76,10 @@ class TestModuleDef:
 
         statedef = foo.partition()
 
-        assert "params" in statedef.partitions
-        assert "rest" in statedef.partitions
+        assert "params" in statedef.states
+        assert "rest" in statedef.states
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, partitions = statedef.apply(x=2.0, ctx=ctx)
+        y, states = statedef.apply(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)
