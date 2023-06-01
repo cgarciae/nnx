@@ -44,7 +44,7 @@ def mse(y, y_pred):
     return jnp.mean((y - y_pred) ** 2)
 
 
-@jax.jit
+@nnx.jit_internal_filter
 def train_step(model: MLP, batch):
     x, y = batch
 
@@ -52,15 +52,14 @@ def train_step(model: MLP, batch):
         y_pred = model(x)
         return jnp.mean((y - y_pred) ** 2)
 
-    #                                   |--default--|
-    grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+    grad: nnx.State = nnx.grad(loss_fn)(model)
     #                           |-------- sgd ---------|
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grad)
 
     return model
 
 
-@jax.jit
+@nnx.jit_internal_filter
 def test_step(model: MLP, batch):
     x, y = batch
     y_pred = model(x)
@@ -69,7 +68,7 @@ def test_step(model: MLP, batch):
 
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
+model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split(...)
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
@@ -82,6 +81,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
+model = model.merge()
 print("times called:", model.count)
 
 y_pred = model(X)

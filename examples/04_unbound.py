@@ -47,8 +47,7 @@ def train_step(splitmod: nnx.AnySplit[MLP], batch) -> nnx.AnySplit[MLP]:
 
     def loss_fn(model: MLP):
         y_pred = model(x)
-        loss = jnp.mean((y - y_pred) ** 2)
-        return loss
+        return jnp.mean((y - y_pred) ** 2)
 
     grads = nnx.grad(loss_fn)(model)
     #                           |-------- sgd ---------|

@@ -141,7 +141,11 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         return self.moduledef.apply(self.states)
 
 
-AnySplit = Split[tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]], M]
+AnySplit = tp.Union[
+    Split[State, M],
+    Split[tp.Tuple[State, ...], M],
+    Split[tp.Dict[str, State], M],
+]
 
 
 def _derefedmod_flatten(bounded: Split[P, M]):

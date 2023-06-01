@@ -2,7 +2,7 @@ __version__ = "0.0.0"
 
 
 from .context import Context, RngStream
-from .filters import jit_filter
+from .filters import jit_internal_filter
 from .module import Module, ModuleDef, Split, AnySplit
 from .nn.activations import (
     celu,

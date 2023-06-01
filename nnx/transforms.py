@@ -26,11 +26,10 @@ class JitTransform(jax.stages.Wrapped):
         **jit_kwargs,
     ):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(splitmod: AnySplit[Module], *args, **kwargs):
-            module = splitmod.merge()
+        def jitted_fn(module: Module, *args, **kwargs):
             out = fun(module, *args, **kwargs)
             if self.stateful:
-                out = (module.split(...).states, out)
+                out = (module, out)
             return out
 
         self.jitted_fn = jitted_fn
@@ -40,7 +39,7 @@ class JitTransform(jax.stages.Wrapped):
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
-        out = self.jitted_fn(module.split(...), *args, **kwargs)
+        out = self.jitted_fn(module, *args, **kwargs)
         if self.stateful:
             updates, out = out
             module.update(updates)

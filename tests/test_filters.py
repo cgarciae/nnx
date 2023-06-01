@@ -31,12 +31,12 @@ class TestFilters:
             b=nnx.param(2),
         )
 
-        @nnx.jit_filter
+        @nnx.jit_internal_filter
         def g(m: nnx.Map[int]):
             m.a = 10
             return m
 
-        m = g(m)
+        m = g(m).merge()
 
         assert m.a == 10
         assert m.b == 2

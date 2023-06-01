@@ -76,7 +76,7 @@ class TestIntegration:
                 x = self.block2(x, ctx=ctx)
                 return x
 
-        @nnx.jit_filter
+        @nnx.jit_internal_filter
         def train_step(model: Model, x, y):
             @nnx.grad
             def loss_fn(model: Model):
@@ -92,13 +92,15 @@ class TestIntegration:
             return model
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
-        model = Model(ctx=ctx)
+        model = Model(ctx=ctx).split(...)
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))
 
         for _i in range(3):
             model = train_step(model, x, y)
+
+        model = model.merge()
 
         assert model.block1.linear.bias is not None
         assert model.block2.linear.bias is not None

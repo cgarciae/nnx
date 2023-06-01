@@ -38,7 +38,7 @@ class TestJIT:
     def test_jit_stateless(self):
         m = nnx.Map(a=nnx.param(1))
 
-        @nnx.jit_filter
+        @nnx.jit_internal_filter
         def g(m: nnx.Map):
             m.a = 2
             return 1.0

@@ -15,7 +15,7 @@ Leaf = tp.Any
 Leaves = tp.List[Leaf]
 
 
-class JitTransform(jax.stages.Wrapped):
+class JitFilter(jax.stages.Wrapped):
     def __init__(
         self,
         fun: tp.Callable[..., tp.Any],
@@ -33,7 +33,9 @@ class JitTransform(jax.stages.Wrapped):
             )
             out = fun(*args, **kwargs)
             out = jax.tree_map(
-                lambda x: x.split(...) if isinstance(x, Module) else x, out
+                lambda x: x.split(...) if isinstance(x, Module) else x,
+                out,
+                is_leaf=lambda x: isinstance(x, Module),
             )
             return out
 
@@ -43,16 +45,8 @@ class JitTransform(jax.stages.Wrapped):
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
             kwargs["ctx"] = kwargs["ctx"].fork()
 
-        args, kwargs = jax.tree_map(
-            lambda x: x.split(...) if isinstance(x, Module) else x,
-            (args, kwargs),
-        )
         out = self.jitted_fn(*args, **kwargs)
-        out = jax.tree_map(
-            lambda x: x.merge() if isinstance(x, Split) else x,
-            out,
-            is_leaf=lambda x: isinstance(x, Split),
-        )
+
         return out
 
     def __repr__(self):
@@ -62,7 +56,7 @@ class JitTransform(jax.stages.Wrapped):
         return self.jitted_fn.lower(*args, **kwargs)
 
 
-def jit_filter(
+def jit_internal_filter(
     fun: tp.Callable[..., tp.Any],
     *,
     in_shardings: tp.Any = UNSPECIFIED,
@@ -101,7 +95,7 @@ def jit_filter(
     if out_shardings is not UNSPECIFIED:
         jit_kwargs["out_shardings"] = out_shardings
 
-    ref_jit = JitTransform(
+    ref_jit = JitFilter(
         fun,
         **jit_kwargs,
     )
