@@ -21,11 +21,11 @@ StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
 
 
-class ApplyCaller(tp.Protocol, tp.Generic[M]):
-    def __getattr__(self, __name) -> "ApplyCaller[M]":
+class ApplyCaller(tp.Protocol, tp.Generic[A]):
+    def __getattr__(self, __name) -> "ApplyCaller[A]":
         ...
 
-    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, M]:
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, A]:
         ...
 
 
@@ -101,8 +101,14 @@ class ModuleDef(tp.Generic[M]):
     def apply(
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
-    ) -> ApplyCaller[M]:
-        return self.merge(states).apply
+    ) -> ApplyCaller["Split[State, M]"]:
+        module = self.merge(states)
+
+        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, Split[State, M]]:
+            out = fn(*args, **kwargs)
+            return out, module.split(...)
+
+        return CallableProxy(_context, module)  # type: ignore
 
 
 def _moddef_flatten(moddef: ModuleDef[M]):
@@ -137,8 +143,66 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         return self.moduledef.merge(self.states)
 
     @property
-    def apply(self) -> ApplyCaller[M]:
+    def apply(self) -> ApplyCaller["Split[State, M]"]:
         return self.moduledef.apply(self.states)
+
+    @tp.overload
+    def get(
+        self,
+        filter: partitioning.CollectionFilter,
+        /,
+    ) -> State:
+        ...
+
+    @tp.overload
+    def get(
+        self,
+        filter: partitioning.CollectionFilter,
+        filter2: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple[State, ...]:
+        ...
+
+    def get(
+        self, *filters: partitioning.CollectionFilter
+    ) -> tp.Union[State, tp.Tuple[State, ...]]:
+        return self.merge().get(*filters)
+
+    @tp.overload
+    def split(
+        self,
+        first: None = None,
+        second: None = None,
+        /,
+    ) -> "Split[tp.Dict[str, State], M]":
+        ...
+
+    @tp.overload
+    def split(
+        self, first: partitioning.CollectionFilter, second: None = None, /
+    ) -> "Split[State, M]":
+        ...
+
+    @tp.overload
+    def split(
+        self,
+        first: partitioning.CollectionFilter,
+        second: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> "Split[tp.Tuple[State, ...], M]":
+        ...
+
+    def split(
+        self,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Union[
+        "Split[State, M]",
+        "Split[tp.Tuple[State, ...], M]",
+        "Split[tp.Dict[str, State], M]",
+    ]:
+        return self.merge().split(*filters)
 
 
 AnySplit = tp.Union[
