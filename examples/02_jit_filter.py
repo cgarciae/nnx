@@ -44,7 +44,11 @@ def mse(y, y_pred):
     return jnp.mean((y - y_pred) ** 2)
 
 
-@nnx.jit_internal_filter
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
+
+
+@jax.jit
 def train_step(model: MLP, batch):
     x, y = batch
 
@@ -66,9 +70,6 @@ def test_step(model: MLP, batch):
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
-
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split(...)
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):

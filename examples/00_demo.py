@@ -4,7 +4,9 @@
 
 import jax
 import jax.numpy as jnp
+import optax
 import nnx
+from flax.training.train_state import TrainState
 
 
 class Linear(nnx.Module):
@@ -21,7 +23,19 @@ class Linear(nnx.Module):
 ctx = nnx.Context(jax.random.PRNGKey(0))
 linear = Linear(2, 2, ctx=ctx)
 
+y = linear(jnp.ones((2, 2)))
 
-state, moddef = splitmod = linear.split(...)
 
+params, moddef = linear.split("params")
+state = TrainState.create(
+    apply_fn=moddef.apply,
+    params=params,
+    tx=optax.adam(1e-3),
+)
+
+y, updates = state.apply_fn(state.params)(x)
+
+model = moddef.merge((params, batch_stats))
+
+linear.update(params)
 # print(state)

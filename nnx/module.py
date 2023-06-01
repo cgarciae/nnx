@@ -204,6 +204,41 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
     ]:
         return self.merge().split(*filters)
 
+    @tp.overload
+    def pop(
+        self,
+        filter: partitioning.CollectionFilter,
+        /,
+    ) -> tp.Tuple[State, "Split[State, M]"]:
+        ...
+
+    @tp.overload
+    def pop(
+        self,
+        filter: partitioning.CollectionFilter,
+        filter2: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple[tp.Tuple[State, ...], "Split[State, M]"]:
+        ...
+
+    def pop(
+        self, *filters: partitioning.CollectionFilter
+    ) -> tp.Tuple[tp.Union[State, tp.Tuple[State, ...]], "Split[State, M]"]:
+        module = self.merge()
+        states = module.pop(*filters)
+        return states, module.split(...)
+
+    def update(
+        self,
+        updates: tp.Union[
+            M, "AnySplit[M]", State, tp.Tuple[State, ...], tp.Dict[str, State]
+        ],
+    ) -> "Split[State, M]":
+        module = self.merge()
+        module.update(updates)
+        return module.split(...)
+
 
 AnySplit = tp.Union[
     Split[State, M],
@@ -400,14 +435,17 @@ class Module(ABC):
     def update(
         self: M,
     ) -> tp.Callable[
-        [tp.Union[M, State, tp.Tuple[State, ...], tp.Dict[str, State]]], None
+        [tp.Union[M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]]],
+        None,
     ]:
         return lambda states: self._update(states)
 
     @update.setter
     def update(
         self: M,
-        value: tp.Union[M, State, tp.Tuple[State, ...], tp.Dict[str, State]],
+        value: tp.Union[
+            M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]
+        ],
     ) -> None:
         self._update(value)
 
@@ -423,8 +461,13 @@ class Module(ABC):
 
     def _update(
         self: M,
-        states: tp.Union[M, State, tp.Tuple[State, ...], tp.Dict[str, State]],
+        states: tp.Union[
+            M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]
+        ],
     ) -> None:
+        if isinstance(states, Split):
+            states = states.states
+
         if isinstance(states, Module):
             assert type(self) == type(states)
             new_state, _ = _deref(states)

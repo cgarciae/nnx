@@ -41,50 +41,47 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(splitmod: nnx.AnySplit[MLP], batch) -> nnx.AnySplit[MLP]:
+def train_step(model: nnx.AnySplit[MLP], batch) -> nnx.AnySplit[MLP]:
     x, y = batch
-    model = splitmod.merge()
 
-    def loss_fn(model: MLP):
-        y_pred = model(x)
-        return jnp.mean((y - y_pred) ** 2)
+    def loss_fn(model: nnx.AnySplit[MLP]):
+        y_pred, model = model.apply(x)
+        return jnp.mean((y - y_pred) ** 2), model
 
-    grads = nnx.grad(loss_fn)(model)
-    #                           |-------- sgd ---------|
-    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    grads, model = nnx.grad(loss_fn, has_aux=True)(model)
+    #                          |-------- sgd ---------|
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model = model.update(params)
 
-    return model.split(...)
+    return model
 
 
 @jax.jit
-def test_step(unbound: nnx.AnySplit[MLP], batch):
+def test_step(model: nnx.AnySplit[MLP], batch):
     x, y = batch
-    model = unbound.merge()
-    y_pred = model(x)
+    y_pred, model = model.apply(x)
     loss = jnp.mean((y - y_pred) ** 2)
-    return {"loss": loss}
+    return {"loss": loss}, model
 
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-splitmod = model.split(...)
+model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split(...)
 
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    splitmod = train_step(splitmod, batch)
+    model = train_step(model, batch)
 
     if step % 1000 == 0:
-        logs = test_step(splitmod, (X, Y))
+        logs, model = test_step(model, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = splitmod.merge()
-print("times called:", model.count)
+print("times called:", model.merge().count)
 
-y_pred = model(X)
+y_pred, model = model.apply(X)
 
 plt.scatter(X, Y, color="blue")
 plt.plot(X, y_pred, color="black")

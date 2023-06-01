@@ -27,7 +27,7 @@ class Linear(nnx.Module):
 
 class MLP(nnx.Module):
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = nnx.var("state", jnp.array(0))
+        self.count = jnp.array(0)
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
@@ -65,7 +65,7 @@ def test_step(model: nnx.ModuleDef[MLP], params: nnx.State, state: nnx.State, ba
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-(params, state), model = model.split("params", "state")
+(params, state), model = model.split("params", ...)
 
 
 total_steps = 10_000
