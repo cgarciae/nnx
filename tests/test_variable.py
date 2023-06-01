@@ -38,9 +38,9 @@ class TestVariable:
         def g(statedef: nnx.Deref[nnx.Map[int]]):
             m = statedef.merge()
             m.a = 2
-            return m.deref()
+            return m.split(...)
 
-        m2 = g(m.deref()).merge()
+        m2 = g(m.split(...)).merge()
 
         assert m2.a == 2
 
@@ -71,9 +71,9 @@ class TestVariable:
             assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
 
-            return m.deref()
+            return m.split(...)
 
-        m = f(m.deref()).merge()
+        m = f(m.split(...)).merge()
 
         assert m["a"][0] is not m["b"]
         assert m["a"][1] is not m["b"]
@@ -121,9 +121,9 @@ class TestVariable:
         def g(statedef: nnx.Deref[nnx.Map[int]]):
             m = statedef.merge()
             m.a += 1
-            return m.deref()
+            return m.split(...)
 
-        m2 = g(m.deref()).merge()
+        m2 = g(m.split(...)).merge()
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
@@ -138,23 +138,23 @@ class TestVariable:
             n += 1
             m = statedef.merge()
             m.a += 1
-            return m.deref()
+            return m.split(...)
 
-        m2 = g(m.deref()).merge()
+        m2 = g(m.split(...)).merge()
 
         assert n == 1
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
 
-        g(m.deref())
+        g(m.split(...))
         assert n == 1
 
-        g(m2.deref())
+        g(m2.split(...))
         assert n == 1
 
         m2.b = nnx.param(10)
-        g(m2.deref())
+        g(m2.split(...))
 
         assert n == 2
 
@@ -169,7 +169,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.deref()
+        p, moddef = m.split(...)
         assert len(p) == 4
         assert len(jax.tree_util.tree_leaves(p)) == 4
 
@@ -185,7 +185,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.deref()
+        p, moddef = m.split(...)
         assert len(p) == 5
         assert len(jax.tree_util.tree_leaves(p)) == 5
 

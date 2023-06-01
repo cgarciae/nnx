@@ -28,7 +28,7 @@ class TestModule:
         m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
         m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
 
-        m3 = m2.deref().merge()
+        m3 = m2.split(...).merge()
 
         assert m3["x"] is m3["y"]
         assert m3["x"]["a"] is m3["y"]["a"]
@@ -49,7 +49,7 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        states, moddef = foo.partition()
+        states, moddef = foo.split()
 
         assert "params" in states
         assert "rest" in states
@@ -74,7 +74,7 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        statedef = foo.partition()
+        statedef = foo.split()
 
         assert "params" in statedef.states
         assert "rest" in statedef.states

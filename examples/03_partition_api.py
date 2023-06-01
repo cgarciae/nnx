@@ -65,7 +65,7 @@ def test_step(model: nnx.ModuleDef[MLP], params: nnx.State, state: nnx.State, ba
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-(params, state), model = model.partition("params", "state")
+(params, state), model = model.split("params", "state")
 
 
 total_steps = 10_000

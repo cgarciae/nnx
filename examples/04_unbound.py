@@ -54,7 +54,7 @@ def train_step(derefmod: nnx.Deref[MLP], batch) -> nnx.Deref[MLP]:
     #                           |-------- sgd ---------|
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
 
-    return model.deref()
+    return model.split(...)
 
 
 @jax.jit
@@ -68,7 +68,7 @@ def test_step(unbound: nnx.Deref[MLP], batch):
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-derefmod = model.deref()
+derefmod = model.split(...)
 
 
 total_steps = 10_000

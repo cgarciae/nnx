@@ -108,7 +108,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 def create_state(params_key: jax.random.KeyArray):
     ctx = nnx.Context(rngs=dict(params=params_key))
     model = MLP(10, 20, 10, ctx=ctx)
-    (params, batch_stats), modeldef = model.partition("params", "batch_stats")
+    (params, batch_stats), modeldef = model.split("params", "batch_stats")
     return params, batch_stats, modeldef
 
 

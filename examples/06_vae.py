@@ -17,7 +17,7 @@ latent_size = 32
 image_shape: tp.Sequence[int] = (28, 28)
 steps_per_epoch: int = 200
 batch_size: int = 64
-epochs: int = 100
+epochs: int = 20
 
 
 dataset = load_dataset("mnist")
@@ -107,7 +107,7 @@ params, moddef = VAE(
     latent_size=latent_size,
     output_shape=image_shape,
     ctx=nnx.Context(jax.random.PRNGKey(0)),
-).partition("params")
+).split("params")
 
 state = train_state.TrainState.create(
     apply_fn=moddef.apply,

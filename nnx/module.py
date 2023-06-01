@@ -206,10 +206,10 @@ class Module(ABC):
         return StateDef((state, moduledef))
 
     def clone(self: M) -> M:
-        return self.deref().merge()
+        return self.split(...).merge()
 
     @tp.overload
-    def partition(
+    def split(
         self: M,
         first: None = None,
         second: None = None,
@@ -218,13 +218,13 @@ class Module(ABC):
         ...
 
     @tp.overload
-    def partition(
+    def split(
         self: M, first: partitioning.CollectionFilter, second: None = None, /
     ) -> StateDef[State, M]:
         ...
 
     @tp.overload
-    def partition(
+    def split(
         self: M,
         first: partitioning.CollectionFilter,
         second: partitioning.CollectionFilter,
@@ -233,27 +233,21 @@ class Module(ABC):
     ) -> StateDef[tp.Tuple[State, ...], M]:
         ...
 
-    def partition(
+    def split(
         self: M,
-        first: tp.Optional[partitioning.CollectionFilter] = None,
-        second: tp.Optional[partitioning.CollectionFilter] = None,
-        /,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Union[
         StateDef[State, M],
         StateDef[tp.Tuple[State, ...], M],
         StateDef[tp.Dict[str, State], M],
     ]:
-        if second is not None:
-            filters = (second, *filters)
-
-        if first is not None:
-            filters = (first, *filters)
-
-        if len(filters) == 0:
+        if len(filters) == 1 and filters[0] is Ellipsis:
+            states, moddef = _deref(self)
+            states = State(states)
+        elif len(filters) == 0:
             states, moddef = _partition_by_collection(self)
         else:
-            state, moddef = self.deref()
+            state, moddef = _deref(self)
             (*states, rest) = _split_state(state, *filters)
 
             if len(rest) > 0:
@@ -293,7 +287,7 @@ class Module(ABC):
         if len(filters) == 0:
             raise ValueError("Expected at least one filter")
 
-        state, _ = self.deref()
+        state, _ = _deref(self)
         (*states, _rest) = _split_state(state, *filters)
 
         assert len(states) == len(filters)
@@ -353,7 +347,7 @@ class Module(ABC):
     def apply(self) -> ApplyCaller:
         def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
             out = fn(*args, **kwargs)
-            updates, _ = self.partition()
+            updates, _ = self.split()
             return out, updates
 
         return CallableProxy(_context, self)  # type: ignore
@@ -364,8 +358,8 @@ class Module(ABC):
     ) -> None:
         if isinstance(states, Module):
             assert type(self) == type(states)
-            states, _ = states.deref()
-        if isinstance(states, State):
+            new_state, _ = _deref(states)
+        elif isinstance(states, State):
             new_state = states
         else:
             if isinstance(states, dict):
@@ -410,7 +404,7 @@ class Module(ABC):
         super().__init_subclass__()
 
         def _flatten(module: Module, *, with_keys: bool):
-            state, moddef = module.partition(...)
+            state, moddef = module.split(...)
             paths = tuple(state.keys())
 
             if with_keys:
@@ -595,7 +589,7 @@ def _partition_by_collection(
 def _partition_by_collection(
     module: M,
 ) -> StateDef[tp.Dict[str, State], M]:
-    state, moddef = module.deref()
+    state, moddef = _deref(module)
 
     collections = tuple(
         set(x.collection for x in state.values() if isinstance(x, Value))
@@ -614,7 +608,7 @@ def _partition_by_collection(
 
 
 def _split_state(
-    state: State,
+    state: StateMapping,
     *filters: partitioning.CollectionFilter,
 ) -> tp.Tuple[State, ...]:
     predicates = tuple(map(partitioning.to_predicate, filters))
@@ -636,7 +630,7 @@ def _split_state(
 
 
 def _merge_states(
-    states: tp.Iterable[State],
+    states: tp.Iterable[StateMapping],
 ) -> State:
     new_state: StateDict = {}
 

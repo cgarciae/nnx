@@ -25,7 +25,7 @@ CollectionFilter = tp.Union[
 def to_predicate(collection_filter: CollectionFilter) -> Predicate:
     if isinstance(collection_filter, str):
         return Is(collection_filter)
-    elif collection_filter is ...:
+    elif collection_filter is Ellipsis:
         return Everything()
     elif callable(collection_filter):
         return collection_filter

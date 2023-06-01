@@ -201,7 +201,7 @@ The partition API enables splitting a Module's state into sets of reference-less
 Here's an example of how a `train_step` function can be implemented using the partition API:
 
 ```python
-states, moddef = model.partition()
+states, moddef = model.split()
 params: nnx.State = states["params"]
 
 @jax.jit
