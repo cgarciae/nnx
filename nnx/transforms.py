@@ -27,7 +27,7 @@ class JitTransform(jax.stages.Wrapped):
     ):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(statedef: Deref[Module], *args, **kwargs):
-            module = statedef.reref()
+            module = statedef.merge()
             out = fun(module, *args, **kwargs)
             if self.stateful:
                 out = (module.deref().states, out)
@@ -71,8 +71,6 @@ def jit(
     inline: bool = False,
     abstracted_axes: tp.Optional[tp.Any] = None,
 ) -> jax.stages.Wrapped:
-    """JIT compile a function, dereferencing and rereferencing Refs."""
-
     if static_argnames is None:
         static_argnames = []
     elif isinstance(static_argnames, str):
@@ -133,7 +131,7 @@ class GradTransform:
             moddef: ModuleDef[Module],
             *args: tp.Any,
         ):
-            module = moddef.reref((diff, non_diff))
+            module = moddef.merge((diff, non_diff))
             out = fun(module, *args)
 
             if self.stateful:

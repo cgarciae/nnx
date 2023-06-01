@@ -80,7 +80,7 @@ class ModuleDef(tp.Generic[M]):
     def static_fields(self) -> tp.Tuple[tp.Tuple[str, tp.Any], ...]:
         return self._static_fields
 
-    def reref(
+    def merge(
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> M:
@@ -96,13 +96,13 @@ class ModuleDef(tp.Generic[M]):
         else:
             state = _merge_state(states.values())
 
-        return _reref(state, self)
+        return _merge(state, self)
 
     def apply(
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> ApplyCaller:
-        return self.reref(states).apply
+        return self.merge(states).apply
 
 
 def _moddef_flatten(moddef: ModuleDef[M]):
@@ -133,8 +133,8 @@ class StateDef(tp.Tuple[P, ModuleDef[M]]):
     def moduledef(self) -> ModuleDef[M]:
         return self[1]
 
-    def reref(self) -> M:
-        return self.moduledef.reref(self.states)
+    def merge(self) -> M:
+        return self.moduledef.merge(self.states)
 
     @property
     def apply(self) -> ApplyCaller:
@@ -206,7 +206,7 @@ class Module(ABC):
         return StateDef((state, moduledef))
 
     def clone(self: M) -> M:
-        return self.deref().reref()
+        return self.deref().merge()
 
     @tp.overload
     def partition(
@@ -407,6 +407,8 @@ class Module(ABC):
         return state
 
     def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+
         def _flatten(module: Module, *, with_keys: bool):
             state, moddef = module.partition(...)
             paths = tuple(state.keys())
@@ -425,7 +427,7 @@ class Module(ABC):
             nodes: tp.Tuple[tp.Any, ...],
         ) -> M:
             paths, moddef = paths_moddef
-            return moddef.reref(State(zip(paths, nodes)))
+            return moddef.merge(State(zip(paths, nodes)))
 
         jtu.register_pytree_with_keys(
             cls,
@@ -511,10 +513,10 @@ def _state_dict_recursive(
             state[value_path] = value
 
 
-def _reref(state: StateMapping, moduledef: ModuleDef[M]) -> M:
+def _merge(state: StateMapping, moduledef: ModuleDef[M]) -> M:
     index_module: tp.Dict[int, Module] = {}
     module = _build_module(moduledef, index_module)
-    state = _reref_state(state)
+    state = _values_to_variables(state)
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)
@@ -529,7 +531,7 @@ def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _reref_state(state: StateMapping) -> StateDict:
+def _values_to_variables(state: StateMapping) -> StateDict:
     new_state: StateDict = {}
     context_trace = tracers.get_top_trace(state)
 

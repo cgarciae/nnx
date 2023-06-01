@@ -43,7 +43,7 @@ class MLP(nnx.Module):
 @jax.jit
 def train_step(derefmod: nnx.Deref[MLP], batch) -> nnx.Deref[MLP]:
     x, y = batch
-    model = derefmod.reref()
+    model = derefmod.merge()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
@@ -60,7 +60,7 @@ def train_step(derefmod: nnx.Deref[MLP], batch) -> nnx.Deref[MLP]:
 @jax.jit
 def test_step(unbound: nnx.Deref[MLP], batch):
     x, y = batch
-    model = unbound.reref()
+    model = unbound.merge()
     y_pred = model(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
@@ -82,7 +82,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = derefmod.reref()
+model = derefmod.merge()
 print("times called:", model.count)
 
 y_pred = model(X)

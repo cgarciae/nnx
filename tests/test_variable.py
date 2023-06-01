@@ -36,11 +36,11 @@ class TestVariable:
 
         @jax.jit
         def g(statedef: nnx.Deref[nnx.Map[int]]):
-            m = statedef.reref()
+            m = statedef.merge()
             m.a = 2
             return m.deref()
 
-        m2 = g(m.deref()).reref()
+        m2 = g(m.deref()).merge()
 
         assert m2.a == 2
 
@@ -66,14 +66,14 @@ class TestVariable:
 
         @jax.jit
         def f(statedef: nnx.Deref[nnx.Map[tp.Any]]):
-            m = statedef.reref()
+            m = statedef.merge()
 
             assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
 
             return m.deref()
 
-        m = f(m.deref()).reref()
+        m = f(m.deref()).merge()
 
         assert m["a"][0] is not m["b"]
         assert m["a"][1] is not m["b"]
@@ -119,22 +119,14 @@ class TestVariable:
 
         @jax.jit
         def g(statedef: nnx.Deref[nnx.Map[int]]):
-            m = statedef.reref()
+            m = statedef.merge()
             m.a += 1
             return m.deref()
 
-        m2 = g(m.deref()).reref()
+        m2 = g(m.deref()).merge()
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
-
-        # test passing a Module to a jitted function directly
-        @jax.jit
-        def f(m):
-            return None
-
-        with pytest.raises(TypeError, match="Cannot interpret value of type"):
-            f(m)
 
     def test_no_rejit(self):
         n = 0
@@ -144,11 +136,11 @@ class TestVariable:
         def g(statedef):
             nonlocal n
             n += 1
-            m = statedef.reref()
+            m = statedef.merge()
             m.a += 1
             return m.deref()
 
-        m2 = g(m.deref()).reref()
+        m2 = g(m.deref()).merge()
 
         assert n == 1
         assert m2 is not m

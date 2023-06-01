@@ -160,7 +160,7 @@ Certainly! I've revised the text to improve clarity and readability. Here are th
 ---
 #### Filtered Transformations
 
-Filtered transformations offer more flexibility, as they can take Pytrees of references in any of their arguments and return Pytrees of references. They simply `deref` and `reref` all their inputs and outputs to transfer the Pytrees across the transformation. In general, they have the following properties:
+Filtered transformations offer more flexibility, as they can take Pytrees of references in any of their arguments and return Pytrees of references. They simply `deref` and `merge` all their inputs and outputs to transfer the Pytrees across the transformation. In general, they have the following properties:
 
 * They behave as pure functions.
 * They don't handle any global state except for Refx's trace state.
@@ -208,7 +208,7 @@ params: nnx.State = states["params"]
 def train_step(params: nnx.State, x, y):
 
     def loss_fn(params: nnx.State):
-        model: Linear = moddef.reref(params)
+        model: Linear = moddef.merge(params)
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 

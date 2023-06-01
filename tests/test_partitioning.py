@@ -31,7 +31,7 @@ class TestPartitioning:
         # check rest
         assert rest[("a", "1")].value == m.a[1]
 
-        m2 = moddef.reref((params, rest))
+        m2 = moddef.merge((params, rest))
 
         assert m2.a[0] == m.a[0]
         assert m2.a[1] == m.a[1]

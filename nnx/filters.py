@@ -27,7 +27,7 @@ class JitTransform(jax.stages.Wrapped):
             **kwargs,
         ):
             args, kwargs = jax.tree_map(
-                lambda x: x.reref() if isinstance(x, StateDef) else x,
+                lambda x: x.merge() if isinstance(x, StateDef) else x,
                 (args, kwargs),
                 is_leaf=lambda x: isinstance(x, StateDef),
             )
@@ -47,7 +47,7 @@ class JitTransform(jax.stages.Wrapped):
         )
         out = self.jitted_fn(*args, **kwargs)
         out = jax.tree_map(
-            lambda x: x.reref() if isinstance(x, StateDef) else x,
+            lambda x: x.merge() if isinstance(x, StateDef) else x,
             out,
             is_leaf=lambda x: isinstance(x, StateDef),
         )
@@ -74,7 +74,6 @@ def jit_filter(
     inline: bool = False,
     abstracted_axes: tp.Optional[tp.Any] = None,
 ) -> jax.stages.Wrapped:
-    """JIT compile a function, dereferencing and rereferencing Refs."""
 
     if static_argnames is None:
         static_argnames = []
