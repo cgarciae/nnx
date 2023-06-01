@@ -341,7 +341,7 @@ class Decoder(nnx.Module):
         if cfg.scanned:
             assert isinstance(self.layers, DecoderBlock)
 
-            def scan_fn(x, s: tp.Tuple[tp.Any, nnx.Deref[DecoderBlock]]):
+            def scan_fn(x, s: tp.Tuple[tp.Any, DecoderBlock]):
                 key, decoder_block = s
                 return decoder_block.apply(cfg, x, ctx=nnx.Context(dropout=key))
 
@@ -349,7 +349,7 @@ class Decoder(nnx.Module):
             x, updates = jax.lax.scan(
                 scan_fn,
                 x,
-                (jax.random.split(dropout_key, cfg.layers), self.layers.deref()),
+                (jax.random.split(dropout_key, cfg.layers), self.layers),
             )
             self.layers.update(updates)
         else:

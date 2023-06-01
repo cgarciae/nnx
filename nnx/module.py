@@ -102,14 +102,7 @@ class ModuleDef(tp.Generic[M]):
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> ApplyCaller:
-        module: M = self.reref(states)
-
-        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
-            out = fn(*args, **kwargs)
-            updates, _ = module.partition()
-            return out, updates
-
-        return CallableProxy(_context, module)  # type: ignore
+        return self.reref(states).apply
 
 
 def _moddef_flatten(moddef: ModuleDef[M]):
@@ -343,23 +336,35 @@ class Module(ABC):
 
     @property
     def update(
-        self,
+        self: M,
     ) -> tp.Callable[
-        [tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]]], None
+        [tp.Union[M, State, tp.Tuple[State, ...], tp.Dict[str, State]]], None
     ]:
         return lambda states: self._update(states)
 
     @update.setter
     def update(
-        self,
-        value: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
+        self: M,
+        value: tp.Union[M, State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> None:
         self._update(value)
 
+    @property
+    def apply(self) -> ApplyCaller:
+        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
+            out = fn(*args, **kwargs)
+            updates, _ = self.partition()
+            return out, updates
+
+        return CallableProxy(_context, self)  # type: ignore
+
     def _update(
-        self,
-        states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
+        self: M,
+        states: tp.Union[M, State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> None:
+        if isinstance(states, Module):
+            assert type(self) == type(states)
+            states, _ = states.deref()
         if isinstance(states, State):
             new_state = states
         else:
