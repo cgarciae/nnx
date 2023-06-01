@@ -55,7 +55,7 @@ class TestModuleDef:
         assert "rest" in states
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, states = moddef.apply(states)(x=2.0, ctx=ctx)
+        y, updates = moddef.apply(states)(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)
 

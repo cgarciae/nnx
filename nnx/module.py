@@ -21,11 +21,11 @@ StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
 
 
-class ApplyCaller(tp.Protocol):
-    def __getattr__(self, __name) -> "ApplyCaller":
+class ApplyCaller(tp.Protocol, tp.Generic[M]):
+    def __getattr__(self, __name) -> "ApplyCaller[M]":
         ...
 
-    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
+    def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, M]:
         ...
 
 
@@ -101,7 +101,7 @@ class ModuleDef(tp.Generic[M]):
     def apply(
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
-    ) -> ApplyCaller:
+    ) -> ApplyCaller[M]:
         return self.merge(states).apply
 
 
@@ -137,7 +137,7 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         return self.moduledef.merge(self.states)
 
     @property
-    def apply(self) -> ApplyCaller:
+    def apply(self) -> ApplyCaller[M]:
         return self.moduledef.apply(self.states)
 
 
@@ -348,13 +348,14 @@ class Module(ABC):
         self._update(value)
 
     @property
-    def apply(self) -> ApplyCaller:
-        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, tp.Dict[str, State]]:
-            out = fn(*args, **kwargs)
-            updates, _ = self.split()
-            return out, updates
+    def apply(self: M) -> ApplyCaller[M]:
+        module = self.clone()
 
-        return CallableProxy(_context, self)  # type: ignore
+        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, M]:
+            out = fn(*args, **kwargs)
+            return out, module
+
+        return CallableProxy(_context, module)  # type: ignore
 
     def _update(
         self: M,

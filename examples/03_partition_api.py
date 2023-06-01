@@ -46,7 +46,7 @@ def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
     def loss_fn(params):
         y_pred, updates = model.apply((params, state))(x)
         loss = jnp.mean((y - y_pred) ** 2)
-        return loss, updates["state"]
+        return loss, updates.get("state")
 
     grad, state = jax.grad(loss_fn, has_aux=True)(params)
     #                          |-------- sgd ---------|
