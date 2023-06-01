@@ -9,7 +9,7 @@ import numpy as np
 import optax
 from datasets import load_dataset
 import nnx
-
+from flax.training import train_state
 
 np.random.seed(42)
 
@@ -17,7 +17,7 @@ latent_size = 32
 image_shape: tp.Sequence[int] = (28, 28)
 steps_per_epoch: int = 200
 batch_size: int = 64
-epochs: int = 500
+epochs: int = 100
 
 
 dataset = load_dataset("mnist")
@@ -101,51 +101,51 @@ class VAE(nnx.Module):
         return nnx.sigmoid(logits)
 
 
-statedef = nnx.TrainState(
-    VAE(
-        din=int(np.prod(image_shape)),
-        hidden_size=256,
-        latent_size=latent_size,
-        output_shape=image_shape,
-        ctx=nnx.Context(jax.random.PRNGKey(0)),
-    ),
+params, moddef = VAE(
+    din=int(np.prod(image_shape)),
+    hidden_size=256,
+    latent_size=latent_size,
+    output_shape=image_shape,
+    ctx=nnx.Context(jax.random.PRNGKey(0)),
+).partition("params")
+
+state = train_state.TrainState.create(
+    apply_fn=moddef.apply,
+    params=params,
     tx=optax.adam(1e-3),
-).deref()
+)
 
 
 # %%
 @jax.jit
-def train_step(statedef: nnx.Deref[nnx.TrainState[VAE]], x: jax.Array, key: jax.Array):
-    state = statedef.reref()
-
-    def loss_fn(model: VAE):
+def train_step(state: nnx.TrainState, x: jax.Array, key: jax.Array):
+    def loss_fn(params: nnx.State):
         ctx = nnx.Context(noise=jax.random.fold_in(key, state.step))
-        logits = model(x, ctx=ctx)
+        logits, updates = state.apply_fn(params)(x, ctx=ctx)
 
-        losses = model.pop("losses")
-        kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
+        kl_loss = sum(jax.tree_util.tree_leaves(updates["losses"]), 0.0)
         reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
         loss = reconstruction_loss + 0.1 * kl_loss
 
         return loss, loss
 
-    grad_fn = nnx.grad(loss_fn, has_aux=True)
-    grads, loss = grad_fn(state.model)
+    grad_fn = jax.grad(loss_fn, has_aux=True)
+    grads, loss = grad_fn(state.params)
     state.apply_gradients(grads=grads)
 
-    return state.deref(), loss
+    return state, loss
 
 
 @partial(jax.jit, donate_argnums=(0,))
-def forward(statedef: nnx.StateDef, x: jax.Array, key: jax.Array) -> jax.Array:
+def forward(state: nnx.TrainState, x: jax.Array, key: jax.Array) -> jax.Array:
     ctx = nnx.Context(noise=key)
-    y_pred = statedef.apply.model(x, ctx=ctx)[0]
+    y_pred = state.apply_fn(state.params)(x, ctx=ctx)[0]
     return jax.nn.sigmoid(y_pred)
 
 
 @jax.jit
-def sample(statedef: nnx.StateDef, z: jax.Array) -> jax.Array:
-    return statedef.apply.model.generate(z)[0]
+def sample(state: nnx.TrainState, z: jax.Array) -> jax.Array:
+    return state.apply_fn(state.params).generate(z)[0]
 
 
 # %%
@@ -157,18 +157,19 @@ for epoch in range(epochs):
         idxs = np.random.randint(0, len(X_train), size=(batch_size,))
         x_batch = X_train[idxs]
 
-        statedef, loss = train_step(statedef, x_batch, key)
+        state, loss = train_step(state, x_batch, key)
         losses.append(np.asarray(loss))
 
     print(f"Epoch {epoch} loss: {np.mean(losses)}")
 
+exit()
 # %%
 # get random samples
 idxs = np.random.randint(0, len(X_test), size=(5,))
 x_sample = X_test[idxs]
 
 # get predictions
-y_pred = forward(statedef, x_sample, key)
+y_pred = forward(state, x_sample, key)
 
 # plot reconstruction
 figure = plt.figure(figsize=(3 * 5, 3 * 2))
@@ -185,7 +186,7 @@ plt.show()
 # %%
 # plot generative samples
 z_samples = np.random.normal(scale=1.5, size=(12, latent_size))
-samples = sample(statedef, z_samples)
+samples = sample(state, z_samples)
 
 figure = plt.figure(figsize=(3 * 5, 3 * 2))
 plt.title("Generative Samples")

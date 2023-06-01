@@ -4,7 +4,8 @@ import jax.numpy as jnp
 import optax
 
 import nnx
-from nnx.module import Module
+from nnx.module import ApplyCaller, Module, ModuleDef
+from nnx.state import State
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound=Module)
@@ -60,16 +61,32 @@ class Seq(Module, tp.Generic[A]):
         return len(vars(self))
 
 
-class TrainState(Module, tp.Generic[M]):
-    def __init__(self, model: M, tx: optax.GradientTransformation, *, step: int = 0):
-        self.model = model
+class TrainState(Module):
+    def __init__(
+        self,
+        *,
+        apply_fn: tp.Callable[
+            [tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]]], ApplyCaller
+        ],
+        params: State,
+        tx: optax.GradientTransformation,
+        step: int = 0,
+        **kwargs,
+    ):
+        self.apply_fn = apply_fn
+        self.params: nnx.State = params
         self.tx = tx
-        self.opt_state = nnx.var("opt_state", tx.init(model.get("params")))
+        self.opt_state = nnx.var("opt_state", tx.init(self.params))
         self.step = jnp.asarray(step)
+        for name, value in kwargs.items():
+            setattr(self, name, value)
+
+    if tp.TYPE_CHECKING:
+
+        def __getattr__(self, key: str) -> tp.Any:
+            ...
 
     def apply_gradients(self, grads: nnx.State):
-        params: nnx.State = self.model.get("params")
-        updates, self.opt_state = self.tx.update(grads, self.opt_state, params)
-        params = optax.apply_updates(params, updates)  # type: ignore
-        self.model.update(params)
+        updates, self.opt_state = self.tx.update(grads, self.opt_state, self.params)
+        self.params = optax.apply_updates(self.params, updates)  # type: ignore
         self.step += 1

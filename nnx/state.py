@@ -26,7 +26,10 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         ],
         /,
     ):
-        self._mapping = dict(__input)
+        if isinstance(__input, tp.Mapping):
+            self._mapping = dict(sorted(__input.items(), key=lambda x: x[0]))
+        else:
+            self._mapping = dict(sorted(__input, key=lambda x: x[0]))
 
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
@@ -46,13 +49,14 @@ def _partition_flatten_with_keys(
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[jtu.DictKey, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
 ]:
-    key_values = sorted(x.items(), key=lambda x: x[0])
-    children = tuple((jtu.DictKey(key), value) for key, value in key_values)
-    return children, tuple(key for key, _ in key_values)
+    children = tuple((jtu.DictKey(key), value) for key, value in x.items())
+    return children, tuple(x.keys())
 
 
 def _partition_unflatten(keys: tp.Tuple[Path, ...], leaves: tp.Tuple[Leaf, ...]):
-    return State(dict(zip(keys, leaves)))
+    state = object.__new__(State)
+    state._mapping = dict(zip(keys, leaves))
+    return state
 
 
 jax.tree_util.register_pytree_with_keys(

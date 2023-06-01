@@ -1,14 +1,14 @@
 import dataclasses
+from functools import partial
 import typing as tp
 from abc import ABC
 from typing import Any
 
-import jax
 import jax.tree_util as jtu
-import numpy as np
 
 from nnx import partitioning, tracers
 from nnx.state import State, Value, Variable
+import nnx
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
@@ -269,7 +269,10 @@ class Module(ABC):
                     f"Use `...` to match all remaining elements."
                 )
 
-            states = tuple(states)
+            if len(states) == 1:
+                states = states[0]
+            else:
+                states = tuple(states)
 
         return StateDef((states, moddef))  # type: ignore
 
@@ -365,11 +368,6 @@ class Module(ABC):
 
             new_state = _merge_states(states)
 
-        # sort by Values first, then by other values
-        new_state = dict(
-            sorted(new_state.items(), key=lambda x: 1 if isinstance(x[1], Value) else 2)
-        )
-
         current_state = self.state_dict()
         context_trace = tracers.get_top_trace(
             [x.value if isinstance(x, Variable) else x for x in current_state.values()]
@@ -403,6 +401,34 @@ class Module(ABC):
             state = {sep.join(path): leaf for path, leaf in state.items()}
         return state
 
+    def __init_subclass__(cls) -> None:
+        def _flatten(module: Module, *, with_keys: bool):
+            state, moddef = module.partition(...)
+            paths = tuple(state.keys())
+
+            if with_keys:
+                nodes = tuple(
+                    (jtu.DictKey(path), value) for path, value in state.items()
+                )
+            else:
+                nodes = tuple(state.values())
+
+            return nodes, (paths, moddef)
+
+        def _unflatten(
+            paths_moddef: tp.Tuple[tp.Tuple[Path, ...], ModuleDef[M]],
+            nodes: tp.Tuple[tp.Any, ...],
+        ) -> M:
+            paths, moddef = paths_moddef
+            return moddef.reref(State(zip(paths, nodes)))
+
+        jtu.register_pytree_with_keys(
+            cls,
+            partial(_flatten, with_keys=True),
+            _unflatten,
+            flatten_func=partial(_flatten, with_keys=False),
+        )
+
 
 def _deref(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
     module_index: tp.Dict[int, int] = {}
@@ -434,7 +460,7 @@ def _deref_recursive(
             submodules.append((name, submodule_dag))
         elif isinstance(value, Variable):
             state[value_path] = value.to_value()
-        elif isinstance(value, (jax.Array, np.ndarray)):
+        elif nnx.is_node_type(value):
             state[value_path] = value
         else:
             static_fields.append((name, value))
@@ -476,7 +502,7 @@ def _state_dict_recursive(
             _state_dict_recursive(value, seen_modules, value_path, state)
         elif isinstance(value, Variable):
             state[value_path] = value
-        elif isinstance(value, (jax.Array, np.ndarray)):
+        elif nnx.is_node_type(value):
             state[value_path] = value
 
 
@@ -643,7 +669,7 @@ def _pop_recursive(
             continue
         elif isinstance(value, Variable):
             value = value.to_value()
-        elif not isinstance(value, (jax.Array, np.ndarray)):
+        elif not nnx.is_node_type(value):
             continue
 
         for state, predicate in zip(states, predicates):
