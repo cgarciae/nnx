@@ -74,12 +74,12 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        statedef = foo.split()
+        splitmod = foo.split()
 
-        assert "params" in statedef.states
-        assert "rest" in statedef.states
+        assert "params" in splitmod.states
+        assert "rest" in splitmod.states
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, states = statedef.apply(x=2.0, ctx=ctx)
+        y, states = splitmod.apply(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)

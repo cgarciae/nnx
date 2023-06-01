@@ -22,6 +22,6 @@ ctx = nnx.Context(jax.random.PRNGKey(0))
 linear = Linear(2, 2, ctx=ctx)
 
 
-state, moddef = statedef = linear.split(...)
+state, moddef = splitmod = linear.split(...)
 
 # print(state)

@@ -124,7 +124,7 @@ def _moddef_unflatten(
 jtu.register_pytree_node(ModuleDef, _moddef_flatten, _moddef_unflatten)
 
 
-class StateDef(tp.Tuple[P, ModuleDef[M]]):
+class Split(tp.Tuple[P, ModuleDef[M]]):
     @property
     def states(self) -> P:
         return self[0]
@@ -141,18 +141,18 @@ class StateDef(tp.Tuple[P, ModuleDef[M]]):
         return self.moduledef.apply(self.states)
 
 
-Deref = StateDef[State, M]
+AnySplit = Split[tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]], M]
 
 
-def _derefedmod_flatten(bounded: StateDef[P, M]):
+def _derefedmod_flatten(bounded: Split[P, M]):
     return tuple(bounded), None
 
 
 def _derefedmod_unflatten(_, values):
-    return StateDef(values)
+    return Split(values)
 
 
-jtu.register_pytree_node(StateDef, _derefedmod_flatten, _derefedmod_unflatten)
+jtu.register_pytree_node(Split, _derefedmod_flatten, _derefedmod_unflatten)
 
 
 class _ProxyContext(tp.Protocol):
@@ -200,10 +200,10 @@ class Module(ABC):
     def __hash__(self) -> int:
         return id(self)
 
-    def deref(self: M) -> Deref[M]:
+    def deref(self: M) -> AnySplit[M]:
         state, moduledef = _deref(self)
         state = State(state)
-        return StateDef((state, moduledef))
+        return Split((state, moduledef))
 
     def clone(self: M) -> M:
         return self.split(...).merge()
@@ -214,13 +214,13 @@ class Module(ABC):
         first: None = None,
         second: None = None,
         /,
-    ) -> StateDef[tp.Dict[str, State], M]:
+    ) -> Split[tp.Dict[str, State], M]:
         ...
 
     @tp.overload
     def split(
         self: M, first: partitioning.CollectionFilter, second: None = None, /
-    ) -> StateDef[State, M]:
+    ) -> Split[State, M]:
         ...
 
     @tp.overload
@@ -230,16 +230,16 @@ class Module(ABC):
         second: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
-    ) -> StateDef[tp.Tuple[State, ...], M]:
+    ) -> Split[tp.Tuple[State, ...], M]:
         ...
 
     def split(
         self: M,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Union[
-        StateDef[State, M],
-        StateDef[tp.Tuple[State, ...], M],
-        StateDef[tp.Dict[str, State], M],
+        Split[State, M],
+        Split[tp.Tuple[State, ...], M],
+        Split[tp.Dict[str, State], M],
     ]:
         if len(filters) == 1 and filters[0] is Ellipsis:
             states, moddef = _deref(self)
@@ -261,7 +261,7 @@ class Module(ABC):
             else:
                 states = tuple(states)
 
-        return StateDef((states, moddef))  # type: ignore
+        return Split((states, moddef))  # type: ignore
 
     @tp.overload
     def get(
@@ -570,25 +570,25 @@ def _merge_state(states: tp.Iterable[StateMapping]) -> StateDict:
 
 
 @tp.overload
-def _partition_by_collection(module: M) -> StateDef[tp.Dict[str, State], M]:
+def _partition_by_collection(module: M) -> Split[tp.Dict[str, State], M]:
     ...
 
 
 @tp.overload
-def _partition_by_collection(module: M, collection: str) -> StateDef[State, M]:
+def _partition_by_collection(module: M, collection: str) -> Split[State, M]:
     ...
 
 
 @tp.overload
 def _partition_by_collection(
     module: M, collection: str, second: str, *rest: str
-) -> StateDef[tp.Tuple[State, ...], M]:
+) -> Split[tp.Tuple[State, ...], M]:
     ...
 
 
 def _partition_by_collection(
     module: M,
-) -> StateDef[tp.Dict[str, State], M]:
+) -> Split[tp.Dict[str, State], M]:
     state, moddef = _deref(module)
 
     collections = tuple(
@@ -604,7 +604,7 @@ def _partition_by_collection(
 
     states = dict(zip(collections, states))
 
-    return StateDef((states, moddef))  # type: ignore
+    return Split((states, moddef))  # type: ignore
 
 
 def _split_state(

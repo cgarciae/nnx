@@ -2,7 +2,7 @@ import typing as tp
 
 import jax
 import numpy as np
-from nnx.module import StateDef
+from nnx.module import Split
 
 from nnx.state import State
 
@@ -22,4 +22,4 @@ def is_node_type(obj: object) -> bool:
 register_node_type(jax.Array)
 register_node_type(np.ndarray)
 register_node_type(State)
-register_node_type(StateDef)
+register_node_type(Split)

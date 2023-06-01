@@ -62,10 +62,10 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        statedef: nnx.Deref = m.split(...)
-        statedef = jax.tree_map(lambda x: x * 2, statedef)
+        splitmod: nnx.AnySplit = m.split(...)
+        splitmod = jax.tree_map(lambda x: x * 2, splitmod)
 
-        m.update(statedef.states)
+        m.update(splitmod.states)
 
         assert m.a[0] == 2
         assert m.a[1] == 6

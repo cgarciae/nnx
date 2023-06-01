@@ -44,7 +44,7 @@ def mse(y, y_pred):
     return jnp.mean((y - y_pred) ** 2)
 
 
-@nnx.jit_filter
+@jax.jit
 def train_step(model: MLP, batch):
     x, y = batch
 
@@ -52,7 +52,7 @@ def train_step(model: MLP, batch):
         y_pred = model(x)
         return jnp.mean((y - y_pred) ** 2)
 
-    #                                      |--default--|
+    #                                   |--default--|
     grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     #                           |-------- sgd ---------|
     model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grad)
@@ -60,7 +60,7 @@ def train_step(model: MLP, batch):
     return model
 
 
-@nnx.jit_filter
+@jax.jit
 def test_step(model: MLP, batch):
     x, y = batch
     y_pred = model(x)

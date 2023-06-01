@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 import jax.stages
-from nnx.module import Deref, Module, ModuleDef
+from nnx.module import AnySplit, Module, ModuleDef
 from nnx.state import State
 from nnx import context
 
@@ -26,8 +26,8 @@ class JitTransform(jax.stages.Wrapped):
         **jit_kwargs,
     ):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(statedef: Deref[Module], *args, **kwargs):
-            module = statedef.merge()
+        def jitted_fn(splitmod: AnySplit[Module], *args, **kwargs):
+            module = splitmod.merge()
             out = fun(module, *args, **kwargs)
             if self.stateful:
                 out = (module.split(...).states, out)

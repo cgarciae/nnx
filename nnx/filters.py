@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 from nnx import context
-from nnx.module import StateDef, Module
+from nnx.module import Split, Module
 from nnx.transforms import UNSPECIFIED
 
 A = tp.TypeVar("A")
@@ -27,9 +27,9 @@ class JitTransform(jax.stages.Wrapped):
             **kwargs,
         ):
             args, kwargs = jax.tree_map(
-                lambda x: x.merge() if isinstance(x, StateDef) else x,
+                lambda x: x.merge() if isinstance(x, Split) else x,
                 (args, kwargs),
-                is_leaf=lambda x: isinstance(x, StateDef),
+                is_leaf=lambda x: isinstance(x, Split),
             )
             out = fun(*args, **kwargs)
             out = jax.tree_map(
@@ -49,9 +49,9 @@ class JitTransform(jax.stages.Wrapped):
         )
         out = self.jitted_fn(*args, **kwargs)
         out = jax.tree_map(
-            lambda x: x.merge() if isinstance(x, StateDef) else x,
+            lambda x: x.merge() if isinstance(x, Split) else x,
             out,
-            is_leaf=lambda x: isinstance(x, StateDef),
+            is_leaf=lambda x: isinstance(x, Split),
         )
         return out
 

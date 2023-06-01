@@ -41,9 +41,9 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(derefmod: nnx.Deref[MLP], batch) -> nnx.Deref[MLP]:
+def train_step(splitmod: nnx.AnySplit[MLP], batch) -> nnx.AnySplit[MLP]:
     x, y = batch
-    model = derefmod.merge()
+    model = splitmod.merge()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
@@ -58,7 +58,7 @@ def train_step(derefmod: nnx.Deref[MLP], batch) -> nnx.Deref[MLP]:
 
 
 @jax.jit
-def test_step(unbound: nnx.Deref[MLP], batch):
+def test_step(unbound: nnx.AnySplit[MLP], batch):
     x, y = batch
     model = unbound.merge()
     y_pred = model(x)
@@ -68,21 +68,21 @@ def test_step(unbound: nnx.Deref[MLP], batch):
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-derefmod = model.split(...)
+splitmod = model.split(...)
 
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    derefmod = train_step(derefmod, batch)
+    splitmod = train_step(splitmod, batch)
 
     if step % 1000 == 0:
-        logs = test_step(derefmod, (X, Y))
+        logs = test_step(splitmod, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = derefmod.merge()
+model = splitmod.merge()
 print("times called:", model.count)
 
 y_pred = model(X)
