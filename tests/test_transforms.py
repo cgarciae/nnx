@@ -8,7 +8,7 @@ import nnx
 
 
 def collection(collection: str):
-    return lambda x: isinstance(x, nnx.Value) and x.collection == collection
+    return lambda x: isinstance(x, nnx.Constant) and x.collection == collection
 
 
 class TestJIT:
@@ -70,11 +70,11 @@ class TestGrad:
 
         assert isinstance(grads, nnx.State)
         assert grads[("a", "0")].value == 1.0
-        assert isinstance(grads[("a", "0")], nnx.Value)
+        assert isinstance(grads[("a", "0")], nnx.Constant)
         assert grads[("a", "1")].value == 1.0
-        assert isinstance(grads[("a", "1")], nnx.Value)
+        assert isinstance(grads[("a", "1")], nnx.Constant)
         assert grads[("b",)].value == 1.0
-        assert isinstance(grads[("b",)], nnx.Value)
+        assert isinstance(grads[("b",)], nnx.Constant)
         assert len(grads) == 3
 
         m.update(grads)
@@ -102,7 +102,7 @@ class TestGrad:
 
         assert isinstance(grads, nnx.State)
         assert grads[("a", "0")].value == 1.0
-        assert isinstance(grads[("a", "0")], nnx.Value)
+        assert isinstance(grads[("a", "0")], nnx.Constant)
         assert grads[("a", "0")].collection == "params"
         assert len(grads) == 2
 
@@ -131,7 +131,7 @@ class TestGrad:
 
         assert isinstance(grads, nnx.State)
         assert grads[("a", "1")].value == 1.0
-        assert isinstance(grads[("a", "1")], nnx.Value)
+        assert isinstance(grads[("a", "1")], nnx.Constant)
         assert grads[("a", "1")].collection == "batch_stats"
         assert len(grads) == 1
 

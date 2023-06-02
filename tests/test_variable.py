@@ -13,7 +13,7 @@ class TestVariable:
         assert not hasattr(ref, "__dict__")
 
     def test_value(self):
-        r1 = nnx.Value(1, "", None)
+        r1 = nnx.Constant(1, "", None)
         assert r1.value == 1
 
         r2 = jax.tree_map(lambda x: x + 1, r1)

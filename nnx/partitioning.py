@@ -6,7 +6,7 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx.state import Value, Variable
+import nnx
 
 if tp.TYPE_CHECKING:
     ellipsis = builtins.ellipsis
@@ -40,7 +40,7 @@ class Is:
     collection: str
 
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
-        if isinstance(x, Value):
+        if isinstance(x, nnx.Constant):
             return x.collection == self.collection
         return False
 

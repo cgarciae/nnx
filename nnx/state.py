@@ -7,7 +7,7 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx import tracers
+from nnx import partitioning, tracers
 from nnx.nn import initializers
 
 A = tp.TypeVar("A")
@@ -15,9 +15,13 @@ A = tp.TypeVar("A")
 Leaf = tp.Any
 Path = tp.Tuple[str, ...]
 Sharding = jax.sharding.PartitionSpec
+StateDict = tp.Dict[Path, tp.Any]
+StateMapping = tp.Mapping[Path, tp.Any]
 
 
 class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
+    __slots__ = ("_mapping",)
+
     def __init__(
         self,
         __input: tp.Union[
@@ -31,6 +35,13 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         else:
             self._mapping = dict(sorted(__input, key=lambda x: x[0]))
 
+    def get_collections(self) -> tp.List[str]:
+        return sorted(
+            value.collection
+            for value in self._mapping.values()
+            if isinstance(value, Constant)
+        )
+
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
 
@@ -43,25 +54,167 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
     def __repr__(self) -> str:
         return f"State({self._mapping})"
 
+    @tp.overload
+    def split(
+        self,
+        first: None = None,
+        second: None = None,
+        /,
+    ) -> tp.Dict[str, "State"]:
+        ...
 
-def _partition_flatten_with_keys(
+    @tp.overload
+    def split(
+        self, first: partitioning.CollectionFilter, second: None = None, /
+    ) -> "State":
+        ...
+
+    @tp.overload
+    def split(
+        self,
+        first: partitioning.CollectionFilter,
+        second: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple["State", ...]:
+        ...
+
+    def split(
+        self,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Union["State", tp.Tuple["State", ...], tp.Dict[str, "State"],]:
+        if len(filters) == 1 and filters[0] is Ellipsis:
+            return self
+        elif len(filters) == 0:
+            collections = self.get_collections()
+            states = _split_state(self, collections)
+            if states[-1]:
+                collections.append("rest")
+            else:
+                states = states[:-1]
+
+            assert len(collections) == len(states)
+            states = {
+                collection: State(state)
+                for collection, state in zip(collections, states)
+            }
+        else:
+            (*states, rest) = _split_state(self, *filters)
+
+            if len(rest) > 0:
+                raise ValueError(
+                    f"Non-exhaustive filters, got a non-empty remainder: {rest}.\n"
+                    f"Use `...` to match all remaining elements."
+                )
+
+            if len(states) == 1:
+                states = State(states[0])
+            else:
+                states = tuple(State(state) for state in states)
+
+        return states
+
+    @tp.overload
+    def get(
+        self,
+        filter: partitioning.CollectionFilter,
+        /,
+    ) -> "State":
+        ...
+
+    @tp.overload
+    def get(
+        self,
+        filter: partitioning.CollectionFilter,
+        filter2: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple["State", ...]:
+        ...
+
+    def get(
+        self, *filters: partitioning.CollectionFilter
+    ) -> tp.Union["State", tp.Tuple["State", ...]]:
+        if len(filters) == 0:
+            raise ValueError("Expected at least one filter")
+
+        (*states, _rest) = _split_state(self, *filters)
+
+        assert len(states) == len(filters)
+
+        if len(states) == 1:
+            states = State(states[0])
+        else:
+            states = tuple(State(state) for state in states)
+
+        return states
+
+    @staticmethod
+    def merge(
+        states: tp.Union["State", tp.Tuple["State", ...], tp.Dict[str, "State"]]
+    ) -> "State":
+        if not isinstance(states, (State, tuple, dict)):
+            raise TypeError(
+                f"states must be a State, tuple of State, or dict of State, "
+                f"got {type(states).__name__}"
+            )
+
+        if isinstance(states, State):
+            return states
+        elif isinstance(states, dict):
+            states_iter = states.values()
+        else:
+            states_iter = states
+
+        new_state: StateDict = {}
+
+        for state in states_iter:
+            new_state.update(state)
+
+        return State(new_state)
+
+
+def _state_flatten_with_keys(
     x: State,
-) -> tp.Tuple[
-    tp.Tuple[tp.Tuple[jtu.DictKey, Leaf], ...], tp.Tuple[tp.Tuple[str, ...], ...]
-]:
+):
     children = tuple((jtu.DictKey(key), value) for key, value in x.items())
     return children, tuple(x.keys())
 
 
-def _partition_unflatten(keys: tp.Tuple[Path, ...], leaves: tp.Tuple[Leaf, ...]):
+def _state_unflatten(
+    keys: tp.Tuple[Path, ...],
+    leaves: tp.Tuple[Leaf, ...],
+):
     state = object.__new__(State)
     state._mapping = dict(zip(keys, leaves))
     return state
 
 
 jax.tree_util.register_pytree_with_keys(
-    State, _partition_flatten_with_keys, _partition_unflatten
+    State, _state_flatten_with_keys, _state_unflatten
 )
+
+
+def _split_state(
+    state: StateMapping,
+    *filters: partitioning.CollectionFilter,
+) -> tp.Tuple[StateDict, ...]:
+    predicates = tuple(map(partitioning.to_predicate, filters))
+
+    # we have n + 1 states, where n is the number of predicates
+    # the last state is for values that don't match any predicate
+    states: tp.Tuple[StateDict, ...] = tuple({} for _ in range(len(predicates) + 1))
+
+    for path, value in state.items():
+        for i, predicate in enumerate(predicates):
+            if predicate(path, value):
+                states[i][path] = value
+                break
+        else:
+            # if we didn't break, set leaf to last state
+            states[-1][path] = value
+
+    return states
 
 
 @dataclasses.dataclass
@@ -110,6 +263,11 @@ class Variable(tp.Generic[A]):
                 )
             sharding = value.sharding
             value = value.value
+
+        if collection == "rest":
+            raise ValueError(
+                "'rest' is a reserved collection name, please use a different name."
+            )
 
         value = tp.cast(A, value)
         self._value = value
@@ -163,8 +321,8 @@ class Variable(tp.Generic[A]):
 
         self._value = value
 
-    def to_value(self) -> "Value[A]":
-        return Value(self._value, self._collection, self._sharding)
+    def to_const(self) -> "Constant[A]":
+        return Constant(self._value, self._collection, self._sharding)
 
     def copy(self) -> "Variable[A]":
         ref = object.__new__(Variable)
@@ -177,7 +335,7 @@ class Variable(tp.Generic[A]):
         return ref
 
 
-class Value(tp.Generic[A]):
+class Constant(tp.Generic[A]):
     __slots__ = ("_value", "_collection", "_sharding")
 
     def __init__(
@@ -218,7 +376,7 @@ class Value(tp.Generic[A]):
 
 
 def _value_flatten(
-    x: Value[tp.Any],
+    x: Constant[tp.Any],
     *,
     with_keys: bool,
 ):
@@ -232,12 +390,12 @@ def _value_flatten(
 
 def _value_unflatten(
     metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> Value[A]:
-    return Value(children[0], *metadata)
+) -> Constant[A]:
+    return Constant(children[0], *metadata)
 
 
 jtu.register_pytree_with_keys(
-    Value,
+    Constant,
     partial(_value_flatten, with_keys=True),
     _value_unflatten,
     flatten_func=partial(_value_flatten, with_keys=False),

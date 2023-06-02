@@ -58,7 +58,7 @@ from .nn.stochastic import Dropout
 from .state import (
     State,
     Variable,
-    Value,
+    Constant,
     param,
     var,
     VarMetadata,

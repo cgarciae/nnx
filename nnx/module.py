@@ -7,7 +7,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import partitioning, tracers
-from nnx.state import State, Value, Variable
+from nnx.state import State, Constant, Variable
 import nnx
 
 A = tp.TypeVar("A")
@@ -84,19 +84,12 @@ class ModuleDef(tp.Generic[M]):
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
     ) -> M:
-        if not isinstance(states, (State, tuple, dict)):
-            raise TypeError(
-                f"states must be a State, tuple of State, or dict of State, "
-                f"got {type(states).__name__}"
-            )
-        if isinstance(states, State):
-            state = states
-        elif isinstance(states, tuple):
-            state = _merge_state(states)
-        else:
-            state = _merge_state(states.values())
+        module = _build_module(self)
+        current_state = State({})
 
-        return _merge(state, self)
+        _update_module(module, current_state, states)
+
+        return module
 
     def apply(
         self,
@@ -111,8 +104,13 @@ class ModuleDef(tp.Generic[M]):
         return CallableProxy(_context, module)  # type: ignore
 
 
-def _moddef_flatten(moddef: ModuleDef[M]):
-    return (), (moddef._type, moddef._index, moddef._submodules, moddef._static_fields)
+def _moddef_flatten(moduledef: ModuleDef[M]):
+    return (), (
+        moduledef._type,
+        moduledef._index,
+        moduledef._submodules,
+        moduledef._static_fields,
+    )
 
 
 def _moddef_unflatten(
@@ -303,11 +301,6 @@ class Module(ABC):
     def __hash__(self) -> int:
         return id(self)
 
-    def deref(self: M) -> AnySplit[M]:
-        state, moduledef = _deref(self)
-        state = State(state)
-        return Split((state, moduledef))
-
     def clone(self: M) -> M:
         return self.split(...).merge()
 
@@ -344,27 +337,10 @@ class Module(ABC):
         Split[tp.Tuple[State, ...], M],
         Split[tp.Dict[str, State], M],
     ]:
-        if len(filters) == 1 and filters[0] is Ellipsis:
-            states, moddef = _deref(self)
-            states = State(states)
-        elif len(filters) == 0:
-            states, moddef = _partition_by_collection(self)
-        else:
-            state, moddef = _deref(self)
-            (*states, rest) = _split_state(state, *filters)
-
-            if len(rest) > 0:
-                raise ValueError(
-                    f"Non-exhaustive filters, got a non-empty remainder: {rest}.\n"
-                    f"Use `...` to match all remaining elements."
-                )
-
-            if len(states) == 1:
-                states = states[0]
-            else:
-                states = tuple(states)
-
-        return Split((states, moddef))  # type: ignore
+        moduledef = _get_module_def(self)
+        state = _get_module_state(self)
+        states = state.split(*filters)
+        return Split((states, moduledef))
 
     @tp.overload
     def get(
@@ -390,15 +366,8 @@ class Module(ABC):
         if len(filters) == 0:
             raise ValueError("Expected at least one filter")
 
-        state, _ = _deref(self)
-        (*states, _rest) = _split_state(state, *filters)
-
-        assert len(states) == len(filters)
-
-        if len(states) == 1:
-            return states[0]
-        else:
-            return tuple(states)
+        state = _get_module_state(self)
+        return state.get(*filters)
 
     @tp.overload
     def pop(
@@ -461,39 +430,19 @@ class Module(ABC):
 
     def _update(
         self: M,
-        states: tp.Union[
+        updates: tp.Union[
             M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]
         ],
     ) -> None:
-        if isinstance(states, Split):
-            states = states.states
+        current_state = _get_module_state(self)
 
-        if isinstance(states, Module):
-            assert type(self) == type(states)
-            new_state, _ = _deref(states)
-        elif isinstance(states, State):
-            new_state = states
-        else:
-            if isinstance(states, dict):
-                states = tuple(states.values())
+        if isinstance(updates, Split):
+            updates = updates.states
+        elif isinstance(updates, Module):
+            assert type(self) == type(updates)
+            updates = _get_module_state(updates)
 
-            new_state = _merge_states(states)
-
-        current_state = self.state_dict()
-        context_trace = tracers.get_top_trace(
-            [x.value if isinstance(x, Variable) else x for x in current_state.values()]
-        )
-
-        for path, new_value in new_state.items():
-            if isinstance(new_value, Value):
-                if path in current_state:
-                    assert isinstance(current_state[path], Variable)
-                    current_state[path].value = new_value.value
-                else:
-                    current_state[path] = new_value.to_var(context_trace)
-                    _set_value_at_path(self, path, current_state[path])
-            else:
-                _set_value_at_path(self, path, new_value)
+        _update_module(self, current_state, updates)
 
     @tp.overload
     def state_dict(self) -> tp.Dict[Path, tp.Any]:
@@ -506,17 +455,20 @@ class Module(ABC):
     def state_dict(
         self, sep: tp.Optional[str] = None
     ) -> tp.Union[tp.Dict[Path, tp.Any], tp.Dict[str, tp.Any]]:
-        state = _state_dict(self)
-
         if sep is not None:
-            state = {sep.join(path): leaf for path, leaf in state.items()}
+            state = {
+                sep.join(path): leaf for path, leaf in _iter_state(self, as_const=False)
+            }
+        else:
+            state = {path: leaf for path, leaf in _iter_state(self, as_const=False)}
+
         return state
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         def _flatten(module: Module, *, with_keys: bool):
-            state, moddef = module.split(...)
+            state, moduledef = module.split(...)
             paths = tuple(state.keys())
 
             if with_keys:
@@ -526,14 +478,14 @@ class Module(ABC):
             else:
                 nodes = tuple(state.values())
 
-            return nodes, (paths, moddef)
+            return nodes, (paths, moduledef)
 
         def _unflatten(
             paths_moddef: tp.Tuple[tp.Tuple[Path, ...], ModuleDef[M]],
             nodes: tp.Tuple[tp.Any, ...],
         ) -> M:
-            paths, moddef = paths_moddef
-            return moddef.merge(State(zip(paths, nodes)))
+            paths, moduledef = paths_moddef
+            return moduledef.merge(State(zip(paths, nodes)))
 
         jtu.register_pytree_with_keys(
             cls,
@@ -543,22 +495,24 @@ class Module(ABC):
         )
 
 
-def _deref(module: M) -> tp.Tuple[StateDict, ModuleDef[M]]:
+def _get_module_state(module: Module) -> State:
+    return State(_iter_state(module, as_const=True))
+
+
+def _get_module_def(module: M) -> ModuleDef[M]:
     module_index: tp.Dict[int, int] = {}
     path: Path = ()
-    state: tp.Dict[Path, tp.Any] = {}
 
-    moduledef = _deref_recursive(module, module_index, path, state)
+    moduledef = _make_module_def_recursive(module, module_index, path)
     assert isinstance(moduledef, ModuleDef)
 
-    return state, moduledef
+    return moduledef
 
 
-def _deref_recursive(
+def _make_module_def_recursive(
     module: M,
     module_index: tp.Dict[int, int],
     path: Path,
-    state: tp.Dict[Path, tp.Any],
 ) -> tp.Union[ModuleDef[M], int]:
     if id(module) in module_index:
         return module_index[id(module)]
@@ -566,16 +520,12 @@ def _deref_recursive(
     submodules = []
     static_fields = []
 
-    for name, value in vars(module).items():
+    for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
         value_path = (*path, name)
         if isinstance(value, Module):
-            submodule_dag = _deref_recursive(value, module_index, value_path, state)
+            submodule_dag = _make_module_def_recursive(value, module_index, value_path)
             submodules.append((name, submodule_dag))
-        elif isinstance(value, Variable):
-            state[value_path] = value.to_value()
-        elif nnx.is_node_type(value):
-            state[value_path] = value
-        else:
+        elif not nnx.is_node_type(value):
             static_fields.append((name, value))
 
     index = len(module_index)
@@ -589,60 +539,49 @@ def _deref_recursive(
     return module_dag
 
 
-def _state_dict(module: Module) -> StateDict:
+def _iter_state(
+    module: Module, *, as_const: bool
+) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     seen_modules: tp.Set[int] = set()
     path: Path = ()
-    state: StateDict = {}
 
-    _state_dict_recursive(module, seen_modules, path, state)
-    return state
+    yield from _iter_state_recursive(module, seen_modules, path, as_const)
 
 
-def _state_dict_recursive(
+def _iter_state_recursive(
     module: Module,
     seen_modules: tp.Set[int],
     path: Path,
-    state: tp.Dict[Path, tp.Any],
-) -> None:
+    as_const: bool,
+) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     if id(module) in seen_modules:
         return
 
     seen_modules.add(id(module))
 
-    for name, value in vars(module).items():
+    for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
         value_path = (*path, name)
         if isinstance(value, Module):
-            _state_dict_recursive(value, seen_modules, value_path, state)
-        elif isinstance(value, Variable):
-            state[value_path] = value
+            yield from _iter_state_recursive(value, seen_modules, value_path, as_const)
         elif nnx.is_node_type(value):
-            state[value_path] = value
-
-
-def _merge(state: StateMapping, moduledef: ModuleDef[M]) -> M:
-    index_module: tp.Dict[int, Module] = {}
-    module = _build_module(moduledef, index_module)
-    state = _values_to_variables(state)
-
-    for path, value in state.items():
-        _set_value_at_path(module, path, value)
-
-    return module
+            if isinstance(value, Variable) and as_const:
+                value = value.to_const()
+            yield value_path, value
 
 
 def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
     if len(path) == 1:
-        setattr(module, path[0], value)
+        vars(module)[path[0]] = value
     else:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _values_to_variables(state: StateMapping) -> StateDict:
+def _consts_to_variables(state: StateMapping) -> StateDict:
     new_state: StateDict = {}
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if isinstance(value, Value):
+        if isinstance(value, Constant):
             new_state[path] = value.to_var(context_trace)
         else:
             new_state[path] = value
@@ -650,7 +589,13 @@ def _values_to_variables(state: StateMapping) -> StateDict:
     return new_state
 
 
-def _build_module(
+def _build_module(moduledef: ModuleDef[M]) -> M:
+    index_module: tp.Dict[int, Module] = {}
+    module = _build_module_recursive(moduledef, index_module)
+    return module
+
+
+def _build_module_recursive(
     moduledef: tp.Union[ModuleDef[M], int],
     index_module: tp.Dict[int, Module],
 ) -> M:
@@ -660,7 +605,7 @@ def _build_module(
     assert moduledef.index not in index_module
 
     submodules = {
-        name: _build_module(submodule, index_module)
+        name: _build_module_recursive(submodule, index_module)
         for name, submodule in moduledef.submodules
     }
 
@@ -670,86 +615,6 @@ def _build_module(
     index_module[moduledef.index] = module
 
     return module
-
-
-def _merge_state(states: tp.Iterable[StateMapping]) -> StateDict:
-    new_state: StateDict = {}
-
-    for state in states:
-        new_state.update(state)
-
-    return new_state
-
-
-@tp.overload
-def _partition_by_collection(module: M) -> Split[tp.Dict[str, State], M]:
-    ...
-
-
-@tp.overload
-def _partition_by_collection(module: M, collection: str) -> Split[State, M]:
-    ...
-
-
-@tp.overload
-def _partition_by_collection(
-    module: M, collection: str, second: str, *rest: str
-) -> Split[tp.Tuple[State, ...], M]:
-    ...
-
-
-def _partition_by_collection(
-    module: M,
-) -> Split[tp.Dict[str, State], M]:
-    state, moddef = _deref(module)
-
-    collections = tuple(
-        set(x.collection for x in state.values() if isinstance(x, Value))
-    )
-
-    states = _split_state(state, *collections)
-
-    if len(states[-1]) == 0:
-        states = states[:-1]
-    else:
-        collections = (*collections, "rest")
-
-    states = dict(zip(collections, states))
-
-    return Split((states, moddef))  # type: ignore
-
-
-def _split_state(
-    state: StateMapping,
-    *filters: partitioning.CollectionFilter,
-) -> tp.Tuple[State, ...]:
-    predicates = tuple(map(partitioning.to_predicate, filters))
-
-    # we have n + 1 states, where n is the number of predicates
-    # the last state is for values that don't match any predicate
-    states: tp.Tuple[StateDict, ...] = tuple({} for _ in range(len(predicates) + 1))
-
-    for path, value in state.items():
-        for i, predicate in enumerate(predicates):
-            if predicate(path, value):
-                states[i][path] = value
-                break
-        else:
-            # if we didn't break, set leaf to last state
-            states[-1][path] = value
-
-    return tuple(State(x) for x in states)
-
-
-def _merge_states(
-    states: tp.Iterable[StateMapping],
-) -> State:
-    new_state: StateDict = {}
-
-    for state in states:
-        new_state.update(state)
-
-    return State(new_state)
 
 
 def _pop(
@@ -781,7 +646,7 @@ def _pop_recursive(
             _pop_recursive(value, module_index, value_path, states, predicates)
             continue
         elif isinstance(value, Variable):
-            value = value.to_value()
+            value = value.to_const()
         elif not nnx.is_node_type(value):
             continue
 
@@ -792,3 +657,24 @@ def _pop_recursive(
                 break
 
     module_index[id(module)] = len(module_index)
+
+
+def _update_module(
+    module: Module,
+    current_state: State,
+    updates: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
+) -> None:
+    new_states = [current_state]
+
+    if isinstance(updates, State):
+        new_states.append(updates)
+    elif isinstance(updates, dict):
+        new_states.extend(updates.values())
+    else:
+        new_states.extend(updates)
+
+    state = State.merge(tuple(new_states))
+    state = _consts_to_variables(state)
+
+    for path, value in state.items():
+        _set_value_at_path(module, path, value)

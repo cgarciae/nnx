@@ -4,7 +4,7 @@ import jax
 import numpy as np
 from nnx.module import Split
 
-from nnx.state import State
+from nnx.state import State, Variable
 
 node_types: tp.Tuple[type, ...] = ()
 
@@ -23,3 +23,4 @@ register_node_type(jax.Array)
 register_node_type(np.ndarray)
 register_node_type(State)
 register_node_type(Split)
+register_node_type(Variable)
