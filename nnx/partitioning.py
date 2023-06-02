@@ -66,3 +66,11 @@ class Not:
 class Everything:
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
         return True
+
+
+class NonConstant:
+    def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
+        return not isinstance(x, nnx.Constant)
+
+
+non_const = NonConstant()

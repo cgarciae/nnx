@@ -63,7 +63,7 @@ def train_step(model: MLP, batch):
     return model
 
 
-@nnx.jit_internal_filter
+@jax.jit
 def test_step(model: MLP, batch):
     x, y = batch
     y_pred = model(x)
@@ -82,7 +82,6 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = model.merge()
 print("times called:", model.count)
 
 y_pred = model(X)
