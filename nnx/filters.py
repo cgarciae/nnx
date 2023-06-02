@@ -56,7 +56,7 @@ class JitFilter(jax.stages.Wrapped):
         return self.jitted_fn.lower(*args, **kwargs)
 
 
-def jit_internal_filter(
+def jit_filter_pure(
     fun: tp.Callable[..., tp.Any],
     *,
     in_shardings: tp.Any = UNSPECIFIED,

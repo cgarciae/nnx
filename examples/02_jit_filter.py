@@ -45,10 +45,10 @@ def mse(y, y_pred):
 
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
+pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split(...)
 
 
-@jax.jit
+@nnx.jit_filter_pure
 def train_step(model: MLP, batch):
     x, y = batch
 
@@ -63,7 +63,7 @@ def train_step(model: MLP, batch):
     return model
 
 
-@jax.jit
+@nnx.jit_filter_pure
 def test_step(model: MLP, batch):
     x, y = batch
     y_pred = model(x)
@@ -73,15 +73,16 @@ def test_step(model: MLP, batch):
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    model = train_step(model, batch)
+    pure_model = train_step(pure_model, batch)
 
     if step % 1000 == 0:
-        logs = test_step(model, (X, Y))
+        logs = test_step(pure_model, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
+model = pure_model.merge()
 print("times called:", model.count)
 
 y_pred = model(X)

@@ -31,7 +31,7 @@ class TestFilters:
             b=nnx.param(2),
         )
 
-        @nnx.jit_internal_filter
+        @nnx.jit_filter_pure
         def g(m: nnx.Map[int]):
             m.a = 10
             return m

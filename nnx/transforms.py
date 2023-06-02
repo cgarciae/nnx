@@ -128,24 +128,18 @@ class GradTransform:
             diff: State,
             non_diff: State,
             moddef: ModuleDef[Module],
-            is_module,
             *args: tp.Any,
         ):
-            if is_module:
-                mod_or_split = moddef.merge((diff, non_diff))
-            else:
-                mod_or_split = PureModule(((diff, non_diff), moddef))
-            out = fun(mod_or_split, *args)
+            module = moddef.merge((diff, non_diff))
+            out = fun(module, *args)
 
-            if self.stateful and is_module:
-                updates = mod_or_split.split(...).states
+            if self.stateful:
+                updates = module.split(...).states
                 if self.has_aux:
                     loss, aux = out
                     out = (loss, (updates, aux))
                 else:
                     out = (out, updates)
-            elif self.stateful and not is_module and not self.has_aux:
-                out = (out, None)
 
             return out
 
@@ -154,29 +148,21 @@ class GradTransform:
         self.has_aux = has_aux
         self.stateful = stateful
 
-    def __call__(
-        self, mod_or_split: tp.Union[Module, AnyPureModule[Module]], *args: tp.Any
-    ):
-        if not isinstance(mod_or_split, (Module, PureModule)):
-            raise TypeError(
-                f"Expected a Module or Split, got {type(mod_or_split).__name__}"
-            )
+    def __call__(self, module: Module, *args: tp.Any):
+        if not isinstance(module, Module):
+            raise TypeError(f"Expected a Module or Split, got {type(module).__name__}")
 
-        is_module = isinstance(mod_or_split, Module)
+        (diff, nondiff), moddef = module.split(self.predicate, ...)
+        grads = self.grad_fn(diff, nondiff, moddef, *args)
 
-        (diff, nondiff), moddef = mod_or_split.split(self.predicate, ...)
-        grads = self.grad_fn(diff, nondiff, moddef, is_module, *args)
-
-        if self.stateful and is_module:
+        if self.stateful:
             updates: State
             if self.has_aux:
                 grads, (updates, aux) = grads
                 out = grads, aux
             else:
                 out, updates = grads
-            mod_or_split.update(updates)
-        elif self.stateful and not is_module and not self.has_aux:
-            out, _ = grads
+            module.update(updates)
         else:
             out = grads
 

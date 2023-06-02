@@ -76,7 +76,7 @@ class TestIntegration:
                 x = self.block2(x, ctx=ctx)
                 return x
 
-        @nnx.jit_internal_filter
+        @nnx.jit_filter_pure
         def train_step(model: Model, x, y):
             @nnx.grad
             def loss_fn(model: Model):
