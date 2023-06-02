@@ -9,11 +9,11 @@ A = tp.TypeVar("A")
 
 class TestVariable:
     def test_slots(self):
-        ref = nnx.Variable(1, "")
+        ref = nnx.MutableVariable(1, "")
         assert not hasattr(ref, "__dict__")
 
     def test_value(self):
-        r1 = nnx.Constant(1, "", None)
+        r1 = nnx.ImmutableVariable(1, "", None)
         assert r1.value == 1
 
         r2 = jax.tree_map(lambda x: x + 1, r1)
@@ -35,7 +35,7 @@ class TestVariable:
         f()
 
         @jax.jit
-        def g(splitmod: nnx.AnySplit[nnx.Map[int]]):
+        def g(splitmod: nnx.AnyPureModule[nnx.Map[int]]):
             m = splitmod.merge()
             m.a = 2
             return m.split(...)
@@ -59,13 +59,13 @@ class TestVariable:
         f(3.0)
 
     def test_deref_through_jit(self):
-        r1 = nnx.Variable(1, "")
-        r2 = nnx.Variable(2, "")
+        r1 = nnx.MutableVariable(1, "")
+        r2 = nnx.MutableVariable(2, "")
 
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(splitmod: nnx.AnySplit[nnx.Map[tp.Any]]):
+        def f(splitmod: nnx.AnyPureModule[nnx.Map[tp.Any]]):
             m = splitmod.merge()
 
             assert m["a"][0] is not m["b"]
@@ -84,13 +84,13 @@ class TestVariable:
         assert m["b"] is not m0["b"]
 
     def test_barrier_edge_case(self):
-        r1: tp.Optional[nnx.Variable[tp.Any]] = None
+        r1: tp.Optional[nnx.MutableVariable[tp.Any]] = None
 
         @jax.jit
         def f():
             nonlocal r1
             x = jax.numpy.empty(1)
-            r1 = nnx.Variable(x, "")
+            r1 = nnx.MutableVariable(x, "")
             return x
 
         x = f()
@@ -118,7 +118,7 @@ class TestVariable:
         m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
-        def g(splitmod: nnx.AnySplit[nnx.Map[int]]):
+        def g(splitmod: nnx.AnyPureModule[nnx.Map[int]]):
             m = splitmod.merge()
             m.a += 1
             return m.split(...)
@@ -159,8 +159,8 @@ class TestVariable:
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = nnx.Variable(1, "")
-        r2 = nnx.Variable(2, "")
+        r1 = nnx.MutableVariable(1, "")
+        r2 = nnx.MutableVariable(2, "")
         v1 = 3
         m = nnx.Map(
             {
@@ -175,8 +175,8 @@ class TestVariable:
 
     def test_deref_arrays_are_nodes(self):
         # test arrays are nodes
-        r1 = nnx.Variable(1, "")
-        r2 = nnx.Variable(2, "")
+        r1 = nnx.MutableVariable(1, "")
+        r2 = nnx.MutableVariable(2, "")
         v1 = jax.numpy.array(3)
         m = nnx.Map(
             {
@@ -191,8 +191,8 @@ class TestVariable:
 
     @pytest.mark.skip(reason="TODO: removing support for now")
     def test_mutable(self):
-        r1 = nnx.Variable(1, collection="params")
-        r2 = nnx.Variable(2, collection="batch_stats")
+        r1 = nnx.MutableVariable(1, collection="params")
+        r2 = nnx.MutableVariable(2, collection="batch_stats")
 
         with nnx.mutable(lambda c: c == "params"):
             r1.value = 3

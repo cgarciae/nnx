@@ -7,7 +7,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import partitioning, tracers
-from nnx.state import State, Constant, Variable
+from nnx.state import State, ImmutableVariable, MutableVariable
 import nnx
 
 A = tp.TypeVar("A")
@@ -94,10 +94,10 @@ class ModuleDef(tp.Generic[M]):
     def apply(
         self,
         states: tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]],
-    ) -> ApplyCaller["Split[State, M]"]:
+    ) -> ApplyCaller["PureModule[State, M]"]:
         module = self.merge(states)
 
-        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, Split[State, M]]:
+        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, PureModule[State, M]]:
             out = fn(*args, **kwargs)
             return out, module.split(...)
 
@@ -128,7 +128,7 @@ def _moddef_unflatten(
 jtu.register_pytree_node(ModuleDef, _moddef_flatten, _moddef_unflatten)
 
 
-class Split(tp.Tuple[P, ModuleDef[M]]):
+class PureModule(tp.Tuple[P, ModuleDef[M]]):
     @property
     def states(self) -> P:
         return self[0]
@@ -141,7 +141,7 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         return self.moduledef.merge(self.states)
 
     @property
-    def apply(self) -> ApplyCaller["Split[State, M]"]:
+    def apply(self) -> ApplyCaller["PureModule[State, M]"]:
         return self.moduledef.apply(self.states)
 
     @tp.overload
@@ -173,13 +173,13 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         first: None = None,
         second: None = None,
         /,
-    ) -> "Split[tp.Dict[str, State], M]":
+    ) -> "PureModule[tp.Dict[str, State], M]":
         ...
 
     @tp.overload
     def split(
         self, first: partitioning.CollectionFilter, second: None = None, /
-    ) -> "Split[State, M]":
+    ) -> "PureModule[State, M]":
         ...
 
     @tp.overload
@@ -189,16 +189,16 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         second: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
-    ) -> "Split[tp.Tuple[State, ...], M]":
+    ) -> "PureModule[tp.Tuple[State, ...], M]":
         ...
 
     def split(
         self,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Union[
-        "Split[State, M]",
-        "Split[tp.Tuple[State, ...], M]",
-        "Split[tp.Dict[str, State], M]",
+        "PureModule[State, M]",
+        "PureModule[tp.Tuple[State, ...], M]",
+        "PureModule[tp.Dict[str, State], M]",
     ]:
         return self.merge().split(*filters)
 
@@ -207,7 +207,7 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         self,
         filter: partitioning.CollectionFilter,
         /,
-    ) -> tp.Tuple[State, "Split[State, M]"]:
+    ) -> tp.Tuple[State, "PureModule[State, M]"]:
         ...
 
     @tp.overload
@@ -217,12 +217,12 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
         filter2: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
-    ) -> tp.Tuple[tp.Tuple[State, ...], "Split[State, M]"]:
+    ) -> tp.Tuple[tp.Tuple[State, ...], "PureModule[State, M]"]:
         ...
 
     def pop(
         self, *filters: partitioning.CollectionFilter
-    ) -> tp.Tuple[tp.Union[State, tp.Tuple[State, ...]], "Split[State, M]"]:
+    ) -> tp.Tuple[tp.Union[State, tp.Tuple[State, ...]], "PureModule[State, M]"]:
         module = self.merge()
         states = module.pop(*filters)
         return states, module.split(...)
@@ -230,30 +230,30 @@ class Split(tp.Tuple[P, ModuleDef[M]]):
     def update(
         self,
         updates: tp.Union[
-            M, "AnySplit[M]", State, tp.Tuple[State, ...], tp.Dict[str, State]
+            M, "AnyPureModule[M]", State, tp.Tuple[State, ...], tp.Dict[str, State]
         ],
-    ) -> "Split[State, M]":
+    ) -> "PureModule[State, M]":
         module = self.merge()
         module.update(updates)
         return module.split(...)
 
 
-AnySplit = tp.Union[
-    Split[State, M],
-    Split[tp.Tuple[State, ...], M],
-    Split[tp.Dict[str, State], M],
+AnyPureModule = tp.Union[
+    PureModule[State, M],
+    PureModule[tp.Tuple[State, ...], M],
+    PureModule[tp.Dict[str, State], M],
 ]
 
 
-def _derefedmod_flatten(bounded: Split[P, M]):
+def _derefedmod_flatten(bounded: PureModule[P, M]):
     return tuple(bounded), None
 
 
 def _derefedmod_unflatten(_, values):
-    return Split(values)
+    return PureModule(values)
 
 
-jtu.register_pytree_node(Split, _derefedmod_flatten, _derefedmod_unflatten)
+jtu.register_pytree_node(PureModule, _derefedmod_flatten, _derefedmod_unflatten)
 
 
 class _ProxyContext(tp.Protocol):
@@ -278,7 +278,7 @@ class Module(ABC):
 
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, Variable):
+            if isinstance(value, MutableVariable):
                 return value.value
             return value
 
@@ -289,12 +289,12 @@ class Module(ABC):
         vars_dict = vars(self)
         if (
             name in vars_dict
-            and isinstance(vars_dict[name], Variable)
-            and not isinstance(value, Variable)
+            and isinstance(vars_dict[name], MutableVariable)
+            and not isinstance(value, MutableVariable)
         ):
             vars_dict[name].value = value
         else:
-            if isinstance(value, Variable):
+            if isinstance(value, MutableVariable):
                 value = value.copy()
             object.__setattr__(self, name, value)
 
@@ -310,13 +310,13 @@ class Module(ABC):
         first: None = None,
         second: None = None,
         /,
-    ) -> Split[tp.Dict[str, State], M]:
+    ) -> PureModule[tp.Dict[str, State], M]:
         ...
 
     @tp.overload
     def split(
         self: M, first: partitioning.CollectionFilter, second: None = None, /
-    ) -> Split[State, M]:
+    ) -> PureModule[State, M]:
         ...
 
     @tp.overload
@@ -326,21 +326,21 @@ class Module(ABC):
         second: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
-    ) -> Split[tp.Tuple[State, ...], M]:
+    ) -> PureModule[tp.Tuple[State, ...], M]:
         ...
 
     def split(
         self: M,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Union[
-        Split[State, M],
-        Split[tp.Tuple[State, ...], M],
-        Split[tp.Dict[str, State], M],
+        PureModule[State, M],
+        PureModule[tp.Tuple[State, ...], M],
+        PureModule[tp.Dict[str, State], M],
     ]:
         moduledef = _get_module_def(self)
         state = _get_module_state(self)
         states = state.split(*filters)
-        return Split((states, moduledef))
+        return PureModule((states, moduledef))
 
     @tp.overload
     def get(
@@ -401,24 +401,6 @@ class Module(ABC):
             return states
 
     @property
-    def update(
-        self: M,
-    ) -> tp.Callable[
-        [tp.Union[M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]]],
-        None,
-    ]:
-        return lambda states: self._update(states)
-
-    @update.setter
-    def update(
-        self: M,
-        value: tp.Union[
-            M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]
-        ],
-    ) -> None:
-        self._update(value)
-
-    @property
     def apply(self: M) -> ApplyCaller[M]:
         module = self.clone()
 
@@ -428,15 +410,15 @@ class Module(ABC):
 
         return CallableProxy(_context, module)  # type: ignore
 
-    def _update(
+    def update(
         self: M,
         updates: tp.Union[
-            M, AnySplit[M], State, tp.Tuple[State, ...], tp.Dict[str, State]
+            M, AnyPureModule[M], State, tp.Tuple[State, ...], tp.Dict[str, State]
         ],
     ) -> None:
         current_state = _get_module_state(self)
 
-        if isinstance(updates, Split):
+        if isinstance(updates, PureModule):
             updates = updates.states
         elif isinstance(updates, Module):
             assert type(self) == type(updates)
@@ -457,10 +439,11 @@ class Module(ABC):
     ) -> tp.Union[tp.Dict[Path, tp.Any], tp.Dict[str, tp.Any]]:
         if sep is not None:
             state = {
-                sep.join(path): leaf for path, leaf in _iter_state(self, as_const=False)
+                sep.join(path): leaf
+                for path, leaf in _iter_state(self, immutable=False)
             }
         else:
-            state = {path: leaf for path, leaf in _iter_state(self, as_const=False)}
+            state = {path: leaf for path, leaf in _iter_state(self, immutable=False)}
 
         return state
 
@@ -496,7 +479,7 @@ class Module(ABC):
 
 
 def _get_module_state(module: Module) -> State:
-    return State(_iter_state(module, as_const=True))
+    return State(_iter_state(module, immutable=True))
 
 
 def _get_module_def(module: M) -> ModuleDef[M]:
@@ -540,19 +523,19 @@ def _make_module_def_recursive(
 
 
 def _iter_state(
-    module: Module, *, as_const: bool
+    module: Module, *, immutable: bool
 ) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     seen_modules: tp.Set[int] = set()
     path: Path = ()
 
-    yield from _iter_state_recursive(module, seen_modules, path, as_const)
+    yield from _iter_state_recursive(module, seen_modules, path, immutable)
 
 
 def _iter_state_recursive(
     module: Module,
     seen_modules: tp.Set[int],
     path: Path,
-    as_const: bool,
+    immutable: bool,
 ) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     if id(module) in seen_modules:
         return
@@ -562,10 +545,10 @@ def _iter_state_recursive(
     for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
         value_path = (*path, name)
         if isinstance(value, Module):
-            yield from _iter_state_recursive(value, seen_modules, value_path, as_const)
+            yield from _iter_state_recursive(value, seen_modules, value_path, immutable)
         elif nnx.is_node_type(value):
-            if isinstance(value, Variable) and as_const:
-                value = value.to_const()
+            if isinstance(value, MutableVariable) and immutable:
+                value = value.to_immutable()
             yield value_path, value
 
 
@@ -576,13 +559,13 @@ def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _consts_to_variables(state: StateMapping) -> StateDict:
+def _to_mutable(state: StateMapping) -> StateDict:
     new_state: StateDict = {}
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if isinstance(value, Constant):
-            new_state[path] = value.to_var(context_trace)
+        if isinstance(value, ImmutableVariable):
+            new_state[path] = value.to_mutable(context_trace)
         else:
             new_state[path] = value
 
@@ -645,8 +628,8 @@ def _pop_recursive(
         if isinstance(value, Module):
             _pop_recursive(value, module_index, value_path, states, predicates)
             continue
-        elif isinstance(value, Variable):
-            value = value.to_const()
+        elif isinstance(value, MutableVariable):
+            value = value.to_immutable()
         elif not nnx.is_node_type(value):
             continue
 
@@ -674,7 +657,7 @@ def _update_module(
         new_states.extend(updates)
 
     state = State.merge(tuple(new_states))
-    state = _consts_to_variables(state)
+    state = _to_mutable(state)
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)

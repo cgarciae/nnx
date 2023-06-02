@@ -58,7 +58,9 @@ def train_step(model, x, y):
     # compute gradient
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model.update(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    )
 
 # yes... there's no return :)
 train_step(model, x, y)
@@ -111,10 +113,12 @@ Sample usage might look like this:
 
 ```python
 # SGD update
-model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+model.update(
+    jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+)
 ```
 
-In this example, `model.get("params")` returns a `State` that contains all the references in the `params` collection. `grads` is a `State` with the same structure as `model.get("params")`, but with gradients instead of parameters. The statement `model.update = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
+In this example, `model.get("params")` returns a `State` that contains all the references in the `params` collection. `grads` is a `State` with the same structure as `model.get("params")`, but with gradients instead of parameters. The statement `model.update(...)` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
 ### Transformations
 
@@ -147,7 +151,9 @@ def train_step(model, x, y):
     # compute gradient
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model.update(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    )
 
 # stateful update, no return needed
 train_step(model, x, y)
@@ -182,7 +188,9 @@ def train_step(model, x, y):
     # compute gradient
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model.update(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    )
     
     return model
 

@@ -53,8 +53,8 @@ def train_step(model: MLP, batch):
 
     #                                      |--default--|
     grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
-    #                           |-------- sgd ---------|
-    model.update = jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grad)
+    #                         |-------- sgd ---------|
+    model.update(jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grad))
 
     # no return!!!
 

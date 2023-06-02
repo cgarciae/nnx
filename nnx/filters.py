@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 from nnx import context
-from nnx.module import Split, Module
+from nnx.module import PureModule, Module
 from nnx.transforms import UNSPECIFIED
 
 A = tp.TypeVar("A")
@@ -27,9 +27,9 @@ class JitFilter(jax.stages.Wrapped):
             **kwargs,
         ):
             args, kwargs = jax.tree_map(
-                lambda x: x.merge() if isinstance(x, Split) else x,
+                lambda x: x.merge() if isinstance(x, PureModule) else x,
                 (args, kwargs),
-                is_leaf=lambda x: isinstance(x, Split),
+                is_leaf=lambda x: isinstance(x, PureModule),
             )
             out = fun(*args, **kwargs)
             out = jax.tree_map(

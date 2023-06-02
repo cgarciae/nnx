@@ -39,7 +39,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         return sorted(
             value.collection
             for value in self._mapping.values()
-            if isinstance(value, Constant)
+            if isinstance(value, ImmutableVariable)
         )
 
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
@@ -238,7 +238,26 @@ def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
     return VarMetadata(value, sharding)
 
 
-class Variable(tp.Generic[A]):
+class Variable(ABC, tp.Generic[A]):
+    __slots__ = ()
+
+    @property
+    @abstractmethod
+    def value(self) -> A:
+        ...
+
+    @property
+    @abstractmethod
+    def collection(self) -> str:
+        ...
+
+    @property
+    @abstractmethod
+    def sharding(self) -> tp.Optional[Sharding]:
+        ...
+
+
+class MutableVariable(Variable[A]):
     __slots__ = (
         "_value",
         "_collection",
@@ -279,7 +298,7 @@ class Variable(tp.Generic[A]):
 
     def __repr__(self) -> str:
         return (
-            f"Variable(value={self._value}, collection={self._collection}, "
+            f"MutableVariable(value={self._value}, collection={self._collection}, "
             f"sharding={self._sharding})"
         )
 
@@ -321,11 +340,11 @@ class Variable(tp.Generic[A]):
 
         self._value = value
 
-    def to_const(self) -> "Constant[A]":
-        return Constant(self._value, self._collection, self._sharding)
+    def to_immutable(self) -> "ImmutableVariable[A]":
+        return ImmutableVariable(self._value, self._collection, self._sharding)
 
-    def copy(self) -> "Variable[A]":
-        ref = object.__new__(Variable)
+    def copy(self) -> "MutableVariable[A]":
+        ref = object.__new__(MutableVariable)
         ref._value = self._value
         ref._jax_trace = self._jax_trace
         ref._context_trace = self._context_trace
@@ -335,7 +354,7 @@ class Variable(tp.Generic[A]):
         return ref
 
 
-class Constant(tp.Generic[A]):
+class ImmutableVariable(Variable[A]):
     __slots__ = ("_value", "_collection", "_sharding")
 
     def __init__(
@@ -362,12 +381,12 @@ class Constant(tp.Generic[A]):
 
     def __repr__(self) -> str:
         return (
-            f"Value(value={self._value}, collection={self._collection}, "
+            f"ImmutableVariable(value={self._value}, collection={self._collection}, "
             f"sharding={self._sharding})"
         )
 
-    def to_var(self, context_trace: tracers.MainTrace) -> Variable[A]:
-        return Variable(
+    def to_mutable(self, context_trace: tracers.MainTrace) -> MutableVariable[A]:
+        return MutableVariable(
             self._value,
             self._collection,
             sharding=self._sharding,
@@ -375,8 +394,8 @@ class Constant(tp.Generic[A]):
         )
 
 
-def _value_flatten(
-    x: Constant[tp.Any],
+def _immutable_variable_flatten(
+    x: ImmutableVariable[tp.Any],
     *,
     with_keys: bool,
 ):
@@ -388,17 +407,17 @@ def _value_flatten(
     return (node,), (x._collection, x._sharding)
 
 
-def _value_unflatten(
+def _immutable_variable_unflatten(
     metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> Constant[A]:
-    return Constant(children[0], *metadata)
+) -> ImmutableVariable[A]:
+    return ImmutableVariable(children[0], *metadata)
 
 
 jtu.register_pytree_with_keys(
-    Constant,
-    partial(_value_flatten, with_keys=True),
-    _value_unflatten,
-    flatten_func=partial(_value_flatten, with_keys=False),
+    ImmutableVariable,
+    partial(_immutable_variable_flatten, with_keys=True),
+    _immutable_variable_unflatten,
+    flatten_func=partial(_immutable_variable_flatten, with_keys=False),
 )
 
 
@@ -409,7 +428,7 @@ def var(
     *,
     context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> A:
-    return Variable(  # type: ignore
+    return MutableVariable(  # type: ignore
         value,
         collection=collection,
         sharding=sharding,

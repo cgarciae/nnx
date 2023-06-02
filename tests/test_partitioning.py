@@ -4,11 +4,14 @@ import typing as tp
 
 
 def any_ref(path, x):
-    return isinstance(x, nnx.Constant)
+    return isinstance(x, nnx.ImmutableVariable)
 
 
 def has_collection(collection):
-    return lambda path, x: isinstance(x, nnx.Constant) and x.collection == collection
+    return (
+        lambda path, x: isinstance(x, nnx.ImmutableVariable)
+        and x.collection == collection
+    )
 
 
 class TestPartitioning:
@@ -62,7 +65,7 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        splitmod: nnx.AnySplit = m.split(...)
+        splitmod: nnx.AnyPureModule = m.split(...)
         splitmod = jax.tree_map(lambda x: x * 2, splitmod)
 
         m.update(splitmod.states)

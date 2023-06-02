@@ -3,7 +3,7 @@ import typing as tp
 
 import jax
 import jax.stages
-from nnx.module import AnySplit, Module, ModuleDef, Split
+from nnx.module import AnyPureModule, Module, ModuleDef, PureModule
 from nnx.state import State
 from nnx import context
 
@@ -134,7 +134,7 @@ class GradTransform:
             if is_module:
                 mod_or_split = moddef.merge((diff, non_diff))
             else:
-                mod_or_split = Split(((diff, non_diff), moddef))
+                mod_or_split = PureModule(((diff, non_diff), moddef))
             out = fun(mod_or_split, *args)
 
             if self.stateful and is_module:
@@ -154,8 +154,10 @@ class GradTransform:
         self.has_aux = has_aux
         self.stateful = stateful
 
-    def __call__(self, mod_or_split: tp.Union[Module, AnySplit[Module]], *args: tp.Any):
-        if not isinstance(mod_or_split, (Module, Split)):
+    def __call__(
+        self, mod_or_split: tp.Union[Module, AnyPureModule[Module]], *args: tp.Any
+    ):
+        if not isinstance(mod_or_split, (Module, PureModule)):
             raise TypeError(
                 f"Expected a Module or Split, got {type(mod_or_split).__name__}"
             )

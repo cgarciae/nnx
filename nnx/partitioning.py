@@ -40,7 +40,7 @@ class Is:
     collection: str
 
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
-        if isinstance(x, nnx.Constant):
+        if isinstance(x, nnx.ImmutableVariable):
             return x.collection == self.collection
         return False
 
@@ -70,7 +70,7 @@ class Everything:
 
 class NonConstant:
     def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
-        return not isinstance(x, nnx.Constant)
+        return not isinstance(x, nnx.ImmutableVariable)
 
 
 non_const = NonConstant()

@@ -41,10 +41,10 @@ class MLP(nnx.Module):
 
 
 @jax.jit
-def train_step(model: nnx.AnySplit[MLP], batch) -> nnx.AnySplit[MLP]:
+def train_step(model: nnx.AnyPureModule[MLP], batch) -> nnx.AnyPureModule[MLP]:
     x, y = batch
 
-    def loss_fn(model: nnx.AnySplit[MLP]):
+    def loss_fn(model: nnx.AnyPureModule[MLP]):
         y_pred, model = model.apply(x)
         return jnp.mean((y - y_pred) ** 2), model
 
@@ -57,7 +57,7 @@ def train_step(model: nnx.AnySplit[MLP], batch) -> nnx.AnySplit[MLP]:
 
 
 @jax.jit
-def test_step(model: nnx.AnySplit[MLP], batch):
+def test_step(model: nnx.AnyPureModule[MLP], batch):
     x, y = batch
     y_pred, model = model.apply(x)
     loss = jnp.mean((y - y_pred) ** 2)

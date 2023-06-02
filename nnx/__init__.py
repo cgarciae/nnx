@@ -3,7 +3,7 @@ __version__ = "0.0.0"
 
 from .context import Context, RngStream
 from .filters import jit_internal_filter
-from .module import Module, ModuleDef, Split, AnySplit
+from .module import Module, ModuleDef, PureModule, AnyPureModule
 from .nn.activations import (
     celu,
     elu,
@@ -57,8 +57,8 @@ from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .state import (
     State,
-    Variable,
-    Constant,
+    MutableVariable,
+    ImmutableVariable,
     param,
     var,
     VarMetadata,
