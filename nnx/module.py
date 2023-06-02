@@ -77,10 +77,11 @@ class ModuleDef(tp.Generic[M]):
     def static_fields(self) -> tp.Tuple[tp.Tuple[str, tp.Any], ...]:
         return self._static_fields
 
-    def merge(
-        self,
-        states: tp.Union[State, tp.Tuple[State, ...]],
-    ) -> M:
+    @tp.overload
+    def merge(self, state: State, *states: State) -> M:
+        ...
+
+    def merge(self, *states: State) -> M:
         module = _build_module(self)
         current_state = State({})
 
@@ -88,11 +89,12 @@ class ModuleDef(tp.Generic[M]):
 
         return module
 
-    def apply(
-        self,
-        states: tp.Union[State, tp.Tuple[State, ...]],
-    ) -> ApplyCaller["PureModule[M]"]:
-        module = self.merge(states)
+    @tp.overload
+    def apply(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
+        ...
+
+    def apply(self, *states: State) -> ApplyCaller["PureModule[M]"]:
+        module = self.merge(*states)
 
         def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, PureModule[M]]:
             out = fn(*args, **kwargs)
@@ -252,7 +254,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
                 f"got {type(updates).__name__}"
             )
 
-        state = State.merge(states)
+        state = State.merge(*states)
         return PureModule.new(state, self.moduledef)
 
 
@@ -515,26 +517,27 @@ def _make_module_def_recursive(
     if id(module) in module_index:
         return module_index[id(module)]
 
+    index = len(module_index)
+    module_index[id(module)] = index
+
     submodules = []
     static_fields = []
 
     for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
         value_path = (*path, name)
         if isinstance(value, Module):
-            submodule_dag = _make_module_def_recursive(value, module_index, value_path)
-            submodules.append((name, submodule_dag))
+            submodule_def = _make_module_def_recursive(value, module_index, value_path)
+            submodules.append((name, submodule_def))
         elif not nnx.is_node_type(value):
             static_fields.append((name, value))
 
-    index = len(module_index)
-    module_dag = ModuleDef(
+    module_def = ModuleDef(
         type=type(module),
         index=index,
         submodules=tuple(submodules),
         static_fields=tuple(static_fields),
     )
-    module_index[id(module)] = index
-    return module_dag
+    return module_def
 
 
 def _iter_state(
@@ -602,15 +605,17 @@ def _build_module_recursive(
 
     assert moduledef.index not in index_module
 
+    # add a dummy module to the index to avoid infinite recursion
+    module = object.__new__(moduledef.type)
+    index_module[moduledef.index] = module
+
     submodules = {
         name: _build_module_recursive(submodule, index_module)
         for name, submodule in moduledef.submodules
     }
 
-    module = object.__new__(moduledef.type)
     vars(module).update(moduledef.static_fields)
     vars(module).update(submodules)
-    index_module[moduledef.index] = module
 
     return module
 
@@ -667,7 +672,7 @@ def _update_module(
     else:
         new_states.extend(updates)
 
-    state = State.merge(new_states)
+    state = State.merge(*new_states)
     state = _to_mutable(state)
 
     for path, value in state.items():

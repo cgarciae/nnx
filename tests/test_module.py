@@ -1,3 +1,4 @@
+from typing import Any
 import pytest
 import nnx
 import jax.numpy as jnp
@@ -33,6 +34,21 @@ class TestModule:
         assert m3["x"] is m3["y"]
         assert m3["x"]["a"] is m3["y"]["a"]
         assert m3["x"]["b"] is m3["y"]["b"]
+
+    def test_module_graph(self):
+        class Foo(nnx.Module):
+            def __init__(self):
+                self.a = nnx.param(1)
+                self.sub: Any = None
+
+        m = Foo()
+        m.sub = m
+
+        state, moddef = m.split()
+        assert len(state) == 1
+
+        m2 = moddef.merge(state)
+        assert m2 is m2.sub
 
 
 class TestModuleDef:
@@ -75,13 +91,13 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        splitmod = foo.split()
-        collections = splitmod.state.get_collections()
+        pure_module = foo.split()
+        collections = pure_module.state.get_collections()
 
         assert "params" in collections
         assert None in collections
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, states = splitmod.apply(x=2.0, ctx=ctx)
+        y, states = pure_module.apply(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)

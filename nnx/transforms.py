@@ -130,7 +130,7 @@ class GradTransform:
             moddef: ModuleDef[Module],
             *args: tp.Any,
         ):
-            module = moddef.merge((diff, non_diff))
+            module = moddef.merge(diff, non_diff)
             out = fun(module, *args)
 
             if self.stateful:

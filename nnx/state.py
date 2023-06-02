@@ -135,8 +135,13 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
 
         return states
 
+    @tp.overload
     @staticmethod
-    def merge(states: tp.Sequence["State"]) -> "State":
+    def merge(state: "State", *states: "State") -> "State":
+        ...
+
+    @staticmethod
+    def merge(*states: "State") -> "State":
         if len(states) == 0:
             raise ValueError("Expected at least one state")
         elif len(states) == 1:
@@ -148,6 +153,21 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
             new_state.update(state)
 
         return State(new_state)
+
+    def __or__(self, other: "State") -> "State":
+        if not other:
+            return self
+        return State.merge(self, other)
+
+    def __sub__(self, other: "State") -> "State":
+        if not other:
+            return self
+
+        # create new State via __new__ to avoid __init__ sorting
+        _mapping = {k: v for k, v in self.items() if k not in other}
+        state = object.__new__(State)
+        state._mapping = _mapping
+        return state
 
 
 def _state_flatten_with_keys(

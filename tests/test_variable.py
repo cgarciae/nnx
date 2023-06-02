@@ -35,8 +35,8 @@ class TestVariable:
         f()
 
         @jax.jit
-        def g(splitmod: nnx.PureModule[nnx.Map[int]]):
-            m = splitmod.merge()
+        def g(pure_module: nnx.PureModule[nnx.Map[int]]):
+            m = pure_module.merge()
             m.a = 2
             return m.split()
 
@@ -65,8 +65,8 @@ class TestVariable:
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(splitmod: nnx.PureModule[nnx.Map[tp.Any]]):
-            m = splitmod.merge()
+        def f(pure_module: nnx.PureModule[nnx.Map[tp.Any]]):
+            m = pure_module.merge()
 
             assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
@@ -118,8 +118,8 @@ class TestVariable:
         m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
-        def g(splitmod: nnx.PureModule[nnx.Map[int]]):
-            m = splitmod.merge()
+        def g(pure_module: nnx.PureModule[nnx.Map[int]]):
+            m = pure_module.merge()
             m.a += 1
             return m.split()
 
@@ -133,10 +133,10 @@ class TestVariable:
         m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
-        def g(splitmod):
+        def g(pure_module):
             nonlocal n
             n += 1
-            m = splitmod.merge()
+            m = pure_module.merge()
             m.a += 1
             return m.split()
 

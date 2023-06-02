@@ -34,7 +34,7 @@ class TestPartitioning:
         # check rest
         assert rest[("a", "1")].value == m.a[1]
 
-        m2 = moddef.merge((params, rest))
+        m2 = moddef.merge(params, rest)
 
         assert m2.a[0] == m.a[0]
         assert m2.a[1] == m.a[1]
@@ -65,10 +65,10 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        splitmod: nnx.PureModule = m.split()
-        splitmod = jax.tree_map(lambda x: x * 2, splitmod)
+        pure_module: nnx.PureModule = m.split()
+        pure_module = jax.tree_map(lambda x: x * 2, pure_module)
 
-        m.update(splitmod.state)
+        m.update(pure_module.state)
 
         assert m.a[0] == 2
         assert m.a[1] == 6

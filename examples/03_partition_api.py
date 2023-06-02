@@ -49,7 +49,7 @@ def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
     x, y = batch
 
     def loss_fn(params):
-        y_pred, updates = model.apply((params, state))(x)
+        y_pred, updates = model.apply(params, state)(x)
         _state = updates.get(nnx.non_const)
         loss = jnp.mean((y - y_pred) ** 2)
         return loss, _state
@@ -64,7 +64,7 @@ def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
 @jax.jit
 def test_step(model: nnx.ModuleDef[MLP], params: nnx.State, state: nnx.State, batch):
     x, y = batch
-    y_pred, _ = model.apply((params, state))(x)
+    y_pred, _ = model.apply(params, state)(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
@@ -80,7 +80,7 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-model = model.merge((params, state))
+model = model.merge(params, state)
 print("times called:", model.count)
 
 y_pred = model(X)
