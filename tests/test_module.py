@@ -28,7 +28,7 @@ class TestModule:
         m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
         m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
 
-        m3 = m2.split(...).merge()
+        m3 = m2.split().merge()
 
         assert m3["x"] is m3["y"]
         assert m3["x"]["a"] is m3["y"]["a"]
@@ -50,9 +50,10 @@ class TestModuleDef:
         foo = Foo(c=1.0, ctx=ctx)
 
         states, moddef = foo.split()
+        collections = states.get_collections()
 
-        assert "params" in states
-        assert "rest" in states
+        assert "params" in collections
+        assert None in collections
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
         y, updates = moddef.apply(states)(x=2.0, ctx=ctx)
@@ -75,9 +76,10 @@ class TestModuleDef:
         foo = Foo(c=1.0, ctx=ctx)
 
         splitmod = foo.split()
+        collections = splitmod.state.get_collections()
 
-        assert "params" in splitmod.states
-        assert "rest" in splitmod.states
+        assert "params" in collections
+        assert None in collections
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
         y, states = splitmod.apply(x=2.0, ctx=ctx)

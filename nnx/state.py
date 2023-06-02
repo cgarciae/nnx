@@ -35,12 +35,11 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         else:
             self._mapping = dict(sorted(__input, key=lambda x: x[0]))
 
-    def get_collections(self) -> tp.List[str]:
-        return sorted(
-            value.collection
+    def get_collections(self) -> tp.Set[tp.Union[str, None]]:
+        return {
+            value.collection if isinstance(value, Variable) else None
             for value in self._mapping.values()
-            if isinstance(value, ImmutableVariable)
-        )
+        }
 
     def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
         return self._mapping[__key]
@@ -60,7 +59,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         first: None = None,
         second: None = None,
         /,
-    ) -> tp.Dict[str, "State"]:
+    ) -> "State":
         ...
 
     @tp.overload
@@ -82,22 +81,9 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
     def split(
         self,
         *filters: partitioning.CollectionFilter,
-    ) -> tp.Union["State", tp.Tuple["State", ...], tp.Dict[str, "State"],]:
-        if len(filters) == 1 and filters[0] is Ellipsis:
+    ) -> tp.Union["State", tp.Tuple["State", ...]]:
+        if len(filters) == 0 or (len(filters) == 1 and filters[0] is Ellipsis):
             return self
-        elif len(filters) == 0:
-            collections = self.get_collections()
-            states = _split_state(self, collections)
-            if states[-1]:
-                collections.append("rest")
-            else:
-                states = states[:-1]
-
-            assert len(collections) == len(states)
-            states = {
-                collection: State(state)
-                for collection, state in zip(collections, states)
-            }
         else:
             (*states, rest) = _split_state(self, *filters)
 
@@ -150,25 +136,15 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
         return states
 
     @staticmethod
-    def merge(
-        states: tp.Union["State", tp.Tuple["State", ...], tp.Dict[str, "State"]]
-    ) -> "State":
-        if not isinstance(states, (State, tuple, dict)):
-            raise TypeError(
-                f"states must be a State, tuple of State, or dict of State, "
-                f"got {type(states).__name__}"
-            )
-
-        if isinstance(states, State):
-            return states
-        elif isinstance(states, dict):
-            states_iter = states.values()
-        else:
-            states_iter = states
+    def merge(states: tp.Sequence["State"]) -> "State":
+        if len(states) == 0:
+            raise ValueError("Expected at least one state")
+        elif len(states) == 1:
+            return states[0]
 
         new_state: StateDict = {}
 
-        for state in states_iter:
+        for state in states:
             new_state.update(state)
 
         return State(new_state)

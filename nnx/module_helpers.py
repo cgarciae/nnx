@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import optax
 
 import nnx
-from nnx.module import ApplyCaller, Module, ModuleDef
+from nnx.module import ApplyCaller, Module, ModuleDef, PureModule
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -61,12 +61,12 @@ class Seq(Module, tp.Generic[A]):
         return len(vars(self))
 
 
-class TrainState(Module):
+class TrainState(Module, tp.Generic[M]):
     def __init__(
         self,
         *,
         apply_fn: tp.Callable[
-            [tp.Union[State, tp.Tuple[State, ...], tp.Dict[str, State]]], ApplyCaller
+            [tp.Union[State, tp.Tuple[State, ...]]], ApplyCaller[PureModule[M]]
         ],
         params: State,
         tx: optax.GradientTransformation,

@@ -48,7 +48,7 @@ class TestPartitioning:
             c=100,
         )
 
-        state = m.split(...)[0]
+        state = m.split()[0]
         state = jax.tree_map(lambda x: x * 2, state)
 
         m.update(state)
@@ -65,10 +65,10 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        splitmod: nnx.AnyPureModule = m.split(...)
+        splitmod: nnx.PureModule = m.split()
         splitmod = jax.tree_map(lambda x: x * 2, splitmod)
 
-        m.update(splitmod.states)
+        m.update(splitmod.state)
 
         assert m.a[0] == 2
         assert m.a[1] == 6

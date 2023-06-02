@@ -35,12 +35,12 @@ class TestVariable:
         f()
 
         @jax.jit
-        def g(splitmod: nnx.AnyPureModule[nnx.Map[int]]):
+        def g(splitmod: nnx.PureModule[nnx.Map[int]]):
             m = splitmod.merge()
             m.a = 2
-            return m.split(...)
+            return m.split()
 
-        m2 = g(m.split(...)).merge()
+        m2 = g(m.split()).merge()
 
         assert m2.a == 2
 
@@ -65,15 +65,15 @@ class TestVariable:
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(splitmod: nnx.AnyPureModule[nnx.Map[tp.Any]]):
+        def f(splitmod: nnx.PureModule[nnx.Map[tp.Any]]):
             m = splitmod.merge()
 
             assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
 
-            return m.split(...)
+            return m.split()
 
-        m = f(m.split(...)).merge()
+        m = f(m.split()).merge()
 
         assert m["a"][0] is not m["b"]
         assert m["a"][1] is not m["b"]
@@ -118,12 +118,12 @@ class TestVariable:
         m = nnx.Map(a=nnx.param(1))
 
         @jax.jit
-        def g(splitmod: nnx.AnyPureModule[nnx.Map[int]]):
+        def g(splitmod: nnx.PureModule[nnx.Map[int]]):
             m = splitmod.merge()
             m.a += 1
-            return m.split(...)
+            return m.split()
 
-        m2 = g(m.split(...)).merge()
+        m2 = g(m.split()).merge()
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
@@ -138,23 +138,23 @@ class TestVariable:
             n += 1
             m = splitmod.merge()
             m.a += 1
-            return m.split(...)
+            return m.split()
 
-        m2 = g(m.split(...)).merge()
+        m2 = g(m.split()).merge()
 
         assert n == 1
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
 
-        g(m.split(...))
+        g(m.split())
         assert n == 1
 
-        g(m2.split(...))
+        g(m2.split())
         assert n == 1
 
         m2.b = nnx.param(10)
-        g(m2.split(...))
+        g(m2.split())
 
         assert n == 2
 
@@ -169,7 +169,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.split(...)
+        p, moddef = m.split()
         assert len(p) == 4
         assert len(jax.tree_util.tree_leaves(p)) == 4
 
@@ -185,7 +185,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.split(...)
+        p, moddef = m.split()
         assert len(p) == 5
         assert len(jax.tree_util.tree_leaves(p)) == 5
 

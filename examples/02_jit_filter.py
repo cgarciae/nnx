@@ -32,7 +32,7 @@ class MLP(nnx.Module):
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
-    def __call__(self, x):
+    def __call__(self, x) -> jax.Array:
         self.count += 1
         x = self.linear1(x)
         x = jax.nn.relu(x)
@@ -45,7 +45,7 @@ def mse(y, y_pred):
 
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split(...)
+pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split()
 
 
 @nnx.jit_filter_pure

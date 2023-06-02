@@ -33,7 +33,7 @@ class JitFilter(jax.stages.Wrapped):
             )
             out = fun(*args, **kwargs)
             out = jax.tree_map(
-                lambda x: x.split(...) if isinstance(x, Module) else x,
+                lambda x: x.split() if isinstance(x, Module) else x,
                 out,
                 is_leaf=lambda x: isinstance(x, Module),
             )

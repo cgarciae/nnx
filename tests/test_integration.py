@@ -92,7 +92,7 @@ class TestIntegration:
             return model
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
-        model = Model(ctx=ctx).split(...)
+        model = Model(ctx=ctx).split()
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))

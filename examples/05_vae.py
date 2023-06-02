@@ -109,7 +109,7 @@ params, moddef = VAE(
     ctx=nnx.Context(jax.random.PRNGKey(0)),
 ).split("params")
 
-state = train_state.TrainState.create(
+state = nnx.TrainState(
     apply_fn=moddef.apply,
     params=params,
     tx=optax.adam(1e-3),
@@ -118,7 +118,7 @@ state = train_state.TrainState.create(
 
 # %%
 @jax.jit
-def train_step(state: nnx.TrainState, x: jax.Array, key: jax.Array):
+def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
     def loss_fn(params: nnx.State):
         ctx = nnx.Context(noise=jax.random.fold_in(key, state.step))
         logits, updates = state.apply_fn(params)(x, ctx=ctx)
