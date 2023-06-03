@@ -60,72 +60,34 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         for k, v in self._mapping.items():
             yield reprlib.Elem(str(k), repr(v))
 
-    @tp.overload
     def split(
         self,
-        first: None = None,
-        second: None = None,
+        first: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple["State", ...]:
+        states = tuple(State(state) for state in _split_state(self, first, *filters))
+        return states
+
+    @tp.overload
+    def filter(
+        self,
+        filter: partitioning.CollectionFilter,
         /,
     ) -> "State":
         ...
 
     @tp.overload
-    def split(
-        self, first: partitioning.CollectionFilter, second: None = None, /
-    ) -> "State":
-        ...
-
-    @tp.overload
-    def split(
+    def filter(
         self,
-        first: partitioning.CollectionFilter,
-        second: partitioning.CollectionFilter,
+        filter: partitioning.CollectionFilter,
+        filter2: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Tuple["State", ...]:
         ...
 
-    def split(
-        self,
-        *filters: partitioning.CollectionFilter,
-    ) -> tp.Union["State", tp.Tuple["State", ...]]:
-        if len(filters) == 0 or (len(filters) == 1 and filters[0] is Ellipsis):
-            return self
-        else:
-            (*states, rest) = _split_state(self, *filters)
-
-            if len(rest) > 0:
-                raise ValueError(
-                    f"Non-exhaustive filters, got a non-empty remainder: {rest}.\n"
-                    f"Use `...` to match all remaining elements."
-                )
-
-            if len(states) == 1:
-                states = State(states[0])
-            else:
-                states = tuple(State(state) for state in states)
-
-        return states
-
-    # @tp.overload
-    # def get(
-    #     self,
-    #     filter: partitioning.CollectionFilter,
-    #     /,
-    # ) -> "State":
-    #     ...
-
-    # @tp.overload
-    # def get(
-    #     self,
-    #     filter: partitioning.CollectionFilter,
-    #     filter2: partitioning.CollectionFilter,
-    #     /,
-    #     *filters: partitioning.CollectionFilter,
-    # ) -> tp.Tuple["State", ...]:
-    #     ...
-
-    def get(
+    def filter(
         self, *filters: partitioning.CollectionFilter
     ) -> tp.Union["State", tp.Tuple["State", ...]]:
         if len(filters) == 0:

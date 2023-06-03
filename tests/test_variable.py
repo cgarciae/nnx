@@ -169,7 +169,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.split()
+        p, moduledef = m.split()
         assert len(p) == 4
         assert len(jax.tree_util.tree_leaves(p)) == 4
 
@@ -185,7 +185,7 @@ class TestVariable:
             }
         )
 
-        p, moddef = m.split()
+        p, moduledef = m.split()
         assert len(p) == 5
         assert len(jax.tree_util.tree_leaves(p)) == 5
 

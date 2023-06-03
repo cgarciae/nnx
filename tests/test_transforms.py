@@ -77,7 +77,7 @@ class TestGrad:
         assert isinstance(grads[("b",)], nnx.Variable)
         assert len(grads) == 3
 
-        m.update(grads)
+        m.update_state(grads)
 
         assert m["a"][0] == 1.0
         assert m["a"][1] == 1.0
@@ -106,7 +106,7 @@ class TestGrad:
         assert grads[("a", "0")].collection == "params"
         assert len(grads) == 2
 
-        m.update(grads)
+        m.update_state(grads)
 
         assert m.a[0] == 1.0
         assert m.a[1] == 20.0
@@ -135,7 +135,7 @@ class TestGrad:
         assert grads[("a", "1")].collection == "batch_stats"
         assert len(grads) == 1
 
-        m.update(grads)
+        m.update_state(grads)
 
         assert m.a[0] == 10.0
         assert m.a[1] == 1.0

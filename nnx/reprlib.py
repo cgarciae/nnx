@@ -30,6 +30,8 @@ class Elem:
 
 
 class Representable:
+    __slots__ = ()
+
     @abstractmethod
     def __nnx_repr__(self) -> tp.Iterator[tp.Union[Config, Elem]]:
         raise NotImplementedError

@@ -9,10 +9,8 @@ import numpy as np
 import optax
 from datasets import load_dataset
 import nnx
-from flax.training import train_state
 
 np.random.seed(42)
-
 latent_size = 32
 image_shape: tp.Sequence[int] = (28, 28)
 steps_per_epoch: int = 200
@@ -52,10 +50,8 @@ class Encoder(nnx.Module):
                 0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2, axis=-1)
             ),
         )
-
         key = ctx.make_rng("noise")
         z = mean + std * jax.random.normal(key, mean.shape)
-
         return z
 
 
@@ -67,9 +63,7 @@ class Decoder(nnx.Module):
     def __call__(self, z: jax.Array) -> jax.Array:
         z = self.linear1(z)
         z = jax.nn.relu(z)
-
         logits = self.linear2(z)
-
         return logits
 
 
@@ -101,16 +95,16 @@ class VAE(nnx.Module):
         return nnx.sigmoid(logits)
 
 
-params, moddef = VAE(
+params, moduledef = VAE(
     din=int(np.prod(image_shape)),
     hidden_size=256,
     latent_size=latent_size,
     output_shape=image_shape,
-    ctx=nnx.Context(jax.random.PRNGKey(0)),
+    ctx=nnx.Context(params=jax.random.PRNGKey(0)),
 ).split("params")
 
 state = nnx.TrainState(
-    apply_fn=moddef.apply,
+    apply_fn=moduledef.apply,
     params=params,
     tx=optax.adam(1e-3),
 )
@@ -121,12 +115,13 @@ state = nnx.TrainState(
 def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
     def loss_fn(params: nnx.State):
         ctx = nnx.Context(noise=jax.random.fold_in(key, state.step))
-        logits, updates = state.apply_fn(params)(x, ctx=ctx)
+        logits, (updates, _) = state.apply_fn(params)(x, ctx=ctx)
 
-        kl_loss = sum(jax.tree_util.tree_leaves(updates.get_state("losses")), 0.0)
+        losses = updates.filter("losses")
+        kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
         reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
-        loss = reconstruction_loss + 0.1 * kl_loss
 
+        loss = reconstruction_loss + 0.1 * kl_loss
         return loss, loss
 
     grad_fn = jax.grad(loss_fn, has_aux=True)
@@ -137,14 +132,14 @@ def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
 
 
 @partial(jax.jit, donate_argnums=(0,))
-def forward(state: nnx.TrainState, x: jax.Array, key: jax.Array) -> jax.Array:
+def forward(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array) -> jax.Array:
     ctx = nnx.Context(noise=key)
     y_pred = state.apply_fn(state.params)(x, ctx=ctx)[0]
     return jax.nn.sigmoid(y_pred)
 
 
 @jax.jit
-def sample(state: nnx.TrainState, z: jax.Array) -> jax.Array:
+def sample(state: nnx.TrainState[VAE], z: jax.Array) -> jax.Array:
     return state.apply_fn(state.params).generate(z)[0]
 
 

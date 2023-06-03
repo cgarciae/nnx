@@ -209,14 +209,14 @@ The partition API enables splitting a Module's state into sets of reference-less
 Here's an example of how a `train_step` function can be implemented using the partition API:
 
 ```python
-states, moddef = model.split()
+states, moduledef = model.split()
 params: nnx.State = states["params"]
 
 @jax.jit
 def train_step(params: nnx.State, x, y):
 
     def loss_fn(params: nnx.State):
-        model: Linear = moddef.merge(params)
+        model: Linear = moduledef.merge(params)
         y_pred = model(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 

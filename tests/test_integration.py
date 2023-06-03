@@ -37,7 +37,7 @@ class TestIntegration:
                 return jnp.mean((y - y_pred) ** 2)
 
             grads = loss_fn(model)
-            model.update(
+            model.update_state(
                 jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
             )
 
@@ -85,7 +85,7 @@ class TestIntegration:
                 return jnp.mean((y - y_pred) ** 2)
 
             grads = loss_fn(model)
-            model.update(
+            model.update_state(
                 jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
             )
 

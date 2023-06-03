@@ -40,8 +40,12 @@ class MLP(nnx.Module):
 
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-(params, state), modeldef = model.split("params", ...)
+(params, state), modeldef = MLP(
+    din=1,
+    dhidden=32,
+    dout=1,
+    ctx=ctx,
+).split("params", ...)
 
 
 @jax.jit
@@ -50,7 +54,7 @@ def train_step(params, state, batch):
 
     def loss_fn(params):
         y_pred, (updates, _) = modeldef.apply(params, state)(x)
-        _state = updates.get(nnx.non_vars)
+        _state = updates.filter(nnx.non_vars)
         loss = jnp.mean((y - y_pred) ** 2)
         return loss, _state
 
@@ -62,25 +66,25 @@ def train_step(params, state, batch):
 
 
 @jax.jit
-def test_step(model: nnx.ModuleDef[MLP], params: nnx.State, state: nnx.State, batch):
+def test_step(params: nnx.State, state: nnx.State, batch):
     x, y = batch
-    y_pred, _ = model.apply(params, state)(x)
+    y_pred, _ = modeldef.apply(params, state)(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    params, state = train_step(model, params, state, batch)
+    params, state = train_step(params, state, batch)
 
     if step % 1000 == 0:
-        logs = test_step(model, params, state, (X, Y))
+        logs = test_step(params, state, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = model.merge(params, state)
+model = modeldef.merge(params, state)
 print("times called:", model.count)
 
 y_pred = model(X)

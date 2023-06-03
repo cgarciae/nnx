@@ -42,7 +42,7 @@ class JitTransform(jax.stages.Wrapped):
         out = self.jitted_fn(module, *args, **kwargs)
         if self.stateful:
             updates, out = out
-            module.update(updates)
+            module.update_state(updates)
         return out
 
     def __repr__(self):
@@ -127,10 +127,10 @@ class GradTransform:
         def grad_fn(
             diff: State,
             non_diff: State,
-            moddef: ModuleDef[Module],
+            moduledef: ModuleDef[Module],
             *args: tp.Any,
         ):
-            module = moddef.merge(diff, non_diff)
+            module = moduledef.merge(diff, non_diff)
             out = fun(module, *args)
 
             if self.stateful:
@@ -152,8 +152,8 @@ class GradTransform:
         if not isinstance(module, Module):
             raise TypeError(f"Expected a Module, got {type(module).__name__}")
 
-        (diff, nondiff), moddef = module.split(self.predicate, ...)
-        grads = self.grad_fn(diff, nondiff, moddef, *args)
+        (diff, nondiff), moduledef = module.split(self.predicate, ...)
+        grads = self.grad_fn(diff, nondiff, moduledef, *args)
 
         if self.stateful:
             updates: State
@@ -162,7 +162,7 @@ class GradTransform:
                 out = grads, aux
             else:
                 out, updates = grads
-            module.update(updates)
+            module.update_state(updates)
         else:
             out = grads
 

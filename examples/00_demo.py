@@ -22,5 +22,5 @@ linear = Linear(2, 2, ctx=ctx)
 
 
 state, moduledef = linear.split()
-params, batch_stats = state.split("params", "batch_stats")
+params, batch_stats = state.filter("params", "batch_stats")
 linear2 = moduledef.merge(params, batch_stats)

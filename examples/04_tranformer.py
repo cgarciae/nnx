@@ -351,7 +351,7 @@ class Decoder(nnx.Module):
                 x,
                 (jax.random.split(dropout_key, cfg.layers), self.layers),
             )
-            self.layers.update(updates)
+            self.layers.update_state(updates)
         else:
             assert isinstance(self.layers, nnx.Seq)
             for decoder_block in self.layers:

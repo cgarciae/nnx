@@ -61,13 +61,16 @@ class Seq(Module, tp.Generic[A]):
         return len(vars(self))
 
 
+class ModuleDefApply(tp.Protocol, tp.Generic[M]):
+    def __call__(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
+        ...
+
+
 class TrainState(Module, tp.Generic[M]):
     def __init__(
         self,
         *,
-        apply_fn: tp.Callable[
-            [tp.Union[State, tp.Tuple[State, ...]]], ApplyCaller[PureModule[M]]
-        ],
+        apply_fn: ModuleDefApply[M],
         params: State,
         tx: optax.GradientTransformation,
         step: int = 0,

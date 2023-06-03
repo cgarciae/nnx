@@ -43,10 +43,10 @@ class TestModule:
 
         m = Foo()
 
-        state, moddef = m.split()
+        state, moduledef = m.split()
         assert len(state) == 1
 
-        m2 = moddef.merge(state)
+        m2 = moduledef.merge(state)
         assert m2 is m2.sub
 
 
@@ -64,14 +64,14 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        states, moddef = foo.split()
+        states, moduledef = foo.split()
         collections = states.get_collections()
 
         assert "params" in collections
         assert None in collections
 
         ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, updates = moddef.apply(states)(x=2.0, ctx=ctx)
+        y, updates = moduledef.apply(states)(x=2.0, ctx=ctx)
 
         assert isinstance(y, jax.Array)
 

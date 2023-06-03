@@ -39,8 +39,8 @@ class MLP(nnx.Module):
         return x
 
 
-def mse(y, y_pred):
-    return jnp.mean((y - y_pred) ** 2)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
 
 
 @nnx.jit
@@ -51,10 +51,10 @@ def train_step(model: MLP, batch):
         y_pred = model(x)
         return jnp.mean((y - y_pred) ** 2)
 
-    #                                      |--default--|
+    #                                   |--default--|
     grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
-    #                         |-------- sgd ---------|
-    model.update(
+    # sdg update
+    model.update_state(
         jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grad)
     )
 
@@ -68,9 +68,6 @@ def test_step(model: MLP, batch):
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
-
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
