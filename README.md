@@ -99,7 +99,7 @@ def train_step(state, x, y):
     # compute gradient
     grads: nnx.State = jax.grad(loss_fn)(state.params)
     # SGD update
-    state.apply_gradients(grads)
+    state = state.apply_gradients(grads=grads)
 
     return state
 

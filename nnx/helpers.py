@@ -1,6 +1,5 @@
 import typing as tp
 
-import jax.numpy as jnp
 import optax
 
 import nnx
@@ -68,7 +67,9 @@ class ModuleDefApply(tp.Protocol, tp.Generic[M]):
 
 
 class TrainState(pytreelib.Pytree, tp.Generic[M]):
+    params: nnx.State = pytreelib.node_field()
     opt_state: optax.OptState = pytreelib.node_field()
+    step: int = pytreelib.node_field()
 
     def __init__(
         self,
@@ -83,7 +84,7 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
         self.params: nnx.State = params
         self.tx = tx
         self.opt_state = tx.init(self.params)
-        self.step = jnp.asarray(step)
+        self.step = step
         for name, value in kwargs.items():
             setattr(self, name, value)
 
