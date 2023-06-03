@@ -4,7 +4,6 @@ import jax.numpy as jnp
 import optax
 
 import nnx
-from nnx.dataclasses import node_field
 from nnx.module import ApplyCaller, Module, PureModule
 from nnx import pytreelib
 from nnx.state import State
