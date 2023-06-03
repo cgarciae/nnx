@@ -9,6 +9,7 @@ import jax.tree_util as jtu
 
 from nnx import partitioning, tracers
 from nnx.nn import initializers
+from nnx.nodes import register_node_type
 from nnx.reprlib import Config, Elem
 
 A = tp.TypeVar("A")
@@ -52,7 +53,9 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         return len(self._mapping)
 
     def __nnx_repr__(self) -> tp.Iterator[tp.Union[Config, Elem]]:
-        yield Config(type(self), value_sep=": ", parens_left="({", parens_right="})")
+        yield Config(
+            type(self).__name__, value_sep=": ", parens_left="({", parens_right="})"
+        )
 
         for k, v in self._mapping.items():
             yield reprlib.Elem(str(k), repr(v))
@@ -278,7 +281,7 @@ class MutableVariable(tp.Generic[A], reprlib.Representable):
         self._trace_set = frozenset((self._jax_trace, self._context_trace))
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type(self))
+        yield reprlib.Config(type=f"{type(self).__name__}")
         yield reprlib.Elem("collection", repr(self._collection))
         yield reprlib.Elem("value", repr(self._value))
         if self._sharding is not None:
@@ -362,10 +365,11 @@ class Variable(tp.Generic[A], reprlib.Representable):
         return self._sharding
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type(self))
+        yield reprlib.Config(type=f"{type(self).__name__}")
         yield reprlib.Elem("collection", repr(self._collection))
         yield reprlib.Elem("value", repr(self._value))
-        yield reprlib.Elem("sharding", repr(self._sharding))
+        if self._sharding is not None:
+            yield reprlib.Elem("sharding", repr(self._sharding))
 
     def to_mutable(self, context_trace: tracers.MainTrace) -> MutableVariable[A]:
         return MutableVariable(
@@ -430,3 +434,8 @@ def param(
         sharding=sharding,
         context_trace=context_trace,
     )
+
+
+# register nodes
+register_node_type(State)
+register_node_type(MutableVariable)

@@ -15,11 +15,12 @@ CONTEXT = Context()
 
 @dataclasses.dataclass
 class Config:
-    type: type
+    type: str
     parens_left: str = "("
     parens_right: str = ")"
     value_sep: str = "="
     elem_indent: str = "  "
+    empty_repr: str = ""
 
 
 @dataclasses.dataclass
@@ -77,5 +78,7 @@ def get_repr(obj: Representable) -> str:
 
     if elems:
         elems = "\n" + elems + "\n"
+    else:
+        elems = config.empty_repr
 
-    return f"{config.type.__name__}{config.parens_left}{elems}{config.parens_right}"
+    return f"{config.type}{config.parens_left}{elems}{config.parens_right}"

@@ -7,6 +7,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import partitioning, tracers
+from nnx.nodes import is_node_type, register_node_type
 from nnx.state import State, Variable, MutableVariable
 from nnx import reprlib
 import nnx
@@ -43,7 +44,7 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         self._static_fields = static_fields
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type=type(self))
+        yield reprlib.Config(type=f"{type(self).__name__}")
 
         yield reprlib.Elem("type", self._type.__name__)
         yield reprlib.Elem("index", repr(self._index))
@@ -289,6 +290,9 @@ class CallableProxy:
         return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
 
 
+SEEN_MODULES_REPR: tp.Set[int] = set()
+
+
 class Module(ABC, reprlib.Representable):
     if not tp.TYPE_CHECKING:
 
@@ -318,10 +322,19 @@ class Module(ABC, reprlib.Representable):
         return id(self)
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type(self))
+        if id(self) in SEEN_MODULES_REPR:
+            yield reprlib.Config(type=f"{type(self).__name__}", empty_repr="...")
+            return
 
-        for name, value in vars(self).items():
-            yield reprlib.Elem(name, repr(value))
+        yield reprlib.Config(type=f"{type(self).__name__}")
+        SEEN_MODULES_REPR.add(id(self))
+
+        try:
+            for name, value in vars(self).items():
+                if not is_node_type(value):
+                    yield reprlib.Elem(name, repr(value))
+        finally:
+            SEEN_MODULES_REPR.remove(id(self))
 
     def clone(self: M) -> M:
         return self.split().merge()
@@ -686,3 +699,6 @@ def _update_module(
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)
+
+# register nodes
+register_node_type(PureModule)

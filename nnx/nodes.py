@@ -2,9 +2,7 @@ import typing as tp
 
 import jax
 import numpy as np
-from nnx.module import PureModule
 
-from nnx.state import State, MutableVariable
 
 node_types: tp.Tuple[type, ...] = ()
 
@@ -21,6 +19,3 @@ def is_node_type(obj: object) -> bool:
 # register nodes
 register_node_type(jax.Array)
 register_node_type(np.ndarray)
-register_node_type(State)
-register_node_type(PureModule)
-register_node_type(MutableVariable)
