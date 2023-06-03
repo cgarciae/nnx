@@ -1,7 +1,7 @@
-from abc import ABC, abstractmethod
 import dataclasses
 from functools import partial
 import functools
+from nnx import reprlib
 import typing as tp
 
 import jax
@@ -9,6 +9,7 @@ import jax.tree_util as jtu
 
 from nnx import partitioning, tracers
 from nnx.nn import initializers
+from nnx.reprlib import Config, Elem
 
 A = tp.TypeVar("A")
 
@@ -19,7 +20,7 @@ StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
 
 
-class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
+class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     __slots__ = ("_mapping",)
 
     def __init__(
@@ -50,8 +51,11 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf]):
     def __len__(self) -> int:
         return len(self._mapping)
 
-    def __repr__(self) -> str:
-        return f"State({self._mapping})"
+    def __nnx_repr__(self) -> tp.Iterator[tp.Union[Config, Elem]]:
+        yield Config(type(self), value_sep=": ", parens_left="({", parens_right="})")
+
+        for k, v in self._mapping.items():
+            yield reprlib.Elem(str(k), repr(v))
 
     @tp.overload
     def split(
@@ -234,26 +238,7 @@ def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
     return VarMetadata(value, sharding)
 
 
-class Variable(ABC, tp.Generic[A]):
-    __slots__ = ()
-
-    @property
-    @abstractmethod
-    def value(self) -> A:
-        ...
-
-    @property
-    @abstractmethod
-    def collection(self) -> str:
-        ...
-
-    @property
-    @abstractmethod
-    def sharding(self) -> tp.Optional[Sharding]:
-        ...
-
-
-class MutableVariable(Variable[A]):
+class MutableVariable(tp.Generic[A], reprlib.Representable):
     __slots__ = (
         "_value",
         "_collection",
@@ -292,11 +277,12 @@ class MutableVariable(Variable[A]):
         self._context_trace = context_trace or self._jax_trace
         self._trace_set = frozenset((self._jax_trace, self._context_trace))
 
-    def __repr__(self) -> str:
-        return (
-            f"MutableVariable(value={self._value}, collection={self._collection}, "
-            f"sharding={self._sharding})"
-        )
+    def __nnx_repr__(self):
+        yield reprlib.Config(type(self))
+        yield reprlib.Elem("collection", repr(self._collection))
+        yield reprlib.Elem("value", repr(self._value))
+        if self._sharding is not None:
+            yield reprlib.Elem("sharding", repr(self._sharding))
 
     @property
     def collection(self) -> str:
@@ -336,8 +322,8 @@ class MutableVariable(Variable[A]):
 
         self._value = value
 
-    def to_immutable(self) -> "ImmutableVariable[A]":
-        return ImmutableVariable(self._value, self._collection, self._sharding)
+    def to_immutable(self) -> "Variable[A]":
+        return Variable(self._value, self._collection, self._sharding)
 
     def copy(self) -> "MutableVariable[A]":
         ref = object.__new__(MutableVariable)
@@ -350,7 +336,7 @@ class MutableVariable(Variable[A]):
         return ref
 
 
-class ImmutableVariable(Variable[A]):
+class Variable(tp.Generic[A], reprlib.Representable):
     __slots__ = ("_value", "_collection", "_sharding")
 
     def __init__(
@@ -375,11 +361,11 @@ class ImmutableVariable(Variable[A]):
     def sharding(self) -> tp.Optional[Sharding]:
         return self._sharding
 
-    def __repr__(self) -> str:
-        return (
-            f"ImmutableVariable(value={self._value}, collection={self._collection}, "
-            f"sharding={self._sharding})"
-        )
+    def __nnx_repr__(self):
+        yield reprlib.Config(type(self))
+        yield reprlib.Elem("collection", repr(self._collection))
+        yield reprlib.Elem("value", repr(self._value))
+        yield reprlib.Elem("sharding", repr(self._sharding))
 
     def to_mutable(self, context_trace: tracers.MainTrace) -> MutableVariable[A]:
         return MutableVariable(
@@ -390,8 +376,8 @@ class ImmutableVariable(Variable[A]):
         )
 
 
-def _immutable_variable_flatten(
-    x: ImmutableVariable[tp.Any],
+def _variable_flatten(
+    x: Variable[tp.Any],
     *,
     with_keys: bool,
 ):
@@ -403,17 +389,17 @@ def _immutable_variable_flatten(
     return (node,), (x._collection, x._sharding)
 
 
-def _immutable_variable_unflatten(
+def _variable_unflatten(
     metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> ImmutableVariable[A]:
-    return ImmutableVariable(children[0], *metadata)
+) -> Variable[A]:
+    return Variable(children[0], *metadata)
 
 
 jtu.register_pytree_with_keys(
-    ImmutableVariable,
-    partial(_immutable_variable_flatten, with_keys=True),
-    _immutable_variable_unflatten,
-    flatten_func=partial(_immutable_variable_flatten, with_keys=False),
+    Variable,
+    partial(_variable_flatten, with_keys=True),
+    _variable_unflatten,
+    flatten_func=partial(_variable_flatten, with_keys=False),
 )
 
 

@@ -39,10 +39,9 @@ class TestModule:
         class Foo(nnx.Module):
             def __init__(self):
                 self.a = nnx.param(1)
-                self.sub: Any = None
+                self.sub = self
 
         m = Foo()
-        m.sub = m
 
         state, moddef = m.split()
         assert len(state) == 1

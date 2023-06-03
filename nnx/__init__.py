@@ -58,7 +58,7 @@ from .nn.stochastic import Dropout
 from .state import (
     State,
     MutableVariable,
-    ImmutableVariable,
+    Variable,
     param,
     var,
     VarMetadata,
@@ -68,4 +68,4 @@ from .state import (
 from .transforms import grad, jit
 from .module_helpers import Map, Seq, TrainState
 from .nodes import register_node_type, is_node_type
-from .partitioning import non_const
+from .partitioning import non_vars

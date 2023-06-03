@@ -41,16 +41,16 @@ class MLP(nnx.Module):
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-(params, state), model = model.split("params", nnx.non_const)
+(params, state), modeldef = model.split("params", ...)
 
 
 @jax.jit
-def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
+def train_step(params, state, batch):
     x, y = batch
 
     def loss_fn(params):
-        y_pred, updates = model.apply(params, state)(x)
-        _state = updates.get(nnx.non_const)
+        y_pred, (updates, _) = modeldef.apply(params, state)(x)
+        _state = updates.get(nnx.non_vars)
         loss = jnp.mean((y - y_pred) ** 2)
         return loss, _state
 

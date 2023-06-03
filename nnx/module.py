@@ -7,7 +7,8 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import partitioning, tracers
-from nnx.state import State, ImmutableVariable, MutableVariable
+from nnx.state import State, Variable, MutableVariable
+from nnx import reprlib
 import nnx
 
 A = tp.TypeVar("A")
@@ -26,7 +27,7 @@ class ApplyCaller(tp.Protocol, tp.Generic[A]):
         ...
 
 
-class ModuleDef(tp.Generic[M]):
+class ModuleDef(tp.Generic[M], reprlib.Representable):
     __slots__ = ("_type", "_index", "_submodules", "_static_fields")
 
     def __init__(
@@ -41,11 +42,13 @@ class ModuleDef(tp.Generic[M]):
         self._submodules = submodules
         self._static_fields = static_fields
 
-    def __repr__(self) -> str:
-        return (
-            f"ModuleDef(type={self._type.__name__}, index={self._index}, "
-            f"submodules={self._submodules}, static_fields={self._static_fields})"
-        )
+    def __nnx_repr__(self):
+        yield reprlib.Config(type=type(self))
+
+        yield reprlib.Elem("type", self._type.__name__)
+        yield reprlib.Elem("index", repr(self._index))
+        yield reprlib.Elem("submodules", repr(self._submodules))
+        yield reprlib.Elem("static_fields", repr(self._static_fields))
 
     def __hash__(self) -> int:
         return hash((self._type, self._submodules, self._static_fields))
@@ -286,7 +289,7 @@ class CallableProxy:
         return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
 
 
-class Module(ABC):
+class Module(ABC, reprlib.Representable):
     if not tp.TYPE_CHECKING:
 
         def __getattribute__(self, name: str) -> Any:
@@ -313,6 +316,12 @@ class Module(ABC):
 
     def __hash__(self) -> int:
         return id(self)
+
+    def __nnx_repr__(self):
+        yield reprlib.Config(type(self))
+
+        for name, value in vars(self).items():
+            yield reprlib.Elem(name, repr(value))
 
     def clone(self: M) -> M:
         return self.split().merge()
@@ -582,7 +591,7 @@ def _to_mutable(state: StateMapping) -> StateDict:
     context_trace = tracers.get_top_trace(state)
 
     for path, value in state.items():
-        if isinstance(value, ImmutableVariable):
+        if isinstance(value, Variable):
             new_state[path] = value.to_mutable(context_trace)
         else:
             new_state[path] = value
