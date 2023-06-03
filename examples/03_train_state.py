@@ -3,6 +3,8 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import optax
+from flax.training import train_state
 
 import nnx
 
@@ -39,6 +41,10 @@ class MLP(nnx.Module):
         return x
 
 
+class TrainState(train_state.TrainState):
+    buffers: nnx.State
+
+
 ctx = nnx.Context(jax.random.PRNGKey(0))
 (params, buffers), modeldef = MLP(
     din=1,
@@ -47,44 +53,53 @@ ctx = nnx.Context(jax.random.PRNGKey(0))
     ctx=ctx,
 ).split("params", ...)
 
+state = TrainState.create(
+    apply_fn=modeldef.apply,
+    params=params,
+    tx=optax.sgd(0.1),
+    buffers=buffers,
+)
+del params, buffers
+
 
 @jax.jit
-def train_step(params, buffers, batch):
+def train_step(state: TrainState, batch):
     x, y = batch
 
     def loss_fn(params):
-        y_pred, (updates, _) = modeldef.apply(params, buffers)(x)
-        _state = updates.filter(nnx.buffers)
+        y_pred, (updates, _) = state.apply_fn(params, state.buffers)(x)
+        buffers = updates.filter(nnx.buffers)
         loss = jnp.mean((y - y_pred) ** 2)
-        return loss, _state
+        return loss, buffers
 
-    grad, buffers = jax.grad(loss_fn, has_aux=True)(params)
-    #                          |-------- sgd ---------|
-    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
+    grads, buffers = jax.grad(loss_fn, has_aux=True)(state.params)
+    # sdg update
+    state = state.apply_gradients(grads=grads, buffers=buffers)
 
-    return params, buffers
+    return state
 
 
 @jax.jit
-def test_step(params: nnx.State, buffers: nnx.State, batch):
+def test_step(state: TrainState, batch):
     x, y = batch
-    y_pred, _ = modeldef.apply(params, buffers)(x)
+    y_pred, _ = state.apply_fn(state.params, state.buffers)(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    params, buffers = train_step(params, buffers, batch)
+    state = train_step(state, batch)
 
     if step % 1000 == 0:
-        logs = test_step(params, buffers, (X, Y))
+        logs = test_step(state, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = modeldef.merge(params, buffers)
+assert isinstance(state.params, nnx.State)
+model = modeldef.merge(state.params, state.buffers)
 print("times called:", model.count)
 
 y_pred = model(X)

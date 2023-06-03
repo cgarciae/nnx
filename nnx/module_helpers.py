@@ -89,7 +89,11 @@ class TrainState(Module, tp.Generic[M]):
         def __getattr__(self, key: str) -> tp.Any:
             ...
 
-    def apply_gradients(self, grads: nnx.State):
+        def __setattr__(self, key: str, value: tp.Any):
+            ...
+
+    def apply_gradients(self, grads: nnx.State) -> "TrainState[M]":
         updates, self.opt_state = self.tx.update(grads, self.opt_state, self.params)
         self.params = optax.apply_updates(self.params, updates)  # type: ignore
         self.step += 1
+        return self

@@ -32,12 +32,12 @@ pip install git+https://github.com/cgarciae/nnx
 
 ## Usage
 
+### Basic
 ```python
 import nnx
 import jax
 
 class Linear(nnx.Module):
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
         self.w = nnx.param(jax.random.uniform(key, (din, dout)))
@@ -58,12 +58,52 @@ def train_step(model, x, y):
     # compute gradient
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model.update(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
     )
 
 # yes... there's no return :)
 train_step(model, x, y)
+```
+
+### Recommended
+
+```python
+import nnx
+import jax
+import optax
+
+class Linear(nnx.Module):
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        key = ctx.make_rng("params")
+        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.param(jax.numpy.zeros((dout,)))
+
+    def __call__(self, x):
+        return x @ self.w.value + self.b.value
+
+ctx = nnx.Context(params=jax.random.PRNGKey(0))
+params, moduledef = Linear(din=12, dout=2, ctx=ctx).split("params")
+state = nnx.TrainState(
+    params=params,
+    apply_fn=moduledef.apply,
+    tx=optax.sgd(0.1),
+)
+
+@jax.jit
+def train_step(state, x, y):
+    def loss_fn(params):
+        y_pred, _ = state.apply_fn(params)(x)
+        return jax.numpy.mean((y_pred - y) ** 2)
+    
+    # compute gradient
+    grads: nnx.State = jax.grad(loss_fn)(state.params)
+    # SGD update
+    state.apply_gradients(grads)
+
+    return state
+
+state = train_step(state, x, y)
 ```
 
 ## Design
@@ -113,12 +153,12 @@ Sample usage might look like this:
 
 ```python
 # SGD update
-model.update(
-    jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+model.update_state(
+    jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
 )
 ```
 
-In this example, `model.get("params")` returns a `State` that contains all the references in the `params` collection. `grads` is a `State` with the same structure as `model.get("params")`, but with gradients instead of parameters. The statement `model.update(...)` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
+In this example, `model.get_state("params")` returns a `State` that contains all the references in the `params` collection. `grads` is a `State` with the same structure as `model.get_state("params")`, but with gradients instead of parameters. The statement `model.update_state(...)` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
 ### Transformations
 
@@ -151,8 +191,8 @@ def train_step(model, x, y):
     # compute gradient
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model.update(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
     )
 
 # stateful update, no return needed
@@ -188,8 +228,8 @@ def train_step(model, x, y):
     # compute gradient
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model.update(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
     )
     
     return model

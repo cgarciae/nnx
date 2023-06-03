@@ -5,6 +5,7 @@ from math import e
 import typing as tp
 import jax
 import jax.tree_util as jtu
+import numpy as np
 
 import nnx
 
@@ -73,4 +74,10 @@ class NonConstant:
         return not isinstance(x, nnx.Variable)
 
 
-non_vars = NonConstant()
+class Buffers:
+    def __call__(self, path: tp.Tuple[str, ...], x: tp.Any):
+        return isinstance(x, (jax.Array, np.ndarray))
+
+
+buffers = NonConstant()
+buffers = Buffers()

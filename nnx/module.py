@@ -93,7 +93,6 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
 
         return module
 
-    @tp.overload
     def apply(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
         module = self.merge(state, *states)
 
