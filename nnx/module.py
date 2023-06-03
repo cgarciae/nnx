@@ -316,7 +316,7 @@ class Module(ABC, reprlib.Representable):
 
         try:
             for name, value in vars(self).items():
-                if not is_node_type(value):
+                if isinstance(value, Module) or not is_node_type(value):
                     yield reprlib.Elem(name, repr(value))
         finally:
             SEEN_MODULES_REPR.remove(id(self))
@@ -688,4 +688,5 @@ def _update_module(
 
 
 # register nodes
+register_node_type(Module)
 register_node_type(PureModule)

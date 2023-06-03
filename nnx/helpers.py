@@ -4,7 +4,9 @@ import jax.numpy as jnp
 import optax
 
 import nnx
-from nnx.module import ApplyCaller, Module, ModuleDef, PureModule
+from nnx.dataclasses import node_field
+from nnx.module import ApplyCaller, Module, PureModule
+from nnx import pytreelib
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -66,7 +68,9 @@ class ModuleDefApply(tp.Protocol, tp.Generic[M]):
         ...
 
 
-class TrainState(Module, tp.Generic[M]):
+class TrainState(pytreelib.Pytree, tp.Generic[M]):
+    opt_state: optax.OptState = pytreelib.node_field()
+
     def __init__(
         self,
         *,
@@ -79,7 +83,7 @@ class TrainState(Module, tp.Generic[M]):
         self.apply_fn = apply_fn
         self.params: nnx.State = params
         self.tx = tx
-        self.opt_state = nnx.var("opt_state", tx.init(self.params))
+        self.opt_state = tx.init(self.params)
         self.step = jnp.asarray(step)
         for name, value in kwargs.items():
             setattr(self, name, value)
@@ -89,11 +93,13 @@ class TrainState(Module, tp.Generic[M]):
         def __getattr__(self, key: str) -> tp.Any:
             ...
 
-        def __setattr__(self, key: str, value: tp.Any):
-            ...
-
-    def apply_gradients(self, grads: nnx.State) -> "TrainState[M]":
-        updates, self.opt_state = self.tx.update(grads, self.opt_state, self.params)
-        self.params = optax.apply_updates(self.params, updates)  # type: ignore
-        self.step += 1
-        return self
+    def apply_gradients(self, grads: nnx.State, **kwargs) -> "TrainState[M]":
+        updates, opt_state = self.tx.update(grads, self.opt_state, self.params)
+        params = optax.apply_updates(self.params, updates)  # type: ignore
+        step = self.step + 1
+        return self.replace(
+            params=params,
+            opt_state=opt_state,
+            step=step,
+            **kwargs,
+        )

@@ -41,10 +41,6 @@ class MLP(nnx.Module):
         return x
 
 
-class TrainState(train_state.TrainState):
-    buffers: nnx.State
-
-
 ctx = nnx.Context(jax.random.PRNGKey(0))
 (params, buffers), modeldef = MLP(
     din=1,
@@ -53,7 +49,7 @@ ctx = nnx.Context(jax.random.PRNGKey(0))
     ctx=ctx,
 ).split("params", ...)
 
-state = TrainState.create(
+state = nnx.TrainState(
     apply_fn=modeldef.apply,
     params=params,
     tx=optax.sgd(0.1),
@@ -63,7 +59,7 @@ del params, buffers
 
 
 @jax.jit
-def train_step(state: TrainState, batch):
+def train_step(state: nnx.TrainState, batch):
     x, y = batch
 
     def loss_fn(params):
@@ -80,7 +76,7 @@ def train_step(state: TrainState, batch):
 
 
 @jax.jit
-def test_step(state: TrainState, batch):
+def test_step(state: nnx.TrainState, batch):
     x, y = batch
     y_pred, _ = state.apply_fn(state.params, state.buffers)(x)
     loss = jnp.mean((y - y_pred) ** 2)
@@ -98,7 +94,6 @@ for step, batch in enumerate(dataset(32)):
     if step >= total_steps - 1:
         break
 
-assert isinstance(state.params, nnx.State)
 model = modeldef.merge(state.params, state.buffers)
 print("times called:", model.count)
 
