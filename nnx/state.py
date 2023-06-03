@@ -107,23 +107,23 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
 
         return states
 
-    @tp.overload
-    def get(
-        self,
-        filter: partitioning.CollectionFilter,
-        /,
-    ) -> "State":
-        ...
+    # @tp.overload
+    # def get(
+    #     self,
+    #     filter: partitioning.CollectionFilter,
+    #     /,
+    # ) -> "State":
+    #     ...
 
-    @tp.overload
-    def get(
-        self,
-        filter: partitioning.CollectionFilter,
-        filter2: partitioning.CollectionFilter,
-        /,
-        *filters: partitioning.CollectionFilter,
-    ) -> tp.Tuple["State", ...]:
-        ...
+    # @tp.overload
+    # def get(
+    #     self,
+    #     filter: partitioning.CollectionFilter,
+    #     filter2: partitioning.CollectionFilter,
+    #     /,
+    #     *filters: partitioning.CollectionFilter,
+    # ) -> tp.Tuple["State", ...]:
+    #     ...
 
     def get(
         self, *filters: partitioning.CollectionFilter

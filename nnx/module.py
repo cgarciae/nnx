@@ -152,7 +152,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         return self.moduledef.apply(self.state)
 
     @tp.overload
-    def get(
+    def get_state(
         self,
         filter: partitioning.CollectionFilter,
         /,
@@ -160,7 +160,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         ...
 
     @tp.overload
-    def get(
+    def get_state(
         self,
         filter: partitioning.CollectionFilter,
         filter2: partitioning.CollectionFilter,
@@ -169,7 +169,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
     ) -> tp.Tuple[State, ...]:
         ...
 
-    def get(
+    def get_state(
         self, *filters: partitioning.CollectionFilter
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         return self.state.get(*filters)
@@ -384,7 +384,7 @@ class Module(ABC, reprlib.Representable):
             return PureModule.new(states, moduledef)
 
     @tp.overload
-    def get(
+    def get_state(
         self,
         filter: partitioning.CollectionFilter,
         /,
@@ -392,7 +392,7 @@ class Module(ABC, reprlib.Representable):
         ...
 
     @tp.overload
-    def get(
+    def get_state(
         self,
         filter: partitioning.CollectionFilter,
         filter2: partitioning.CollectionFilter,
@@ -401,7 +401,7 @@ class Module(ABC, reprlib.Representable):
     ) -> tp.Tuple[State, ...]:
         ...
 
-    def get(
+    def get_state(
         self, *filters: partitioning.CollectionFilter
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         if len(filters) == 0:
@@ -699,6 +699,7 @@ def _update_module(
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)
+
 
 # register nodes
 register_node_type(PureModule)

@@ -38,7 +38,7 @@ class TestIntegration:
 
             grads = loss_fn(model)
             model.update(
-                jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+                jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
             )
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
@@ -86,7 +86,7 @@ class TestIntegration:
 
             grads = loss_fn(model)
             model.update(
-                jax.tree_map(lambda w, g: w - 0.1 * g, model.get("params"), grads)
+                jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
             )
 
             return model

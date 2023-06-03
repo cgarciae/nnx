@@ -123,7 +123,7 @@ def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
         ctx = nnx.Context(noise=jax.random.fold_in(key, state.step))
         logits, updates = state.apply_fn(params)(x, ctx=ctx)
 
-        kl_loss = sum(jax.tree_util.tree_leaves(updates.get("losses")), 0.0)
+        kl_loss = sum(jax.tree_util.tree_leaves(updates.get_state("losses")), 0.0)
         reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
         loss = reconstruction_loss + 0.1 * kl_loss
 

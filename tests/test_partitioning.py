@@ -79,7 +79,7 @@ class TestPartitioning:
             c=100,
         )
 
-        params = m.get("params")
+        params = m.get_state("params")
 
         def loss(params):
             return sum(2 * p for p in jax.tree_util.tree_leaves(params))
@@ -103,7 +103,7 @@ class TestPartitioning:
         # test Variables not shared
         assert vars(m.a)["0"] is not vars(m)["b"]
 
-        state = m.get(any_ref)
+        state = m.get_state(any_ref)
         assert state[("a", "0")].value == m.a[0]
         assert state[("a", "1")].value == m.a[1]
         assert state[("b",)].value == m.b
