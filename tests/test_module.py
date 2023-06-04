@@ -115,7 +115,7 @@ class TestModule:
         r1 = nnx.Variable(1, "", None)
         r2 = nnx.Variable(2, "", None)
 
-        m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
+        m = m0 = nnx.Map({"a": nnx.Sequence([r1, r2]), "b": r1})
 
         @jax.jit
         def f(pure_module: nnx.PureModule[nnx.Map[Any]]):
@@ -186,7 +186,7 @@ class TestModule:
         v1 = 3
         m = nnx.Map(
             {
-                "a": nnx.Seq([r1, r2, v1]),
+                "a": nnx.Sequence([r1, r2, v1]),
                 "b": nnx.Map({"c": r1, "d": r2}),
             }
         )
@@ -202,7 +202,7 @@ class TestModule:
         v1 = jax.numpy.array(3)
         m = nnx.Map(
             {
-                "a": nnx.Seq([r1, r2, v1]),
+                "a": nnx.Sequence([r1, r2, v1]),
                 "b": nnx.Map({"c": r1, "d": r2}),
             }
         )
@@ -213,7 +213,7 @@ class TestModule:
 
     def test_clone(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(1), nnx.param(2), 3]),
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), 3]),
             b=nnx.Map(c=nnx.param(1), d=nnx.param(2)),
         )
 

@@ -14,7 +14,7 @@ def has_collection(collection):
 class TestPartitioning:
     def test_partition_tree(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(1), nnx.var("batch_stats", 2)]),
+            a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 2)]),
             b=nnx.param(2),
             c=100,
         )
@@ -40,7 +40,7 @@ class TestPartitioning:
 
     def test_update_from(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(1), nnx.var("batch_stats", 3)]),
+            a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 3)]),
             b=nnx.param(2),
             c=100,
         )
@@ -57,7 +57,7 @@ class TestPartitioning:
 
     def test_update_from_with_array_leaf(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(1), nnx.var("batch_stats", 3)]),
+            a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 3)]),
             b=nnx.param(2),
             c=jax.numpy.array(100),
         )
@@ -74,7 +74,7 @@ class TestPartitioning:
 
     def test_grad_example(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(1.0), nnx.var("batch_stats", -10)]),
+            a=nnx.Sequence([nnx.param(1.0), nnx.var("batch_stats", -10)]),
             b=nnx.param(2.0),
             c=100,
         )
@@ -94,7 +94,7 @@ class TestPartitioning:
 
     def test_get_paritition(self):
         m = nnx.Map(
-            a=nnx.Seq([nnx.param(10.0), nnx.param(20.0)]),
+            a=nnx.Sequence([nnx.param(10.0), nnx.param(20.0)]),
             b=nnx.param(10.0),
             c=7,
             d=5.0,

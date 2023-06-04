@@ -331,7 +331,9 @@ class Decoder(nnx.Module):
                 jax.random.split(ctx.make_rng("params"), cfg.layers)
             )
         else:
-            self.layers = nnx.Seq(DecoderBlock(cfg, ctx=ctx) for _ in range(cfg.layers))
+            self.layers = nnx.Sequence(
+                DecoderBlock(cfg, ctx=ctx) for _ in range(cfg.layers)
+            )
 
     def __call__(self, cfg: Config, x, *, ctx: nnx.Context):
         # TODO: handle right-shifting for training: here or in train loop.
@@ -353,7 +355,7 @@ class Decoder(nnx.Module):
             )
             self.layers.update_state(updates)
         else:
-            assert isinstance(self.layers, nnx.Seq)
+            assert isinstance(self.layers, nnx.Sequence)
             for decoder_block in self.layers:
                 x = decoder_block(cfg, x, ctx=ctx)
 

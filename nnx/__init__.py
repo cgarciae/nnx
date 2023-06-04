@@ -64,7 +64,7 @@ from .state import (
     with_partitioning,
 )
 from .transforms import grad, jit
-from .helpers import Map, Seq, TrainState
+from .helpers import Map, Sequence, TrainState
 from .nodes import register_node_type, is_node_type
 from .partitioning import buffers, buffers
 from .errors import TraceContextError

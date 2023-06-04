@@ -32,7 +32,7 @@ pip install git+https://github.com/cgarciae/nnx
 
 ## Usage
 
-### Basic
+
 ```python
 import nnx
 import jax
@@ -44,11 +44,16 @@ class Linear(nnx.Module):
         self.b = nnx.param(jax.numpy.zeros((dout,)))
 
     def __call__(self, x):
-        return x @ self.w.value + self.b.value
+        return x @ self.w + self.b
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
 
+x = jax.numpy.ones((8, 12))
+y = model(x)
+```
+### Basic Training
+```python
 @nnx.jit
 def train_step(model, x, y):
     def loss_fn(model):
@@ -66,24 +71,12 @@ def train_step(model, x, y):
 train_step(model, x, y)
 ```
 
-### Recommended
+### Advanced Training
 
 ```python
-import nnx
-import jax
 import optax
 
-class Linear(nnx.Module):
-    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        key = ctx.make_rng("params")
-        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jax.numpy.zeros((dout,)))
-
-    def __call__(self, x):
-        return x @ self.w.value + self.b.value
-
-ctx = nnx.Context(params=jax.random.PRNGKey(0))
-params, moduledef = Linear(din=12, dout=2, ctx=ctx).split("params")
+params, moduledef = model.split("params")
 state = nnx.TrainState(
     params=params,
     apply_fn=moduledef.apply,
@@ -93,7 +86,7 @@ state = nnx.TrainState(
 @jax.jit
 def train_step(state, x, y):
     def loss_fn(params):
-        y_pred, _ = state.apply_fn(params)(x)
+        y_pred, _updates = state.apply_fn(params)(x)
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
@@ -110,55 +103,45 @@ state = train_step(state, x, y)
 
 ### Modules
 
-`nnx` has a simple and intuitive design with Modules at its core. These modules are built using [simple_pytree](https://github.com/cgarciae/simple-pytree) Pytrees. To create a custom module, simply subclass `nnx.Module` and mark the reference fields with `nnx.ref` or `nnx.param`. These are descriptors that store a `Ref` instance in a separate attribute, making references transparent to the user.
-
-Here's an example of a simple `Linear` module:
-
 ```python
-import nnx
-import jax
-
-class Linear(nnx.Module):
-
+class Foo(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        key = ctx.make_rng("params") # request an RNG key
-        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jax.numpy.zeros((dout,)))
+        # node attributes
+        self.variable: jax.Array = nnx.param(jnp.array(1))
+        self.np_buffer: np.ndarray = np.array(2)
+        self.jax_buffer: jax.Array = jnp.array(3)
+        self.submodule: nnx.Linear = nnx.Linear(din, dout, ctx=ctx)
+        # static attributes (not part of the state)
+        self.din = din
+        self.dout = dout
 
-    def __call__(self, x):
-        return x @ self.w.value + self.b.value
-
-ctx = nnx.Context(params=jax.random.PRNGKey(0))
-model = Linear(din=12, dout=2, ctx=ctx)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+module = Foo(din=12, dout=2, ctx=ctx)
 ```
-
-`nnx` uses a `Context` object to propagate RNG and other forms of state throughout the model. `Context` provides a `make_rng` method that creates a new RNG key on demand for a given name (in this case, `"params"`).
-
-
-#### GetItem and SetItem Syntactic Sugar
-
-`Module` implements `__getitem__` and `__setitem__` to provide syntactic sugar for creating and updating `State`s. Although it may appear otherwise, `__setitem__` does not modify the Module's structure. Instead, it updates the values of the references, as demonstrated in this simplified implementation:
 
 ```python
-class Module(nnx.Pytree):
-    ...
-    def __getitem__(self, collection: str) -> nnx.State:
-        return nnx.get_partition(self, collection)
-
-    def __setitem__(self, _: SetItemType, value: nnx.State):
-        nnx.update_refs(self, value)
+state, moduledef = module.split()
+print(state)
 ```
-
-Sample usage might look like this:
+```
+State({
+    ('variable',): Variable(
+        collection='params', value=Array(...)
+    ),
+    ('np_buffer',): Array(...),
+    ('jax_buffer',): Array(...),
+    ('submodule', 'kernel'): Variable(
+        collection='params', value=Array(...)
+    ),
+    ('submodule', 'bias'): Variable(
+        collection='params', value=Array(...),
+    ),
+})
+```
 
 ```python
-# SGD update
-model.update_state(
-    jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
-)
+module = module.merge(state)
 ```
-
-In this example, `model.get_state("params")` returns a `State` that contains all the references in the `params` collection. `grads` is a `State` with the same structure as `model.get_state("params")`, but with gradients instead of parameters. The statement `model.update_state(...)` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
 
 ### Transformations
 
