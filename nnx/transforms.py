@@ -5,7 +5,7 @@ import jax
 import jax.stages
 from nnx.module import PureModule, Module, ModuleDef, PureModule
 from nnx.state import State
-from nnx import context
+from nnx import context, tracers
 
 from nnx import partitioning
 
@@ -131,7 +131,9 @@ class GradTransform:
             *args: tp.Any,
         ):
             module = moduledef.merge(diff, non_diff)
-            out = fun(module, *args)
+
+            with tracers.nnx_trace(tracers.get_top_trace(diff)):
+                out = fun(module, *args)
 
             if self.stateful:
                 updates = module.split().state
@@ -153,6 +155,7 @@ class GradTransform:
             raise TypeError(f"Expected a Module, got {type(module).__name__}")
 
         (diff, nondiff), moduledef = module.split(self.predicate, ...)
+
         grads = self.grad_fn(diff, nondiff, moduledef, *args)
 
         if self.stateful:

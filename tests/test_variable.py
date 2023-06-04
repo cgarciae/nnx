@@ -9,7 +9,7 @@ A = tp.TypeVar("A")
 
 class TestVariable:
     def test_slots(self):
-        ref = nnx.MutableVariable(1, "")
+        ref = nnx.Variable(1, "", None)
         assert not hasattr(ref, "__dict__")
 
     def test_value(self):
@@ -22,45 +22,11 @@ class TestVariable:
         assert r2.value == 2
         assert r1 is not r2
 
-    def test_ref_trace_level(self):
-        m = nnx.Map(a=nnx.param(1))
-
-        @jax.jit
-        def f():
-            with pytest.raises(
-                ValueError, match="Cannot mutate ref from different trace level"
-            ):
-                m.a = 2
-
-        f()
-
-        @jax.jit
-        def g(pure_module: nnx.PureModule[nnx.Map[int]]):
-            m = pure_module.merge()
-            m.a = 2
-            return m.split()
-
-        m2 = g(m.split()).merge()
-
-        assert m2.a == 2
-
-    def test_ref_trace_level_grad(self):
-        m = nnx.Map(a=nnx.param(1))
-
-        @jax.grad
-        def f(w):
-            with pytest.raises(
-                ValueError,
-                match="Cannot mutate ref with value that contains tracers from other",
-            ):
-                m.a = w
-            return 1.0
-
-        f(3.0)
+    
 
     def test_deref_through_jit(self):
-        r1 = nnx.MutableVariable(1, "")
-        r2 = nnx.MutableVariable(2, "")
+        r1 = nnx.Variable(1, "", None)
+        r2 = nnx.Variable(2, "", None)
 
         m = m0 = nnx.Map({"a": nnx.Seq([r1, r2]), "b": r1})
 
@@ -84,13 +50,13 @@ class TestVariable:
         assert m["b"] is not m0["b"]
 
     def test_barrier_edge_case(self):
-        r1: tp.Optional[nnx.MutableVariable[tp.Any]] = None
+        r1: tp.Optional[nnx.Variable[tp.Any]] = None
 
         @jax.jit
         def f():
             nonlocal r1
             x = jax.numpy.empty(1)
-            r1 = nnx.MutableVariable(x, "")
+            r1 = nnx.Variable(x, "", None)
             return x
 
         x = f()
@@ -159,8 +125,8 @@ class TestVariable:
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = nnx.MutableVariable(1, "")
-        r2 = nnx.MutableVariable(2, "")
+        r1 = nnx.Variable(1, "", None)
+        r2 = nnx.Variable(2, "", None)
         v1 = 3
         m = nnx.Map(
             {
@@ -175,8 +141,8 @@ class TestVariable:
 
     def test_deref_arrays_are_nodes(self):
         # test arrays are nodes
-        r1 = nnx.MutableVariable(1, "")
-        r2 = nnx.MutableVariable(2, "")
+        r1 = nnx.Variable(1, "", None)
+        r2 = nnx.Variable(2, "", None)
         v1 = jax.numpy.array(3)
         m = nnx.Map(
             {
@@ -191,8 +157,8 @@ class TestVariable:
 
     @pytest.mark.skip(reason="TODO: removing support for now")
     def test_mutable(self):
-        r1 = nnx.MutableVariable(1, collection="params")
-        r2 = nnx.MutableVariable(2, collection="batch_stats")
+        r1 = nnx.Variable(1, "params", None)
+        r2 = nnx.Variable(2, "batch_stats", None)
 
         with nnx.mutable(lambda c: c == "params"):
             r1.value = 3

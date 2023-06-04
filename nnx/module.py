@@ -1,14 +1,14 @@
 import dataclasses
 from functools import partial
 import typing as tp
-from abc import ABC
+from abc import ABC, ABCMeta
 from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import partitioning, tracers
+from nnx import errors, partitioning, tracers
 from nnx.nodes import is_node_type, register_node_type
-from nnx.state import State, Variable, MutableVariable
+from nnx.state import State, Variable
 from nnx import reprlib
 import nnx
 
@@ -278,12 +278,39 @@ class CallableProxy:
 SEEN_MODULES_REPR: tp.Set[int] = set()
 
 
-class Module(ABC, reprlib.Representable):
+class ModuleState:
+    __slots__ = ("_trace_state",)
+
+    def __init__(self, trace_state: tracers.TraceState):
+        self._trace_state = trace_state
+
+    @property
+    def trace_state(self) -> tracers.TraceState:
+        return self._trace_state
+
+
+class ModuleMeta(ABCMeta):
+    if not tp.TYPE_CHECKING:
+
+        def __call__(self, *args: Any, **kwargs: Any) -> Any:
+            return self.call(*args, **kwargs)
+
+    def call(self: tp.Type[M], *args, **kwargs) -> M:
+        module = self.__new__(self, *args, **kwargs)
+        vars(module)["_module__state"] = ModuleState(tracers.TraceState())
+        module.__init__(*args, **kwargs)
+        return module
+
+
+class Module(reprlib.Representable, metaclass=ModuleMeta):
+    if tp.TYPE_CHECKING:
+        _module__state: ModuleState
+
     if not tp.TYPE_CHECKING:
 
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, MutableVariable):
+            if isinstance(value, Variable):
                 return value.value
             return value
 
@@ -291,17 +318,22 @@ class Module(ABC, reprlib.Representable):
             self._setattr(name, value)
 
     def _setattr(self, name: str, value: Any) -> None:
+        if not self._module__state.trace_state.is_valid():
+            raise errors.TraceContextError(
+                "Cannot mutate Module from different trace level"
+            )
+
         vars_dict = vars(self)
         if (
             name in vars_dict
-            and isinstance(vars_dict[name], MutableVariable)
-            and not isinstance(value, MutableVariable)
+            and isinstance(vars_dict[name], Variable)
+            and not isinstance(value, Variable)
         ):
-            vars_dict[name].value = value
+            vars_dict[name] = vars_dict[name].replace(value=value)
         else:
-            if isinstance(value, MutableVariable):
+            if isinstance(value, Variable):
                 value = value.copy()
-            object.__setattr__(self, name, value)
+            vars_dict[name] = value
 
     def __hash__(self) -> int:
         return id(self)
@@ -463,48 +495,46 @@ class Module(ABC, reprlib.Representable):
         self, sep: tp.Optional[str] = None
     ) -> tp.Union[tp.Dict[Path, tp.Any], tp.Dict[str, tp.Any]]:
         if sep is not None:
-            state = {
-                sep.join(path): leaf
-                for path, leaf in _iter_state(self, immutable=False)
-            }
+            state = {sep.join(path): leaf for path, leaf in _iter_state(self)}
         else:
-            state = {path: leaf for path, leaf in _iter_state(self, immutable=False)}
+            state = {path: leaf for path, leaf in _iter_state(self)}
 
         return state
 
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
+    # Pytree Definition
+    # def __init_subclass__(cls) -> None:
+    #     super().__init_subclass__()
 
-        def _flatten(module: Module, *, with_keys: bool):
-            state, moduledef = module.split()
-            paths = tuple(state.keys())
+    #     def _flatten(module: Module, *, with_keys: bool):
+    #         state, moduledef = module.split()
+    #         paths = tuple(state.keys())
 
-            if with_keys:
-                nodes = tuple(
-                    (jtu.DictKey(path), value) for path, value in state.items()
-                )
-            else:
-                nodes = tuple(state.values())
+    #         if with_keys:
+    #             nodes = tuple(
+    #                 (jtu.DictKey(path), value) for path, value in state.items()
+    #             )
+    #         else:
+    #             nodes = tuple(state.values())
 
-            return nodes, (paths, moduledef)
+    #         return nodes, (paths, moduledef)
 
-        def _unflatten(
-            paths_moddef: tp.Tuple[tp.Tuple[Path, ...], ModuleDef[M]],
-            nodes: tp.Tuple[tp.Any, ...],
-        ) -> M:
-            paths, moduledef = paths_moddef
-            return moduledef.merge(State(zip(paths, nodes)))
+    #     def _unflatten(
+    #         paths_moddef: tp.Tuple[tp.Tuple[Path, ...], ModuleDef[M]],
+    #         nodes: tp.Tuple[tp.Any, ...],
+    #     ) -> M:
+    #         paths, moduledef = paths_moddef
+    #         return moduledef.merge(State(zip(paths, nodes)))
 
-        jtu.register_pytree_with_keys(
-            cls,
-            partial(_flatten, with_keys=True),
-            _unflatten,
-            flatten_func=partial(_flatten, with_keys=False),
-        )
+    #     jtu.register_pytree_with_keys(
+    #         cls,
+    #         partial(_flatten, with_keys=True),
+    #         _unflatten,
+    #         flatten_func=partial(_flatten, with_keys=False),
+    #     )
 
 
 def _get_module_state(module: Module) -> State:
-    return State(_iter_state(module, immutable=True))
+    return State(_iter_state(module))
 
 
 def _get_module_def(module: M) -> ModuleDef[M]:
@@ -536,7 +566,7 @@ def _make_module_def_recursive(
         if isinstance(value, Module):
             submodule_def = _make_module_def_recursive(value, module_index, value_path)
             submodules.append((name, submodule_def))
-        elif not nnx.is_node_type(value):
+        elif not nnx.is_node_type(value) and not name.startswith("_module__"):
             static_fields.append((name, value))
 
     module_def = ModuleDef(
@@ -548,20 +578,15 @@ def _make_module_def_recursive(
     return module_def
 
 
-def _iter_state(
-    module: Module, *, immutable: bool
-) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
+def _iter_state(module: Module) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     seen_modules: tp.Set[int] = set()
     path: Path = ()
 
-    yield from _iter_state_recursive(module, seen_modules, path, immutable)
+    yield from _iter_state_recursive(module, seen_modules, path)
 
 
 def _iter_state_recursive(
-    module: Module,
-    seen_modules: tp.Set[int],
-    path: Path,
-    immutable: bool,
+    module: Module, seen_modules: tp.Set[int], path: Path
 ) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     if id(module) in seen_modules:
         return
@@ -571,10 +596,8 @@ def _iter_state_recursive(
     for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
         value_path = (*path, name)
         if isinstance(value, Module):
-            yield from _iter_state_recursive(value, seen_modules, value_path, immutable)
+            yield from _iter_state_recursive(value, seen_modules, value_path)
         elif nnx.is_node_type(value):
-            if isinstance(value, MutableVariable) and immutable:
-                value = value.to_immutable()
             yield value_path, value
 
 
@@ -583,19 +606,6 @@ def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
         vars(module)[path[0]] = value
     else:
         _set_value_at_path(vars(module)[path[0]], path[1:], value)
-
-
-def _to_mutable(state: StateMapping) -> StateDict:
-    new_state: StateDict = {}
-    context_trace = tracers.get_top_trace(state)
-
-    for path, value in state.items():
-        if isinstance(value, Variable):
-            new_state[path] = value.to_mutable(context_trace)
-        else:
-            new_state[path] = value
-
-    return new_state
 
 
 def _build_module(moduledef: ModuleDef[M]) -> M:
@@ -624,6 +634,7 @@ def _build_module_recursive(
 
     vars(module).update(moduledef.static_fields)
     vars(module).update(submodules)
+    vars(module)["_module__state"] = ModuleState(tracers.TraceState())
 
     return module
 
@@ -656,8 +667,6 @@ def _pop_recursive(
         if isinstance(value, Module):
             _pop_recursive(value, module_index, value_path, states, predicates)
             continue
-        elif isinstance(value, MutableVariable):
-            value = value.to_immutable()
         elif not nnx.is_node_type(value):
             continue
 
@@ -680,8 +689,9 @@ def _update_module(
     else:
         new_states.extend(updates)
 
-    state = State.merge(*new_states)
-    state = _to_mutable(state)
+    state: StateDict = {}
+    for new_state in new_states:
+        state.update(new_state)
 
     for path, value in state.items():
         _set_value_at_path(module, path, value)

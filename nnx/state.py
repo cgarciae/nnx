@@ -203,104 +203,6 @@ def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
     return VarMetadata(value, sharding)
 
 
-class MutableVariable(tp.Generic[A], reprlib.Representable):
-    __slots__ = (
-        "_value",
-        "_collection",
-        "_sharding",
-        "_jax_trace",
-        "_context_trace",
-        "_trace_set",
-    )
-
-    def __init__(
-        self,
-        value: tp.Union[A, VarMetadata[A]],
-        collection: str,
-        *,
-        sharding: tp.Optional[Sharding] = None,
-        context_trace: tp.Optional[tracers.MainTrace] = None,
-    ):
-        if isinstance(value, VarMetadata):
-            if sharding is not None:
-                raise ValueError(
-                    "Cannot specify sharding when initializing from RefMetadata"
-                )
-            sharding = value.sharding
-            value = value.value
-
-        if collection == "rest":
-            raise ValueError(
-                "'rest' is a reserved collection name, please use a different name."
-            )
-
-        value = tp.cast(A, value)
-        self._value = value
-        self._collection = collection
-        self._sharding = sharding
-        self._jax_trace = tracers.current_jax_trace()
-        self._context_trace = context_trace or self._jax_trace
-        self._trace_set = frozenset((self._jax_trace, self._context_trace))
-
-    def __nnx_repr__(self):
-        yield reprlib.Config(type=f"{type(self).__name__}")
-        yield reprlib.Elem("collection", repr(self._collection))
-        yield reprlib.Elem("value", repr(self._value))
-        if self._sharding is not None:
-            yield reprlib.Elem("sharding", repr(self._sharding))
-
-    @property
-    def collection(self) -> str:
-        return self._collection
-
-    @property
-    def sharding(self) -> tp.Optional[Sharding]:
-        return self._sharding
-
-    @property
-    def value(self) -> A:
-        # TODO: passing references as a constant to a function as a capture should
-        # be allowed? Commenting out for now.
-        # value_trace = tracers.get_top_trace(self._value)
-        # if self._jax_trace is not tracers.current_jax_trace() or (
-        #     value_trace is not self._jax_trace
-        #     and value_trace is not self._context_trace
-        # ):
-        #     raise ValueError("Cannot access ref from different trace level")
-        return self._value
-
-    @value.setter
-    def value(self, value: A):
-        value_trace = tracers.get_top_trace(self._value)
-        if self._jax_trace is not tracers.current_jax_trace() or (
-            value_trace is not self._jax_trace
-            and value_trace is not self._context_trace
-        ):
-            raise ValueError("Cannot mutate ref from different trace level")
-
-        invalid_traces = tracers.get_all_traces(value) - self._trace_set
-        if invalid_traces:
-            raise ValueError(
-                "Cannot mutate ref with value that contains tracers from other "
-                f"traces: {invalid_traces}"
-            )
-
-        self._value = value
-
-    def to_immutable(self) -> "Variable[A]":
-        return Variable(self._value, self._collection, self._sharding)
-
-    def copy(self) -> "MutableVariable[A]":
-        ref = object.__new__(MutableVariable)
-        ref._value = self._value
-        ref._jax_trace = self._jax_trace
-        ref._context_trace = self._context_trace
-        ref._trace_set = self._trace_set
-        ref._collection = self._collection
-        ref._sharding = self._sharding
-        return ref
-
-
 class Variable(tp.Generic[A], reprlib.Representable):
     __slots__ = ("_value", "_collection", "_sharding")
 
@@ -333,13 +235,20 @@ class Variable(tp.Generic[A], reprlib.Representable):
         if self._sharding is not None:
             yield reprlib.Elem("sharding", repr(self._sharding))
 
-    def to_mutable(self, context_trace: tracers.MainTrace) -> MutableVariable[A]:
-        return MutableVariable(
-            self._value,
-            self._collection,
-            sharding=self._sharding,
-            context_trace=context_trace,
-        )
+    def copy(self) -> "Variable[A]":
+        return Variable(self._value, self._collection, self._sharding)
+
+    def replace(
+        self,
+        **kwargs: tp.Any,
+    ) -> "Variable[A]":
+        updates: tp.Dict[str, tp.Any] = {
+            "value": self._value,
+            "collection": self._collection,
+            "sharding": self._sharding,
+        }
+        updates.update(kwargs)
+        return Variable(**updates)
 
 
 def _variable_flatten(
@@ -373,31 +282,21 @@ def var(
     collection: str,
     value: tp.Union[A, VarMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
-    *,
-    context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> A:
-    return MutableVariable(  # type: ignore
+    return Variable(  # type: ignore
         value,
         collection=collection,
         sharding=sharding,
-        context_trace=context_trace,
     )
 
 
 def param(
     value: tp.Union[A, VarMetadata[A]],
     sharding: tp.Optional[Sharding] = None,
-    *,
-    context_trace: tp.Optional[tracers.MainTrace] = None,
 ) -> A:
-    return var(
-        "params",
-        value,
-        sharding=sharding,
-        context_trace=context_trace,
-    )
+    return var("params", value, sharding=sharding)
 
 
 # register nodes
 register_node_type(State)
-register_node_type(MutableVariable)
+register_node_type(Variable)

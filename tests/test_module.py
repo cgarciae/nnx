@@ -6,6 +6,68 @@ import jax
 
 
 class TestModule:
+    def test_has_module_state(self):
+        class Foo(nnx.Module):
+            ...
+
+        foo = Foo()
+
+        assert hasattr(foo, "_module__state")
+
+    def test_trace_level(self):
+        m = nnx.Map(a=nnx.param(1))
+
+        @jax.jit
+        def f():
+            with pytest.raises(
+                nnx.TraceContextError,
+                match="Cannot mutate Module from different trace level",
+            ):
+                m.a = 2
+
+        f()
+
+    def test_split_merge(self):
+        m = nnx.Map(a=nnx.param(1))
+
+        @jax.jit
+        def g(pure_module: nnx.PureModule[nnx.Map[int]]):
+            m = pure_module.merge()
+            m.a = 2
+            return m.split()
+
+        m2 = g(m.split()).merge()
+
+        assert m2.a == 2
+
+    def test_no_trace_level_error_on_grad(self):
+        # No trace level error occurs because jax doesn't update
+        # its top trace for grad.
+        m = nnx.Map(a=nnx.param(1.0))
+
+        @jax.grad
+        def f(_):
+            m.a = 2.0
+            return 1.0
+
+        f(1.0)
+
+    def test_trace_level_error_on_nnx_grad(self):
+        # error occurs because nnx updates its nnx_trace
+        # in nnx.grad.
+        m = nnx.Map(a=nnx.param(1.0))
+
+        @nnx.grad
+        def f(_):
+            with pytest.raises(
+                nnx.TraceContextError,
+                match="Cannot mutate Module from different trace level",
+            ):
+                m.a = 2.0
+            return 1.0
+
+        f(m)
+
     def test_call(self):
         class Foo(nnx.Module):
             def __init__(self, c: float, *, ctx: nnx.Context):
