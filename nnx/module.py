@@ -147,6 +147,15 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
     def apply(self) -> ApplyCaller["PureModule[M]"]:
         return self.moduledef.apply(self.state)
 
+    @property
+    def call(self) -> M:
+        module = self.merge()
+
+        def _context(fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+
+        return CallableProxy(_context, module)  # type: ignore
+
     @tp.overload
     def get_state(
         self,

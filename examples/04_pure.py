@@ -40,17 +40,14 @@ class MLP(nnx.Module):
         return x
 
 
-def mse(y, y_pred):
-    return jnp.mean((y - y_pred) ** 2)
-
-
 ctx = nnx.Context(jax.random.PRNGKey(0))
 pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split()
 
 
-@nnx.jit_filter_pure
-def train_step(model: MLP, batch):
+@jax.jit
+def train_step(pure_model: nnx.PureModule[MLP], batch):
     x, y = batch
+    model = pure_model.merge()
 
     def loss_fn(model: MLP):
         y_pred = model(x)
@@ -62,13 +59,13 @@ def train_step(model: MLP, batch):
         jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grad)
     )
 
-    return model
+    return model.split()
 
 
-@nnx.jit_filter_pure
-def test_step(model: MLP, batch):
+@jax.jit
+def test_step(pure_model: nnx.PureModule[MLP], batch):
     x, y = batch
-    y_pred = model(x)
+    y_pred = pure_model.call(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 

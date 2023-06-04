@@ -54,7 +54,7 @@ class TestIntegration:
         assert model.block1.linear.bias is not None
         assert model.block1.bn is not model.block2.bn
 
-    def test_shared_modules_jit_filter(self):
+    def test_shared_modules_pure(self):
         class Block(nnx.Module):
             def __init__(self, linear: nnx.Linear, *, ctx: nnx.Context):
                 self.linear = linear
@@ -76,8 +76,10 @@ class TestIntegration:
                 x = self.block2(x, ctx=ctx)
                 return x
 
-        @nnx.jit_filter_pure
-        def train_step(model: Model, x, y):
+        @jax.jit
+        def train_step(pure_module: nnx.PureModule[Model], x, y):
+            model = pure_module.merge()
+
             @nnx.grad
             def loss_fn(model: Model):
                 ctx = nnx.Context(flags=dict(use_running_average=False))
@@ -89,18 +91,18 @@ class TestIntegration:
                 jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
             )
 
-            return model
+            return model.split()
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
-        model = Model(ctx=ctx).split()
+        pure_module = Model(ctx=ctx).split()
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))
 
         for _i in range(3):
-            model = train_step(model, x, y)
+            pure_module = train_step(pure_module, x, y)
 
-        model = model.merge()
+        model = pure_module.merge()
 
         assert model.block1.linear.bias is not None
         assert model.block2.linear.bias is not None

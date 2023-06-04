@@ -15,16 +15,6 @@ class TestJIT:
     def test_jit(self):
         m = nnx.Map(a=nnx.param(1))
 
-        @jax.jit
-        def f():
-            with pytest.raises(
-                ValueError, match="Cannot mutate ref from different trace level"
-            ):
-                m.a = 2
-            return 1
-
-        f()
-
         @nnx.jit
         def g(m: nnx.Map):
             m.a = 2
@@ -38,7 +28,7 @@ class TestJIT:
     def test_jit_stateless(self):
         m = nnx.Map(a=nnx.param(1))
 
-        @nnx.jit_filter_pure
+        @partial(nnx.jit, stateful=False)
         def g(m: nnx.Map):
             m.a = 2
             return 1.0
@@ -142,21 +132,3 @@ class TestGrad:
         assert m.b == 10.0
         assert m.c == 7
         assert m.d == 5.0
-
-    def test_scope(self):
-        m = nnx.Map(
-            a=nnx.Seq([nnx.param(10.0), nnx.param(20.0)]),
-            b=nnx.param(10.0),
-            c=7,
-            d=5.0,
-        )
-        ctx = nnx.Context(dict(a=jax.random.PRNGKey(0)))
-
-        @nnx.grad
-        def f(m: nnx.Map):
-            # sum all params
-            noise = jax.random.normal(ctx.make_rng("a"), shape=())
-            return m.a[0] + m.a[1] + m.b + noise
-
-        grad = f(m)
-        assert isinstance(grad, nnx.State)

@@ -1,3 +1,4 @@
+from typing import Any
 import jax
 import numpy as np
 import pytest
@@ -49,17 +50,29 @@ class TestRngStream:
         assert rng1.key is rng.key
 
     def test_rng_trace_level_constraints(self):
-        key0 = jax.random.PRNGKey(0)
-        rng = nnx.RngStream(key0)
+        rng = nnx.RngStream(jax.random.PRNGKey(0))
 
         @jax.jit
         def f():
-            with pytest.raises(ValueError, match="Rng used in a different trace"):
-                key1 = rng.key
+            with pytest.raises(
+                nnx.TraceContextError,
+                match="Cannot use RngStream from a different trace level",
+            ):
+                rng.next()
 
         f()
 
-        rng1 = None
+        @jax.jit
+        def f():
+            with pytest.raises(
+                nnx.TraceContextError,
+                match="Cannot use RngStream from a different trace level",
+            ):
+                rng.fork()
+
+        f()
+
+        rng1: Any = None
 
         @jax.jit
         def g():
@@ -68,5 +81,9 @@ class TestRngStream:
 
         g()
 
-        with pytest.raises(ValueError, match="Rng used in a different trace"):
-            key1 = rng1.key
+        assert isinstance(rng1, nnx.RngStream)
+        with pytest.raises(
+            nnx.TraceContextError,
+            match="Cannot use RngStream from a different trace level",
+        ):
+            rng1.next()

@@ -104,7 +104,7 @@ params, moduledef = VAE(
 ).split("params")
 
 state = nnx.TrainState(
-    moduledef=moduledef.apply,
+    apply_fn=moduledef.apply,
     params=params,
     tx=optax.adam(1e-3),
 )
