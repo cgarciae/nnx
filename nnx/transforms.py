@@ -26,10 +26,19 @@ class JitTransform(jax.stages.Wrapped):
         **jit_kwargs,
     ):
         @functools.partial(jax.jit, **jit_kwargs)
-        def jitted_fn(module: Module, *args, **kwargs):
-            out = fun(module, *args, **kwargs)
+        def jitted_fn(pure_module: PureModule[Module], *args, **kwargs):
+            if "ctx" in kwargs and isinstance(kwargs["ctx"], context.PureContext):
+                kwargs["ctx"] = kwargs["ctx"].merge()
+
+            nnx_trace = tracers.get_top_trace((args, kwargs))
+            with tracers.nnx_trace(nnx_trace):
+                module = pure_module.merge()
+                out = fun(module, *args, **kwargs)
+
             if self.stateful:
-                out = (module, out)
+                updates = module.get_state()
+                out = (updates, out)
+
             return out
 
         self.jitted_fn = jitted_fn
@@ -37,10 +46,12 @@ class JitTransform(jax.stages.Wrapped):
 
     def __call__(self, module: Module, *args, **kwargs):
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
-            kwargs["ctx"] = kwargs["ctx"].fork()
+            kwargs["ctx"] = kwargs["ctx"].split()
 
-        out = self.jitted_fn(module, *args, **kwargs)
+        pure_module = module.split()
+        out = self.jitted_fn(pure_module, *args, **kwargs)
         if self.stateful:
+            updates: State
             updates, out = out
             module.update_state(updates)
         return out
@@ -130,13 +141,12 @@ class GradTransform:
             moduledef: ModuleDef[Module],
             *args: tp.Any,
         ):
-            module = moduledef.merge(diff, non_diff)
-
             with tracers.nnx_trace(tracers.get_top_trace(diff)):
+                module = moduledef.merge(diff, non_diff)
                 out = fun(module, *args)
 
             if self.stateful:
-                updates = module.split().state
+                updates = module.get_state()
                 if self.has_aux:
                     loss, aux = out
                     out = (loss, (updates, aux))

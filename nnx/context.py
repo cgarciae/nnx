@@ -178,12 +178,6 @@ class Context:
             raise ValueError(f"Unknown Rng Stream: {name}")
         return self._rngs[name].next()
 
-    def fork(self) -> "Context":
-        return Context(
-            rngs={name: stream.fork() for name, stream in self._rngs.items()},
-            flags=self._flags,
-        )
-
     def copy(self) -> "Context":
         return Context(rngs=self._rngs, flags=self._flags)
 

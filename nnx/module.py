@@ -278,7 +278,7 @@ class CallableProxy:
 SEEN_MODULES_REPR: tp.Set[int] = set()
 
 
-class ModuleState:
+class ModuleState(reprlib.Representable):
     __slots__ = ("_trace_state",)
 
     def __init__(self, trace_state: tracers.TraceState):
@@ -287,6 +287,10 @@ class ModuleState:
     @property
     def trace_state(self) -> tracers.TraceState:
         return self._trace_state
+
+    def __nnx_repr__(self):
+        yield reprlib.Config(f"{type(self).__name__}")
+        yield reprlib.Elem("trace_state", repr(self._trace_state))
 
 
 class ModuleMeta(ABCMeta):

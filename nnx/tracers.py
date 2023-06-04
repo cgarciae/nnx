@@ -8,6 +8,7 @@ import typing as tp
 import jax
 import jax.core
 from jax.core import MainTrace
+from nnx import reprlib
 
 
 @tp.runtime_checkable
@@ -70,7 +71,7 @@ def current_nnx_trace() -> MainTrace:
     return TRACE_CONTEXT.nnx_trace_stack[-1]
 
 
-class TraceState:
+class TraceState(reprlib.Representable):
     __slots__ = ["_jax_trace", "_nnx_trace"]
 
     def __init__(self):
@@ -90,3 +91,8 @@ class TraceState:
             self._jax_trace is current_jax_trace()
             and self._nnx_trace is current_nnx_trace()
         )
+
+    def __nnx_repr__(self):
+        yield reprlib.Config(f"{type(self).__name__}")
+        yield reprlib.Elem("jax_trace", repr(self._jax_trace))
+        yield reprlib.Elem("nnx_trace", repr(self._nnx_trace))
