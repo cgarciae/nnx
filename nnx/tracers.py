@@ -15,17 +15,17 @@ class Tracer(tp.Protocol):
     _trace: jax.core.Trace
 
 
-def current_jax_trace() -> MainTrace:
-    """Returns the innermost Jax tracer."""
-    return get_top_trace(())
-
-
 def get_top_trace(pytree: tp.Union[tp.Any, Tracer]) -> MainTrace:
     """Returns the main top trace of a sequence of tracers."""
     if isinstance(pytree, Tracer):
         return pytree._trace.main
 
     return jax.core.find_top_trace(jax.tree_util.tree_leaves(pytree)).main
+
+
+def current_jax_trace() -> MainTrace:
+    """Returns the innermost Jax tracer."""
+    return get_top_trace(())
 
 
 def get_all_traces(pytree: tp.Union[tp.Any, Tracer]) -> tp.Set[MainTrace]:
@@ -45,3 +45,48 @@ def trace_level(main):
     if main:
         return main.level
     return float("-inf")
+
+
+@dataclasses.dataclass
+class TraceContext(threading.local):
+    nnx_trace_stack: tp.List[MainTrace] = dataclasses.field(
+        default_factory=lambda: [current_jax_trace()]
+    )
+
+
+TRACE_CONTEXT = TraceContext()
+
+
+@contextlib.contextmanager
+def nnx_trace(trace: MainTrace):
+    TRACE_CONTEXT.nnx_trace_stack.append(trace)
+    try:
+        yield
+    finally:
+        TRACE_CONTEXT.nnx_trace_stack.pop()
+
+
+def current_nnx_trace() -> MainTrace:
+    return TRACE_CONTEXT.nnx_trace_stack[-1]
+
+
+class TraceState:
+    __slots__ = ["_jax_trace", "_nnx_trace"]
+
+    def __init__(self):
+        self._jax_trace = current_jax_trace()
+        self._nnx_trace = current_nnx_trace()
+
+    @property
+    def jax_trace(self):
+        return self._jax_trace
+
+    @property
+    def nnx_trace(self):
+        return self._nnx_trace
+
+    def is_valid(self) -> bool:
+        return (
+            self._jax_trace is current_jax_trace()
+            and self._nnx_trace is current_nnx_trace()
+        )
