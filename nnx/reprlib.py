@@ -26,7 +26,7 @@ class Config:
 @dataclasses.dataclass
 class Elem:
     key: str
-    value: str
+    value: tp.Union[str, tp.Any]
 
 
 class Representable:
@@ -67,10 +67,10 @@ def get_repr(obj: Representable) -> str:
         if not isinstance(elem, Elem):
             raise TypeError(f"Item must be Elem, got {type(elem).__name__}")
 
-        if "\n" in elem.value:
-            value = elem.value.replace("\n", "\n" + get_indent())
-        else:
-            value = elem.value
+        value = elem.value if isinstance(elem.value, str) else repr(elem.value)
+
+        if "\n" in value and not isinstance(elem.value, Representable):
+            value = value.replace("\n", "\n" + get_indent())
 
         return f"{get_indent()}{elem.key}{config.value_sep}{value}"
 
@@ -79,7 +79,7 @@ def get_repr(obj: Representable) -> str:
     elems = ",\n".join(elems)
 
     if elems:
-        elems = "\n" + elems + "\n"
+        elems = "\n" + elems + "\n" + get_indent()
     else:
         elems = config.empty_repr
 

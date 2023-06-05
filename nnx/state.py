@@ -58,7 +58,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         )
 
         for k, v in self._mapping.items():
-            yield reprlib.Elem(str(k), repr(v))
+            yield reprlib.Elem(str(k), v)
 
     @tp.overload
     def partition(self, first: partitioning.CollectionFilter, /) -> "State":
@@ -250,10 +250,10 @@ class Variable(tp.Generic[A], reprlib.Representable):
 
     def __nnx_repr__(self):
         yield reprlib.Config(type=f"{type(self).__name__}")
-        yield reprlib.Elem("collection", repr(self._collection))
-        yield reprlib.Elem("value", repr(self._value))
+        yield reprlib.Elem("collection", self._collection)
+        yield reprlib.Elem("value", self._value)
         if self._sharding is not None:
-            yield reprlib.Elem("sharding", repr(self._sharding))
+            yield reprlib.Elem("sharding", self._sharding)
 
     def copy(self) -> "Variable[A]":
         return Variable(self._value, self._collection, self._sharding)

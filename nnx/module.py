@@ -47,9 +47,9 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         yield reprlib.Config(type=f"{type(self).__name__}")
 
         yield reprlib.Elem("type", self._type.__name__)
-        yield reprlib.Elem("index", repr(self._index))
-        yield reprlib.Elem("submodules", repr(self._submodules))
-        yield reprlib.Elem("static_fields", repr(self._static_fields))
+        yield reprlib.Elem("index", self._index)
+        yield reprlib.Elem("submodules", self._submodules)
+        yield reprlib.Elem("static_fields", self._static_fields)
 
     def __hash__(self) -> int:
         return hash((self._type, self._submodules, self._static_fields))
@@ -302,7 +302,7 @@ class ModuleState(reprlib.Representable):
 
     def __nnx_repr__(self):
         yield reprlib.Config(f"{type(self).__name__}")
-        yield reprlib.Elem("trace_state", repr(self._trace_state))
+        yield reprlib.Elem("trace_state", self._trace_state)
 
 
 class ModuleMeta(ABCMeta):
@@ -364,8 +364,10 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         try:
             for name, value in vars(self).items():
-                if isinstance(value, Module) or not is_node_type(value):
-                    yield reprlib.Elem(name, repr(value))
+                if isinstance(value, Module) or (
+                    not is_node_type(value) and not name.startswith("_")
+                ):
+                    yield reprlib.Elem(name, value)
         finally:
             SEEN_MODULES_REPR.remove(id(self))
 

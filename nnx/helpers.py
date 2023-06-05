@@ -50,7 +50,7 @@ class Sequence(Module, tp.Generic[A]):
         i = 0
         for i, value in enumerate(iterable):
             setattr(self, str(i), value)
-        self._len = i + 1
+        self._length = i + 1
 
     def __getitem__(self, key: int) -> A:
         if key >= len(self):
@@ -62,7 +62,7 @@ class Sequence(Module, tp.Generic[A]):
             yield getattr(self, str(i))
 
     def __len__(self) -> int:
-        return self._len
+        return self._length
 
     def __call__(self, *args, ctx: tp.Optional[Context] = None, **kwargs) -> tp.Any:
         output: tp.Any = None

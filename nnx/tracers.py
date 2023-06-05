@@ -94,5 +94,5 @@ class TraceState(reprlib.Representable):
 
     def __nnx_repr__(self):
         yield reprlib.Config(f"{type(self).__name__}")
-        yield reprlib.Elem("jax_trace", repr(self._jax_trace))
-        yield reprlib.Elem("nnx_trace", repr(self._nnx_trace))
+        yield reprlib.Elem("jax_trace", self._jax_trace)
+        yield reprlib.Elem("nnx_trace", self._nnx_trace)
