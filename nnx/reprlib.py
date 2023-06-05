@@ -14,17 +14,17 @@ CONTEXT = Context()
 
 
 @dataclasses.dataclass
-class Config:
+class Object:
     type: tp.Union[str, type]
-    parens_left: str = "("
-    parens_right: str = ")"
+    start: str = "("
+    end: str = ")"
     value_sep: str = "="
     elem_indent: str = "  "
     empty_repr: str = ""
 
 
 @dataclasses.dataclass
-class Elem:
+class Attr:
     key: str
     value: tp.Union[str, tp.Any]
     start: str = ""
@@ -35,7 +35,7 @@ class Representable:
     __slots__ = ()
 
     @abstractmethod
-    def __nnx_repr__(self) -> tp.Iterator[tp.Union[Config, Elem]]:
+    def __nnx_repr__(self) -> tp.Iterator[tp.Union[Object, Attr]]:
         raise NotImplementedError
 
     def __repr__(self) -> str:
@@ -62,11 +62,11 @@ def get_repr(obj: Representable) -> str:
 
     iterator = obj.__nnx_repr__()
     config = next(iterator)
-    if not isinstance(config, Config):
+    if not isinstance(config, Object):
         raise TypeError(f"First item must be Config, got {type(config).__name__}")
 
     def _repr_elem(elem: tp.Any) -> str:
-        if not isinstance(elem, Elem):
+        if not isinstance(elem, Attr):
             raise TypeError(f"Item must be Elem, got {type(elem).__name__}")
 
         value = elem.value if isinstance(elem.value, str) else repr(elem.value)
@@ -89,4 +89,4 @@ def get_repr(obj: Representable) -> str:
 
     type_repr = config.type if isinstance(config.type, str) else config.type.__name__
 
-    return f"{type_repr}{config.parens_left}{elems}{config.parens_right}"
+    return f"{type_repr}{config.start}{elems}{config.end}"

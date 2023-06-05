@@ -10,7 +10,7 @@ import jax.tree_util as jtu
 from nnx import partitioning, tracers
 from nnx.nn import initializers
 from nnx.nodes import register_node_type
-from nnx.reprlib import Config, Elem
+from nnx.reprlib import Object, Attr
 
 A = tp.TypeVar("A")
 
@@ -52,11 +52,11 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     def __len__(self) -> int:
         return len(self._mapping)
 
-    def __nnx_repr__(self) -> tp.Iterator[tp.Union[Config, Elem]]:
-        yield Config(type(self), value_sep=": ", parens_left="({", parens_right="})")
+    def __nnx_repr__(self) -> tp.Iterator[tp.Union[Object, Attr]]:
+        yield Object(type(self), value_sep=": ", start="({", end="})")
 
         for k, v in self._mapping.items():
-            yield reprlib.Elem(str(k), v)
+            yield reprlib.Attr(str(k), v)
 
     @tp.overload
     def partition(self, first: partitioning.CollectionFilter, /) -> "State":
@@ -247,11 +247,11 @@ class Variable(tp.Generic[A], reprlib.Representable):
         return self._sharding
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type=type(self))
-        yield reprlib.Elem("collection", self._collection)
-        yield reprlib.Elem("value", self._value)
+        yield reprlib.Object(type=type(self))
+        yield reprlib.Attr("collection", self._collection)
+        yield reprlib.Attr("value", self._value)
         if self._sharding is not None:
-            yield reprlib.Elem("sharding", self._sharding)
+            yield reprlib.Attr("sharding", self._sharding)
 
     def copy(self) -> "Variable[A]":
         return Variable(self._value, self._collection, self._sharding)

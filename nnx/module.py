@@ -33,10 +33,10 @@ class _SubmodulesRepr(reprlib.Representable):
     submodules: tp.Tuple[tp.Tuple[str, tp.Union["ModuleDef[Module]", int]], ...]
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type="", value_sep=", ")
+        yield reprlib.Object(type="", value_sep=", ")
 
         for name, submodule in self.submodules:
-            yield reprlib.Elem(repr(name), submodule, start="(", end=")")
+            yield reprlib.Attr(repr(name), submodule, start="(", end=")")
 
 
 class ModuleDef(tp.Generic[M], reprlib.Representable):
@@ -55,12 +55,12 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         self._static_fields = static_fields
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type=type(self))
+        yield reprlib.Object(type=type(self))
 
-        yield reprlib.Elem("type", self._type.__name__)
-        yield reprlib.Elem("index", self._index)
-        yield reprlib.Elem("submodules", _SubmodulesRepr(self._submodules))
-        yield reprlib.Elem("static_fields", self._static_fields)
+        yield reprlib.Attr("type", self._type.__name__)
+        yield reprlib.Attr("index", self._index)
+        yield reprlib.Attr("submodules", _SubmodulesRepr(self._submodules))
+        yield reprlib.Attr("static_fields", self._static_fields)
 
     def __hash__(self) -> int:
         return hash((self._type, self._submodules, self._static_fields))
@@ -312,8 +312,8 @@ class ModuleState(reprlib.Representable):
         return self._trace_state
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type(self))
-        yield reprlib.Elem("trace_state", self._trace_state)
+        yield reprlib.Object(type(self))
+        yield reprlib.Attr("trace_state", self._trace_state)
 
 
 class ModuleMeta(ABCMeta):
@@ -367,10 +367,10 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     def __nnx_repr__(self):
         if id(self) in SEEN_MODULES_REPR:
-            yield reprlib.Config(type=type(self), empty_repr="...")
+            yield reprlib.Object(type=type(self), empty_repr="...")
             return
 
-        yield reprlib.Config(type=type(self))
+        yield reprlib.Object(type=type(self))
         SEEN_MODULES_REPR.add(id(self))
 
         try:
@@ -378,7 +378,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
                 if isinstance(value, Module) or (
                     not is_node_type(value) and not name.startswith("_")
                 ):
-                    yield reprlib.Elem(name, value)
+                    yield reprlib.Attr(name, value)
         finally:
             SEEN_MODULES_REPR.remove(id(self))
 
