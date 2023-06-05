@@ -44,7 +44,9 @@ class JitTransform(jax.stages.Wrapped):
         self.jitted_fn = jitted_fn
         self.stateful = stateful
 
-    def __call__(self, module: Module, *args, **kwargs):
+    def __call__(self, module: tp.Any, *args, **kwargs):
+        if not isinstance(module, Module):
+            raise TypeError(f"Expected Module, got {type(module).__name__}")
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
             kwargs["ctx"] = kwargs["ctx"].split()
 

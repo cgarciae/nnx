@@ -8,7 +8,7 @@ import jax.tree_util as jtu
 
 from nnx import errors, partitioning, tracers
 from nnx.nodes import is_node_type, register_node_type
-from nnx.state import State, Variable
+from nnx.state import Sharding, State, Variable
 from nnx import reprlib
 import nnx
 
@@ -156,8 +156,11 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
 
         return CallableProxy(_context, module)  # type: ignore
 
+    def get_state(self) -> State:
+        return self.state
+
     @tp.overload
-    def get_state(
+    def filter(
         self,
         filter: partitioning.CollectionFilter,
         /,
@@ -165,7 +168,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         ...
 
     @tp.overload
-    def get_state(
+    def filter(
         self,
         filter: partitioning.CollectionFilter,
         filter2: partitioning.CollectionFilter,
@@ -174,7 +177,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
     ) -> tp.Tuple[State, ...]:
         ...
 
-    def get_state(
+    def filter(
         self, *filters: partitioning.CollectionFilter
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         return self.state.filter(*filters)
@@ -396,50 +399,47 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         if len(filters) == 0:
             states = state
+        elif len(filters) == 1:
+            states = state.split(filters[0])
         else:
-            *states, rest = state.split(*filters)
-
-            if rest:
-                raise ValueError(
-                    f"Non-exhaustive filters, got a non-empty remainder: "
-                    f"{list(rest.keys())}.\nUse `...` to match all remaining elements."
-                )
-
-            if len(states) == 1:
-                states = states[0]
-            else:
-                states = tuple(states)
+            states = state.split(filters[0], filters[1], *filters[2:])
 
         if isinstance(states, tuple):
             return states, moduledef
         else:
             return PureModule.new(states, moduledef)
 
-    @tp.overload
     def get_state(self) -> State:
+        return _get_module_state(self)
+
+    @tp.overload
+    def filter(self, first: partitioning.CollectionFilter, /) -> State:
         ...
 
     @tp.overload
-    def get_state(self, filter: partitioning.CollectionFilter, /) -> State:
-        ...
-
-    @tp.overload
-    def get_state(
+    def filter(
         self,
-        filter: partitioning.CollectionFilter,
-        filter2: partitioning.CollectionFilter,
+        first: partitioning.CollectionFilter,
+        second: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Tuple[State, ...]:
         ...
 
-    def get_state(
-        self, *filters: partitioning.CollectionFilter
+    def filter(
+        self,
+        first: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         state = _get_module_state(self)
+
         if len(filters) == 0:
-            return state
-        return state.filter(*filters)
+            states = state.filter(first)
+        else:
+            states = state.filter(first, filters[0], *filters[1:])
+
+        return states
 
     @tp.overload
     def pop_state(
@@ -497,20 +497,23 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         _update_module(self, current_state, updates)
 
     @tp.overload
-    def state_dict(self) -> tp.Dict[Path, tp.Any]:
+    def mutable_state_dict(self) -> tp.Dict[Path, "MutableLeaf"]:
         ...
 
     @tp.overload
-    def state_dict(self, sep: str) -> tp.Dict[str, tp.Any]:
+    def mutable_state_dict(self, sep: str) -> tp.Dict[str, "MutableLeaf"]:
         ...
 
-    def state_dict(
+    def mutable_state_dict(
         self, sep: tp.Optional[str] = None
-    ) -> tp.Union[tp.Dict[Path, tp.Any], tp.Dict[str, tp.Any]]:
+    ) -> tp.Union[tp.Dict[Path, "MutableLeaf"], tp.Dict[str, "MutableLeaf"]]:
+        mutable_leaves = (
+            (path, MutableLeaf(self, path)) for path, _ in _iter_state(self)
+        )
         if sep is not None:
-            state = {sep.join(path): leaf for path, leaf in _iter_state(self)}
+            state = {sep.join(path): leaf for path, leaf in mutable_leaves}
         else:
-            state = {path: leaf for path, leaf in _iter_state(self)}
+            state = {path: leaf for path, leaf in mutable_leaves}
 
         return state
 
@@ -544,6 +547,45 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     #         _unflatten,
     #         flatten_func=partial(_flatten, with_keys=False),
     #     )
+
+
+class MutableLeaf(reprlib.Representable):
+    __slots__ = ("_module", "_name")
+
+    def __init__(self, root: Module, path: Path):
+        *module_path, name = path
+        module = _get_value_path(root, module_path)
+        if not isinstance(module, Module):
+            raise ValueError(
+                f"Expected a module at path {path[:-1]}, ",
+                f" got {type(module).__name__}",
+            )
+        self._module = module
+        self._name = name
+
+    @property
+    def value(self) -> tp.Any:
+        return getattr(self._module, self._name)
+
+    @value.setter
+    def value(self, value: tp.Any) -> None:
+        setattr(self._module, self._name, value)
+
+    @property
+    def collection(self) -> tp.Optional[str]:
+        obj = vars(self._module)[self._name]
+        if not isinstance(obj, Variable):
+            return None
+
+        return obj.collection
+
+    @property
+    def sharding(self) -> tp.Optional[Sharding]:
+        obj = vars(self._module)[self._name]
+        if not isinstance(obj, Variable):
+            return None
+
+        return obj.sharding
 
 
 def _get_module_state(module: Module) -> State:
@@ -614,11 +656,18 @@ def _iter_state_recursive(
             yield value_path, value
 
 
-def _set_value_at_path(module: M, path: Path, value: tp.Any) -> M:
+def _set_value_at_path(obj: tp.Any, path: tp.Sequence[str], value: tp.Any):
     if len(path) == 1:
-        vars(module)[path[0]] = value
+        vars(obj)[path[0]] = value
     else:
-        _set_value_at_path(vars(module)[path[0]], path[1:], value)
+        _set_value_at_path(vars(obj)[path[0]], path[1:], value)
+
+
+def _get_value_path(obj: tp.Any, path: tp.Sequence[str]) -> tp.Any:
+    if len(path) == 0:
+        return obj
+    else:
+        return _get_value_path(vars(obj)[path[0]], path[1:])
 
 
 def _build_module(moduledef: ModuleDef[M]) -> M:

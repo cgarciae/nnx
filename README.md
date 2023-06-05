@@ -36,6 +36,7 @@ pip install git+https://github.com/cgarciae/nnx
 ```python
 import nnx
 import jax
+import jax.numpy as jnp
 
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
@@ -48,11 +49,13 @@ class Linear(nnx.Module):
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
-
-x = jax.numpy.ones((8, 12))
-y = model(x)
+# forward pass
+y = model(jnp.ones((8, 12)))
 ```
-### Basic Training
+### Training
+
+<details><summary>Stateful Transformations</summary>
+
 ```python
 @nnx.jit
 def train_step(model, x, y):
@@ -64,60 +67,60 @@ def train_step(model, x, y):
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
     )
 
 # yes... there's no return :)
 train_step(model, x, y)
 ```
 
-### Advanced Training
+</details>
+
+<details><summary>split API</summary>
 
 ```python
-import optax
-
 params, moduledef = model.split("params")
-state = nnx.TrainState(
-    params=params,
-    apply_fn=moduledef.apply,
-    tx=optax.sgd(0.1),
-)
 
 @jax.jit
-def train_step(state, x, y):
+def train_step(params, x, y):
     def loss_fn(params):
-        y_pred, _updates = state.apply_fn(params)(x)
+        y_pred, _updates = moduledef.apply(params)(x)
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads: nnx.State = jax.grad(loss_fn)(state.params)
+    grads: nnx.State = jax.grad(loss_fn)(params)
     # SGD update
-    state = state.apply_gradients(grads=grads)
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
 
-    return state
+    return params
 
-state = train_step(state, x, y)
+params = train_step(params, x, y)
 ```
 
 ## Design
 
 ### Modules
 
+NNX Modules are regular python classes that inherit from `nnx.Module`, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, and other Modules and other NNX types. All other types are treated as static attributes.
+
 ```python
 class Foo(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         # node attributes
-        self.variable: jax.Array = nnx.param(jnp.array(1))
-        self.np_buffer: np.ndarray = np.array(2)
-        self.jax_buffer: jax.Array = jnp.array(3)
-        self.submodule: nnx.Linear = nnx.Linear(din, dout, ctx=ctx)
-        # static attributes (not part of the state)
+        self.variable = nnx.param(jnp.array(1))
+        self.np_buffer = np.array(2)
+        self.jax_buffer = jnp.array(3)
+        self.submodule = nnx.Linear(din, dout, ctx=ctx)
+        # static attributes
         self.din = din
         self.dout = dout
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 module = Foo(din=12, dout=2, ctx=ctx)
 ```
+Regular python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
+
+Since NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be split into the `State` and a `ModuleDef` objects. The `State` object is a flat dictionary-like structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and overall structural definition of the Module.
 
 ```python
 state, moduledef = module.split()
@@ -139,8 +142,18 @@ State({
 })
 ```
 
+`State` and `ModuleDef` are pytrees so they can be passed to JAX transformations. More over, `ModuleDef` provides 2 very important methods: `merge` and `apply`. The `merge` method can be used to create a new `Module` from a `State` object:
+
 ```python
-module = module.merge(state)
+module = moduledef.merge(state)
+```
+This can be use to e.g. recreate a module inside a JAX transformation. The `apply` provides a functional interface to the module, it can be used call any method on the Module and get both the output and the updated state:
+
+```python
+# run __call__
+y, (state, moduledef) = moduledef.apply(state)(x)
+# run some_method
+y, (state, moduledef) = moduledef.apply(state).some_method(x)
 ```
 
 ### Transformations
@@ -175,7 +188,7 @@ def train_step(model, x, y):
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
     )
 
 # stateful update, no return needed
@@ -212,7 +225,7 @@ def train_step(model, x, y):
     grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grads)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
     )
     
     return model

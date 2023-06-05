@@ -3,9 +3,11 @@ import typing as tp
 import optax
 
 import nnx
+from nnx.context import Context
 from nnx.module import ApplyCaller, Module, PureModule
 from nnx import pytreelib
 from nnx.state import State
+from nnx import utils
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound=Module)
@@ -45,8 +47,10 @@ class Map(Module, tp.Mapping[str, A]):
 
 class Sequence(Module, tp.Generic[A]):
     def __init__(self, iterable: tp.Iterable[A]):
+        i = 0
         for i, value in enumerate(iterable):
             setattr(self, str(i), value)
+        self._len = i + 1
 
     def __getitem__(self, key: int) -> A:
         if key >= len(self):
@@ -58,7 +62,30 @@ class Sequence(Module, tp.Generic[A]):
             yield getattr(self, str(i))
 
     def __len__(self) -> int:
-        return len(vars(self))
+        return self._len
+
+    def __call__(self, *args, ctx: tp.Optional[Context] = None, **kwargs) -> tp.Any:
+        output: tp.Any = None
+
+        for i, f in enumerate(self):
+            if not callable(f):
+                raise TypeError(f"Sequence[{i}] is not callable: {f}")
+            if i > 0:
+                if isinstance(output, tp.Tuple):
+                    args = output
+                    kwargs = {}
+                elif isinstance(output, tp.Dict):
+                    args = ()
+                    kwargs = output
+                else:
+                    args = (output,)
+                    kwargs = {}
+            if ctx is not None and utils.has_keyword_arg(f, "ctx"):
+                kwargs["ctx"] = ctx
+
+            output = f(*args, **kwargs)
+
+        return output
 
 
 class ModuleDefApply(tp.Protocol, tp.Generic[M]):

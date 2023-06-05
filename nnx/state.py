@@ -60,19 +60,44 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         for k, v in self._mapping.items():
             yield reprlib.Elem(str(k), repr(v))
 
+    @tp.overload
+    def split(self, first: partitioning.CollectionFilter, /) -> "State":
+        ...
+
+    @tp.overload
+    def split(
+        self,
+        first: partitioning.CollectionFilter,
+        second: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
+    ) -> tp.Tuple["State", ...]:
+        ...
+
     def split(
         self,
         first: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
-    ) -> tp.Tuple["State", ...]:
-        states = tuple(State(state) for state in _split_state(self, first, *filters))
+    ) -> tp.Union["State", tp.Tuple["State", ...]]:
+        *states, rest = _split_state(self, first, *filters)
+
+        if rest:
+            raise ValueError(
+                f"Non-exhaustive filters, got a non-empty remainder: "
+                f"{list(rest.keys())}.\nUse `...` to match all remaining elements."
+            )
+
+        if len(states) == 1:
+            states = State(states[0])
+        else:
+            states = tuple(State(state) for state in states)
         return states
 
     @tp.overload
     def filter(
         self,
-        filter: partitioning.CollectionFilter,
+        first: partitioning.CollectionFilter,
         /,
     ) -> "State":
         ...
@@ -80,22 +105,22 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     @tp.overload
     def filter(
         self,
-        filter: partitioning.CollectionFilter,
-        filter2: partitioning.CollectionFilter,
+        first: partitioning.CollectionFilter,
+        second: partitioning.CollectionFilter,
         /,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Tuple["State", ...]:
         ...
 
     def filter(
-        self, *filters: partitioning.CollectionFilter
+        self,
+        first: partitioning.CollectionFilter,
+        /,
+        *filters: partitioning.CollectionFilter,
     ) -> tp.Union["State", tp.Tuple["State", ...]]:
-        if len(filters) == 0:
-            raise ValueError("Expected at least one filter")
+        (*states, _rest) = _split_state(self, first, *filters)
 
-        (*states, _rest) = _split_state(self, *filters)
-
-        assert len(states) == len(filters)
+        assert len(states) == len(filters) + 1
 
         if len(states) == 1:
             states = State(states[0])
@@ -104,16 +129,11 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
 
         return states
 
-    @tp.overload
     @staticmethod
-    def merge(state: "State", *states: "State") -> "State":
-        ...
+    def merge(state: "State", /, *states: "State") -> "State":
+        states = (state, *states)
 
-    @staticmethod
-    def merge(*states: "State") -> "State":
-        if len(states) == 0:
-            raise ValueError("Expected at least one state")
-        elif len(states) == 1:
+        if len(states) == 1:
             return states[0]
 
         new_state: StateDict = {}

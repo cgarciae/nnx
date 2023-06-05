@@ -56,7 +56,7 @@ def train_step(pure_model: nnx.PureModule[MLP], batch):
     grad: nnx.State = nnx.grad(loss_fn)(model)
     # sdg update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.get_state("params"), grad)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grad)
     )
 
     return model.split()
