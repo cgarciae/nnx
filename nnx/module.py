@@ -23,6 +23,9 @@ class ApplyCaller(tp.Protocol, tp.Generic[A]):
     def __getattr__(self, __name) -> "ApplyCaller[A]":
         ...
 
+    def __getitem__(self, __name) -> "ApplyCaller[A]":
+        ...
+
     def __call__(self, *args, **kwargs) -> tp.Tuple[tp.Any, A]:
         ...
 
@@ -104,13 +107,15 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         return module
 
     def apply(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
-        module = self.merge(state, *states)
+        accessesor = DelayedAccessor()
 
-        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, PureModule[M]]:
+        def _context(accessesor, *args, **kwargs) -> tp.Tuple[tp.Any, PureModule[M]]:
+            module = self.merge(state, *states)
+            fn = accessesor(module)
             out = fn(*args, **kwargs)
             return out, module.partition()
 
-        return CallableProxy(_context, module)  # type: ignore
+        return CallableProxy(_context, accessesor)  # type: ignore
 
 
 def _moddef_flatten(moduledef: ModuleDef[M]):
@@ -159,12 +164,14 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
 
     @property
     def call(self) -> M:
-        module = self.merge()
+        accessesor = DelayedAccessor()
 
-        def _context(fn, *args, **kwargs):
+        def _context(accessesor, *args, **kwargs):
+            module = self.merge()
+            fn = accessesor(module)
             return fn(*args, **kwargs)
 
-        return CallableProxy(_context, module)  # type: ignore
+        return CallableProxy(_context, accessesor)  # type: ignore
 
     def get_state(self) -> State:
         return self.state
@@ -295,6 +302,27 @@ class CallableProxy:
 
     def __getattr__(self, name) -> "CallableProxy":
         return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
+
+    def __getitem__(self, key) -> "CallableProxy":
+        return CallableProxy(self._proxy_context, self._proxy_callable[key])
+
+
+def _identity(x):
+    return x
+
+
+@dataclasses.dataclass
+class DelayedAccessor:
+    accessor: tp.Callable[[tp.Any], tp.Any] = _identity
+
+    def __call__(self, x):
+        return self.accessor(x)
+
+    def __getattr__(self, name):
+        return DelayedAccessor(lambda x: getattr(x, name))
+
+    def __getitem__(self, key):
+        return DelayedAccessor(lambda x: x[key])
 
 
 SEEN_MODULES_REPR: tp.Set[int] = set()
@@ -486,13 +514,15 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     @property
     def apply(self: M) -> ApplyCaller[M]:
-        module = self.clone()
+        accessesor = DelayedAccessor()
 
-        def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, M]:
+        def _context(accessesor, *args, **kwargs) -> tp.Tuple[tp.Any, M]:
+            module = self.clone()
+            fn = accessesor(module)
             out = fn(*args, **kwargs)
             return out, module
 
-        return CallableProxy(_context, module)  # type: ignore
+        return CallableProxy(_context, accessesor)  # type: ignore
 
     def update_state(
         self: M,
