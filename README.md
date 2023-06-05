@@ -116,14 +116,14 @@ class Foo(nnx.Module):
         self.dout = dout
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-module = Foo(din=12, dout=2, ctx=ctx)
+model = Foo(din=12, dout=2, ctx=ctx)
 ```
 Regular python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
 
 Since NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be split into the `State` and a `ModuleDef` objects. The `State` object is a flat dictionary-like structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and overall structural definition of the Module.
 
 ```python
-state, moduledef = module.split()
+state, moduledef = model.split()
 print(state)
 ```
 ```
@@ -145,7 +145,7 @@ State({
 `State` and `ModuleDef` are pytrees so they can be passed to JAX transformations. More over, `ModuleDef` provides 2 very important methods: `merge` and `apply`. The `merge` method can be used to create a new `Module` from a `State` object:
 
 ```python
-module = moduledef.merge(state)
+model = moduledef.merge(state)
 ```
 This can be use to e.g. recreate a module inside a JAX transformation. The `apply` provides a functional interface to the module, it can be used call any method on the Module and get both the output and the updated state:
 
