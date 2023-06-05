@@ -10,7 +10,6 @@ import jax.tree_util as jtu
 from nnx import partitioning, tracers
 from nnx.nn import initializers
 from nnx.nodes import register_node_type
-from nnx.reprlib import Object, Attr
 
 A = tp.TypeVar("A")
 
@@ -52,8 +51,8 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     def __len__(self) -> int:
         return len(self._mapping)
 
-    def __nnx_repr__(self) -> tp.Iterator[tp.Union[Object, Attr]]:
-        yield Object(type(self), value_sep=": ", start="({", end="})")
+    def __nnx_repr__(self):
+        yield reprlib.Object(type(self), value_sep=": ", start="({", end="})")
 
         for k, v in self._mapping.items():
             yield reprlib.Attr(str(k), v)

@@ -1,7 +1,6 @@
 import dataclasses
-from functools import partial
 import typing as tp
-from abc import ABC, ABCMeta
+from abc import ABCMeta
 from typing import Any
 
 import jax.tree_util as jtu
