@@ -41,7 +41,7 @@ class MLP(nnx.Module):
 
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
-pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).split()
+pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).partition()
 
 
 @jax.jit
@@ -59,7 +59,7 @@ def train_step(pure_model: nnx.PureModule[MLP], batch):
         jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grad)
     )
 
-    return model.split()
+    return model.partition()
 
 
 @jax.jit

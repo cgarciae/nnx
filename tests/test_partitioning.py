@@ -19,7 +19,7 @@ class TestPartitioning:
             c=100,
         )
 
-        (params, rest), moduledef = m.split("params", ...)
+        (params, rest), moduledef = m.partition("params", ...)
 
         assert len(params) == 2
         assert len(rest) == 1
@@ -45,7 +45,7 @@ class TestPartitioning:
             c=100,
         )
 
-        state = m.split()[0]
+        state = m.partition()[0]
         state = jax.tree_map(lambda x: x * 2, state)
 
         m.update_state(state)
@@ -62,7 +62,7 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        pure_module: nnx.PureModule = m.split()
+        pure_module: nnx.PureModule = m.partition()
         pure_module = jax.tree_map(lambda x: x * 2, pure_module)
 
         m.update_state(pure_module.state)

@@ -34,9 +34,9 @@ class TestModule:
         def g(pure_module: nnx.PureModule[nnx.Map[int]]):
             m = pure_module.merge()
             m.a = 2
-            return m.split()
+            return m.partition()
 
-        m2 = g(m.split()).merge()
+        m2 = g(m.partition()).merge()
 
         assert m2.a == 2
 
@@ -91,7 +91,7 @@ class TestModule:
         m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
         m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
 
-        m3 = m2.split().merge()
+        m3 = m2.partition().merge()
 
         assert m3["x"] is m3["y"]
         assert m3["x"]["a"] is m3["y"]["a"]
@@ -105,7 +105,7 @@ class TestModule:
 
         m = Foo()
 
-        state, moduledef = m.split()
+        state, moduledef = m.partition()
         assert len(state) == 1
 
         m2 = moduledef.merge(state)
@@ -124,9 +124,9 @@ class TestModule:
             assert m["a"][0] is not m["b"]
             assert m["a"][1] is not m["b"]
 
-            return m.split()
+            return m.partition()
 
-        m = f(m.split()).merge()
+        m = f(m.partition()).merge()
 
         assert m["a"][0] is not m["b"]
         assert m["a"][1] is not m["b"]
@@ -143,9 +143,9 @@ class TestModule:
         def g(pure_module: nnx.PureModule[nnx.Map[int]]):
             m = pure_module.merge()
             m.a += 1
-            return m.split()
+            return m.partition()
 
-        m2 = g(m.split()).merge()
+        m2 = g(m.partition()).merge()
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
@@ -160,23 +160,23 @@ class TestModule:
             n += 1
             m = pure_module.merge()
             m.a += 1
-            return m.split()
+            return m.partition()
 
-        m2 = g(m.split()).merge()
+        m2 = g(m.partition()).merge()
 
         assert n == 1
         assert m2 is not m
         assert m.a == 1
         assert m2.a == 2
 
-        g(m.split())
+        g(m.partition())
         assert n == 1
 
-        g(m2.split())
+        g(m2.partition())
         assert n == 1
 
         m2.b = nnx.param(10)
-        g(m2.split())
+        g(m2.partition())
 
         assert n == 2
 
@@ -191,7 +191,7 @@ class TestModule:
             }
         )
 
-        p, moduledef = m.split()
+        p, moduledef = m.partition()
         assert len(p) == 4
         assert len(jax.tree_util.tree_leaves(p)) == 4
 
@@ -207,7 +207,7 @@ class TestModule:
             }
         )
 
-        p, moduledef = m.split()
+        p, moduledef = m.partition()
         assert len(p) == 5
         assert len(jax.tree_util.tree_leaves(p)) == 5
 
@@ -243,7 +243,7 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        states, moduledef = foo.split()
+        states, moduledef = foo.partition()
         collections = states.get_collections()
 
         assert "params" in collections
@@ -269,7 +269,7 @@ class TestModuleDef:
         ctx = nnx.Context(jax.random.PRNGKey(0))
         foo = Foo(c=1.0, ctx=ctx)
 
-        pure_module = foo.split()
+        pure_module = foo.partition()
         collections = pure_module.state.get_collections()
 
         assert "params" in collections

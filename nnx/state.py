@@ -61,11 +61,11 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
             yield reprlib.Elem(str(k), repr(v))
 
     @tp.overload
-    def split(self, first: partitioning.CollectionFilter, /) -> "State":
+    def partition(self, first: partitioning.CollectionFilter, /) -> "State":
         ...
 
     @tp.overload
-    def split(
+    def partition(
         self,
         first: partitioning.CollectionFilter,
         second: partitioning.CollectionFilter,
@@ -74,7 +74,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     ) -> tp.Tuple["State", ...]:
         ...
 
-    def split(
+    def partition(
         self,
         first: partitioning.CollectionFilter,
         /,

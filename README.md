@@ -7,7 +7,7 @@ a **Ref**erence system to enable:
 
 * **Simplicity**: Provides an easy-to-understand mental model and implementation.
 * **Shared refereces**: Supports **safe** mutable shared state thanks to its **Ref**erence system.
-* **Leaf Metadata**: Enables semantic splitting a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
+* **Leaf Metadata**: Enables semantic partitioning of a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
 * **Stateful transformations**: Seamless integration with JAX's native transformation capabilities.
 
 NNX was designed to have the same capabilities as Flax with the simplicity of Equinox.
@@ -76,10 +76,10 @@ train_step(model, x, y)
 
 </details>
 
-<details><summary>split API</summary>
+<details><summary>Partition API</summary>
 
 ```python
-params, moduledef = model.split("params")
+params, moduledef = model.partition("params")
 
 @jax.jit
 def train_step(params, x, y):
@@ -96,6 +96,8 @@ def train_step(params, x, y):
 
 params = train_step(params, x, y)
 ```
+
+</details>
 
 ## Design
 
@@ -120,10 +122,10 @@ model = Foo(din=12, dout=2, ctx=ctx)
 ```
 Regular python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
 
-Since NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be split into the `State` and a `ModuleDef` objects. The `State` object is a flat dictionary-like structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and overall structural definition of the Module.
+Since NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be partitioned into the `State` and a `ModuleDef` objects. The `State` object is a flat dictionary-like structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and overall structural definition of the Module.
 
 ```python
-state, moduledef = model.split()
+state, moduledef = model.partition()
 print(state)
 ```
 ```
@@ -237,7 +239,7 @@ Filtered transformations must output any state they want to propagate but have m
 
 #### Partition API
 
-The partition API enables splitting a Module's state into sets of reference-less `State`s, this provides a general way of interacting with vanilla JAX transformations.
+The partition API enables partitioning a Module's state into sets of reference-less `State`s, this provides a general way of interacting with vanilla JAX transformations.
 
 
 ![partition-api](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/partition-api.png)
@@ -245,15 +247,13 @@ The partition API enables splitting a Module's state into sets of reference-less
 Here's an example of how a `train_step` function can be implemented using the partition API:
 
 ```python
-states, moduledef = model.split()
-params: nnx.State = states["params"]
+params, moduledef = model.partition("params")
 
 @jax.jit
 def train_step(params: nnx.State, x, y):
 
-    def loss_fn(params: nnx.State):
-        model: Linear = moduledef.merge(params)
-        y_pred = model(x)
+    def loss_fn(params):
+        y_pred, _updates = moduledef.apply(params)(x)
         return jax.numpy.mean((y_pred - y) ** 2)
 
     # compute gradient

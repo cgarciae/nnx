@@ -187,6 +187,6 @@ class Context:
     def get_flag(self, name: str) -> tp.Optional[bool]:
         return self._flags.get(name, None)
 
-    def split(self) -> PureContext:
+    def partition(self) -> PureContext:
         rngs = {name: stream.fork() for name, stream in self._rngs.items()}
         return PureContext.new(rngs, ContextDef(tuple(self._flags.items())))

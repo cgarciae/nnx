@@ -91,10 +91,10 @@ class TestIntegration:
                 jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
             )
 
-            return model.split()
+            return model.partition()
 
         ctx = nnx.Context(jax.random.PRNGKey(0))
-        pure_module = Model(ctx=ctx).split()
+        pure_module = Model(ctx=ctx).partition()
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))

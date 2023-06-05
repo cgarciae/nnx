@@ -101,7 +101,7 @@ params, moduledef = VAE(
     latent_size=latent_size,
     output_shape=image_shape,
     ctx=nnx.Context(params=jax.random.PRNGKey(0)),
-).split("params")
+).partition("params")
 
 state = nnx.TrainState(
     apply_fn=moduledef.apply,

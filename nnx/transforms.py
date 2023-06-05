@@ -48,9 +48,9 @@ class JitTransform(jax.stages.Wrapped):
         if not isinstance(module, Module):
             raise TypeError(f"Expected Module, got {type(module).__name__}")
         if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
-            kwargs["ctx"] = kwargs["ctx"].split()
+            kwargs["ctx"] = kwargs["ctx"].partition()
 
-        pure_module = module.split()
+        pure_module = module.partition()
         out = self.jitted_fn(pure_module, *args, **kwargs)
         if self.stateful:
             updates: State
@@ -166,7 +166,7 @@ class GradTransform:
         if not isinstance(module, Module):
             raise TypeError(f"Expected a Module, got {type(module).__name__}")
 
-        (diff, nondiff), moduledef = module.split(self.predicate, ...)
+        (diff, nondiff), moduledef = module.partition(self.predicate, ...)
 
         grads = self.grad_fn(diff, nondiff, moduledef, *args)
 

@@ -98,7 +98,7 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
 
         def _context(fn, *args, **kwargs) -> tp.Tuple[tp.Any, PureModule[M]]:
             out = fn(*args, **kwargs)
-            return out, module.split()
+            return out, module.partition()
 
         return CallableProxy(_context, module)  # type: ignore
 
@@ -183,11 +183,11 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         return self.state.filter(*filters)
 
     @tp.overload
-    def split(self, first: partitioning.CollectionFilter, /) -> "PureModule[M]":
+    def partition(self, first: partitioning.CollectionFilter, /) -> "PureModule[M]":
         ...
 
     @tp.overload
-    def split(
+    def partition(
         self,
         first: partitioning.CollectionFilter,
         second: partitioning.CollectionFilter,
@@ -196,11 +196,11 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
     ) -> tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]:
         ...
 
-    def split(
+    def partition(
         self,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Union["PureModule[M]", tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]],]:
-        states = self.state.split(*filters)
+        states = self.state.partition(*filters)
         if isinstance(states, State):
             return PureModule.new(states, self.moduledef)
         else:
@@ -228,7 +228,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         if len(filters) == 0:
             raise ValueError("At least one filter must be provided")
         else:
-            *states, rest = self.state.split(*filters)
+            *states, rest = self.state.partition(*filters)
 
         if len(states) == 1:
             states = states[0]
@@ -242,7 +242,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         updates: tp.Union[M, "PureModule[M]", State, tp.Tuple[State, ...]],
     ) -> "PureModule[M]":
         if isinstance(updates, Module):
-            states = (updates.split()[0],)
+            states = (updates.partition()[0],)
         elif isinstance(updates, PureModule):
             states = (updates.state,)
         elif isinstance(updates, State):
@@ -370,18 +370,18 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             SEEN_MODULES_REPR.remove(id(self))
 
     def clone(self: M) -> M:
-        return self.split().merge()
+        return self.partition().merge()
 
     @tp.overload
-    def split(self: M) -> PureModule[M]:
+    def partition(self: M) -> PureModule[M]:
         ...
 
     @tp.overload
-    def split(self: M, first: partitioning.CollectionFilter, /) -> PureModule[M]:
+    def partition(self: M, first: partitioning.CollectionFilter, /) -> PureModule[M]:
         ...
 
     @tp.overload
-    def split(
+    def partition(
         self: M,
         first: partitioning.CollectionFilter,
         second: partitioning.CollectionFilter,
@@ -390,7 +390,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     ) -> tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]:
         ...
 
-    def split(
+    def partition(
         self: M,
         *filters: partitioning.CollectionFilter,
     ) -> tp.Union[PureModule[M], tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]]:
@@ -400,9 +400,9 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         if len(filters) == 0:
             states = state
         elif len(filters) == 1:
-            states = state.split(filters[0])
+            states = state.partition(filters[0])
         else:
-            states = state.split(filters[0], filters[1], *filters[2:])
+            states = state.partition(filters[0], filters[1], *filters[2:])
 
         if isinstance(states, tuple):
             return states, moduledef
@@ -522,7 +522,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     #     super().__init_subclass__()
 
     #     def _flatten(module: Module, *, with_keys: bool):
-    #         state, moduledef = module.split()
+    #         state, moduledef = module.partition()
     #         paths = tuple(state.keys())
 
     #         if with_keys:

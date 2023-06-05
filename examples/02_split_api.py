@@ -45,7 +45,7 @@ ctx = nnx.Context(jax.random.PRNGKey(0))
     dhidden=32,
     dout=1,
     ctx=ctx,
-).split("params", ...)
+).partition("params", ...)
 
 
 @jax.jit
