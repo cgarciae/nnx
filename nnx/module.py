@@ -28,6 +28,17 @@ class ApplyCaller(tp.Protocol, tp.Generic[A]):
         ...
 
 
+@dataclasses.dataclass(repr=False)
+class _SubmodulesRepr(reprlib.Representable):
+    submodules: tp.Tuple[tp.Tuple[str, tp.Union["ModuleDef[Module]", int]], ...]
+
+    def __nnx_repr__(self):
+        yield reprlib.Config(type="", value_sep=", ")
+
+        for name, submodule in self.submodules:
+            yield reprlib.Elem(repr(name), submodule, start="(", end=")")
+
+
 class ModuleDef(tp.Generic[M], reprlib.Representable):
     __slots__ = ("_type", "_index", "_submodules", "_static_fields")
 
@@ -44,11 +55,11 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         self._static_fields = static_fields
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type=f"{type(self).__name__}")
+        yield reprlib.Config(type=type(self))
 
         yield reprlib.Elem("type", self._type.__name__)
         yield reprlib.Elem("index", self._index)
-        yield reprlib.Elem("submodules", self._submodules)
+        yield reprlib.Elem("submodules", _SubmodulesRepr(self._submodules))
         yield reprlib.Elem("static_fields", self._static_fields)
 
     def __hash__(self) -> int:
@@ -301,7 +312,7 @@ class ModuleState(reprlib.Representable):
         return self._trace_state
 
     def __nnx_repr__(self):
-        yield reprlib.Config(f"{type(self).__name__}")
+        yield reprlib.Config(type(self))
         yield reprlib.Elem("trace_state", self._trace_state)
 
 
@@ -356,10 +367,10 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     def __nnx_repr__(self):
         if id(self) in SEEN_MODULES_REPR:
-            yield reprlib.Config(type=f"{type(self).__name__}", empty_repr="...")
+            yield reprlib.Config(type=type(self), empty_repr="...")
             return
 
-        yield reprlib.Config(type=f"{type(self).__name__}")
+        yield reprlib.Config(type=type(self))
         SEEN_MODULES_REPR.add(id(self))
 
         try:

@@ -53,9 +53,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         return len(self._mapping)
 
     def __nnx_repr__(self) -> tp.Iterator[tp.Union[Config, Elem]]:
-        yield Config(
-            type(self).__name__, value_sep=": ", parens_left="({", parens_right="})"
-        )
+        yield Config(type(self), value_sep=": ", parens_left="({", parens_right="})")
 
         for k, v in self._mapping.items():
             yield reprlib.Elem(str(k), v)
@@ -249,7 +247,7 @@ class Variable(tp.Generic[A], reprlib.Representable):
         return self._sharding
 
     def __nnx_repr__(self):
-        yield reprlib.Config(type=f"{type(self).__name__}")
+        yield reprlib.Config(type=type(self))
         yield reprlib.Elem("collection", self._collection)
         yield reprlib.Elem("value", self._value)
         if self._sharding is not None:

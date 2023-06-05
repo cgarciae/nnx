@@ -15,7 +15,7 @@ CONTEXT = Context()
 
 @dataclasses.dataclass
 class Config:
-    type: str
+    type: tp.Union[str, type]
     parens_left: str = "("
     parens_right: str = ")"
     value_sep: str = "="
@@ -27,6 +27,8 @@ class Config:
 class Elem:
     key: str
     value: tp.Union[str, tp.Any]
+    start: str = ""
+    end: str = ""
 
 
 class Representable:
@@ -72,7 +74,9 @@ def get_repr(obj: Representable) -> str:
         if "\n" in value and not isinstance(elem.value, Representable):
             value = value.replace("\n", "\n" + get_indent())
 
-        return f"{get_indent()}{elem.key}{config.value_sep}{value}"
+        return (
+            f"{get_indent()}{elem.start}{elem.key}{config.value_sep}{value}{elem.end}"
+        )
 
     with add_indent(config.elem_indent):
         elems = list(map(_repr_elem, iterator))
@@ -83,4 +87,6 @@ def get_repr(obj: Representable) -> str:
     else:
         elems = config.empty_repr
 
-    return f"{config.type}{config.parens_left}{elems}{config.parens_right}"
+    type_repr = config.type if isinstance(config.type, str) else config.type.__name__
+
+    return f"{type_repr}{config.parens_left}{elems}{config.parens_right}"
