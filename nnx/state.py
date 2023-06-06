@@ -211,7 +211,9 @@ class Node(tp.Generic[A], reprlib.Representable):
 
     def __nnx_repr__(self):
         yield reprlib.Object(type=type(self))
-        yield reprlib.Attr("value", self._value)
+        yield reprlib.Attr(
+            "value", repr(self._value) if isinstance(self._value, str) else self._value
+        )
 
     def copy(self) -> "Node[A]":
         return Node(self._value)
@@ -294,8 +296,10 @@ class Variable(Node[A]):
 
     def __nnx_repr__(self):
         yield reprlib.Object(type=type(self))
-        yield reprlib.Attr("collection", self._collection)
-        yield reprlib.Attr("value", self._value)
+        yield reprlib.Attr("collection", repr(self._collection))
+        yield reprlib.Attr(
+            "value", repr(self._value) if isinstance(self._value, str) else self._value
+        )
         if self._sharding is not None:
             yield reprlib.Attr("sharding", self._sharding)
 
@@ -340,7 +344,6 @@ jtu.register_pytree_with_keys(
     _variable_unflatten,
     flatten_func=partial(_variable_flatten, with_keys=False),
 )
-
 
 
 def var(

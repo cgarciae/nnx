@@ -9,7 +9,6 @@ from nnx import errors, partitioning, tracers
 from nnx.nodes import is_node_type, register_node_type
 from nnx.state import Sharding, State, Variable, Node
 from nnx import reprlib
-import nnx
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
@@ -663,7 +662,7 @@ def _make_module_def_recursive(
         if isinstance(value, Module):
             submodule_def = _make_module_def_recursive(value, module_index, value_path)
             submodules.append((name, submodule_def))
-        elif not nnx.is_node_type(value) and not name.startswith("_module__"):
+        elif not is_node_type(value) and not name.startswith("_module__"):
             static_fields.append((name, value))
 
     module_def = ModuleDef(
@@ -694,7 +693,7 @@ def _iter_state_recursive(
         value_path = (*path, name)
         if isinstance(value, Module):
             yield from _iter_state_recursive(value, seen_modules, value_path)
-        elif nnx.is_node_type(value):
+        elif is_node_type(value):
             yield value_path, value
 
 
@@ -771,7 +770,7 @@ def _pop_recursive(
         if isinstance(value, Module):
             _pop_recursive(value, module_index, value_path, states, predicates)
             continue
-        elif not nnx.is_node_type(value):
+        elif not is_node_type(value):
             continue
 
         for state, predicate in zip(states, predicates):

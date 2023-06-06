@@ -112,6 +112,7 @@ class Foo(nnx.Module):
         self.variable = nnx.param(jnp.array(1))
         self.np_buffer = np.array(2)
         self.jax_buffer = jnp.array(3)
+        self.node = nnx.node([4, 5])
         self.submodule = nnx.Linear(din, dout, ctx=ctx)
         # static attributes
         self.din = din
@@ -130,17 +131,12 @@ print(state)
 ```
 ```
 State({
-    ('variable',): Variable(
-        collection='params', value=Array(...)
-    ),
-    ('np_buffer',): Array(...),
-    ('jax_buffer',): Array(...),
-    ('submodule', 'kernel'): Variable(
-        collection='params', value=Array(...)
-    ),
-    ('submodule', 'bias'): Variable(
-        collection='params', value=Array(...),
-    ),
+  ('jax_buffer',): Array(3),
+  ('node',): Node(value=[4, 5]),
+  ('np_buffer',): array(2),
+  ('submodule', 'bias'): Variable(collection='params', value=Array(...)),
+  ('submodule', 'kernel'): Variable(collection='params', value=Array(...)),
+  ('variable',): Variable(collection='params', value=Array(1))
 })
 ```
 

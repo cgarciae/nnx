@@ -2,7 +2,7 @@ import typing as tp
 
 import optax
 
-import nnx
+
 from nnx.context import Context
 from nnx.module import ApplyCaller, Module, PureModule
 from nnx import pytreelib
@@ -94,7 +94,7 @@ class ModuleDefApply(tp.Protocol, tp.Generic[M]):
 
 
 class TrainState(pytreelib.Pytree, tp.Generic[M]):
-    params: nnx.State = pytreelib.node_field()
+    params: State = pytreelib.node_field()
     opt_state: optax.OptState = pytreelib.node_field()
     step: int = pytreelib.node_field()
 
@@ -108,7 +108,7 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
         **kwargs,
     ):
         self.apply_fn = apply_fn
-        self.params: nnx.State = params
+        self.params: State = params
         self.tx = tx
         self.opt_state = tx.init(self.params)
         self.step = step
@@ -120,7 +120,7 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
         def __getattr__(self, key: str) -> tp.Any:
             ...
 
-    def apply_gradients(self, grads: nnx.State, **kwargs) -> "TrainState[M]":
+    def apply_gradients(self, grads: State, **kwargs) -> "TrainState[M]":
         updates, opt_state = self.tx.update(grads, self.opt_state, self.params)
         params = optax.apply_updates(self.params, updates)  # type: ignore
         step = self.step + 1
