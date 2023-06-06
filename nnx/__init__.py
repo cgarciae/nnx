@@ -2,7 +2,9 @@ __version__ = "0.0.0"
 
 
 from .context import Context, RngStream
-from .module import Module, ModuleDef, PureModule, PureModule
+from .errors import TraceContextError
+from .helpers import Map, Sequence, TrainState
+from .module import Module, ModuleDef, PureModule
 from .nn.activations import (
     celu,
     elu,
@@ -54,17 +56,16 @@ from .nn.initializers import (
 from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
+from .nodes import is_node_type, register_node_type
+from .partitioning import buffers
 from .state import (
     State,
     Variable,
+    VarMetadata,
+    node,
     param,
     var,
-    VarMetadata,
     var_metadata,
     with_partitioning,
 )
 from .transforms import grad, jit
-from .helpers import Map, Sequence, TrainState
-from .nodes import register_node_type, is_node_type
-from .partitioning import buffers, buffers
-from .errors import TraceContextError

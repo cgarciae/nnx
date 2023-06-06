@@ -7,7 +7,7 @@ import jax.tree_util as jtu
 
 from nnx import errors, partitioning, tracers
 from nnx.nodes import is_node_type, register_node_type
-from nnx.state import Sharding, State, Variable
+from nnx.state import Sharding, State, Variable, Node
 from nnx import reprlib
 import nnx
 
@@ -364,7 +364,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, Variable):
+            if isinstance(value, Node):
                 return value.value
             return value
 
@@ -380,12 +380,12 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         vars_dict = vars(self)
         if (
             name in vars_dict
-            and isinstance(vars_dict[name], Variable)
-            and not isinstance(value, Variable)
+            and isinstance(vars_dict[name], Node)
+            and not isinstance(value, Node)
         ):
             vars_dict[name] = vars_dict[name].replace(value=value)
         else:
-            if isinstance(value, Variable):
+            if isinstance(value, Node):
                 value = value.copy()
             vars_dict[name] = value
 

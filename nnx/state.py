@@ -199,6 +199,57 @@ def _split_state(
     return states
 
 
+class Node(tp.Generic[A], reprlib.Representable):
+    __slots__ = ("_value",)
+
+    def __init__(self, value: A):
+        self._value = value
+
+    @property
+    def value(self) -> A:
+        return self._value
+
+    def __nnx_repr__(self):
+        yield reprlib.Object(type=type(self))
+        yield reprlib.Attr("value", self._value)
+
+    def copy(self) -> "Node[A]":
+        return Node(self._value)
+
+    def replace(
+        self,
+        **kwargs: tp.Any,
+    ) -> "Node[tp.Any]":
+        updates: tp.Dict[str, tp.Any] = {"value": self._value}
+        updates.update(kwargs)
+        return Node(**updates)
+
+
+def _node_flatten(
+    x: Node[tp.Any],
+    *,
+    with_keys: bool,
+):
+    if with_keys:
+        node = (jtu.GetAttrKey("value"), x._value)
+    else:
+        node = x._value
+
+    return (node,), None
+
+
+def _node_unflatten(metadata: None, children: tp.Tuple[A]) -> Node[A]:
+    return Node(children[0])
+
+
+jtu.register_pytree_with_keys(
+    Node,
+    partial(_node_flatten, with_keys=True),
+    _node_unflatten,
+    flatten_func=partial(_node_flatten, with_keys=False),
+)
+
+
 @dataclasses.dataclass
 class VarMetadata(tp.Generic[A]):
     value: A
@@ -220,8 +271,8 @@ def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
     return VarMetadata(value, sharding)
 
 
-class Variable(tp.Generic[A], reprlib.Representable):
-    __slots__ = ("_value", "_collection", "_sharding")
+class Variable(Node[A]):
+    __slots__ = ("_collection", "_sharding")
 
     def __init__(
         self,
@@ -232,10 +283,6 @@ class Variable(tp.Generic[A], reprlib.Representable):
         self._value = value
         self._collection = collection
         self._sharding = sharding
-
-    @property
-    def value(self) -> A:
-        return self._value
 
     @property
     def collection(self) -> str:
@@ -295,6 +342,7 @@ jtu.register_pytree_with_keys(
 )
 
 
+
 def var(
     collection: str,
     value: tp.Union[A, VarMetadata[A]],
@@ -314,6 +362,10 @@ def param(
     return var("params", value, sharding=sharding)
 
 
+def node(value: A) -> A:
+    return Node(value)  # type: ignore
+
+
 # register nodes
 register_node_type(State)
-register_node_type(Variable)
+register_node_type(Node)
