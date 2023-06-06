@@ -56,7 +56,7 @@ from .nn.initializers import (
 from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
-from .nodes import is_node_type, register_node_type
+from .nodes import is_node, register_node_type
 from .partitioning import buffers
 from .state import (
     State,

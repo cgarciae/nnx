@@ -9,7 +9,7 @@ from types import MappingProxyType
 import typing_extensions as tpe
 
 import jax
-from nnx.nodes import is_node_type, register_node_type
+from nnx.nodes import is_node, register_node_type
 
 # from nnx.ref_field import RefField
 
@@ -144,7 +144,7 @@ class Pytree(metaclass=PytreeMeta):
         if field in self._pytree__is_node_field:
             return self._pytree__is_node_field[field]
 
-        return is_node_type(value)
+        return is_node(value)
 
     @classmethod
     def _pytree__unflatten(

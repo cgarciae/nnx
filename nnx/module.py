@@ -6,7 +6,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import errors, partitioning, tracers
-from nnx.nodes import is_node_type, register_node_type
+from nnx.nodes import is_node, register_node_type
 from nnx.state import Sharding, State, Variable, Node
 from nnx import reprlib
 
@@ -402,7 +402,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         try:
             for name, value in vars(self).items():
                 if isinstance(value, Module) or (
-                    not is_node_type(value) and not name.startswith("_")
+                    not is_node(value) and not name.startswith("_")
                 ):
                     yield reprlib.Attr(name, value)
         finally:
@@ -662,7 +662,7 @@ def _make_module_def_recursive(
         if isinstance(value, Module):
             submodule_def = _make_module_def_recursive(value, module_index, value_path)
             submodules.append((name, submodule_def))
-        elif not is_node_type(value) and not name.startswith("_module__"):
+        elif not is_node(value) and not name.startswith("_module__"):
             static_fields.append((name, value))
 
     module_def = ModuleDef(
@@ -693,7 +693,7 @@ def _iter_state_recursive(
         value_path = (*path, name)
         if isinstance(value, Module):
             yield from _iter_state_recursive(value, seen_modules, value_path)
-        elif is_node_type(value):
+        elif is_node(value):
             yield value_path, value
 
 
@@ -770,7 +770,7 @@ def _pop_recursive(
         if isinstance(value, Module):
             _pop_recursive(value, module_index, value_path, states, predicates)
             continue
-        elif not is_node_type(value):
+        elif not is_node(value):
             continue
 
         for state, predicate in zip(states, predicates):

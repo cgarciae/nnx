@@ -12,7 +12,7 @@ def register_node_type(node_type: type) -> None:
     node_types += (node_type,)
 
 
-def is_node_type(obj: object) -> bool:
+def is_node(obj: object) -> bool:
     return isinstance(obj, node_types)
 
 
