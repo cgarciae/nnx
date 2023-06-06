@@ -8,6 +8,7 @@ import typing as tp
 import jax
 import jax.core
 from jax.core import MainTrace
+
 from nnx import reprlib
 
 

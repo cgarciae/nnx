@@ -1,8 +1,10 @@
 from typing import Any
-import pytest
-import nnx
-import jax.numpy as jnp
+
 import jax
+import jax.numpy as jnp
+import pytest
+
+import nnx
 
 
 class TestModule:

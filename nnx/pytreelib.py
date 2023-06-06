@@ -6,9 +6,10 @@ from abc import ABCMeta
 from copy import copy
 from functools import partial
 from types import MappingProxyType
-import typing_extensions as tpe
 
 import jax
+import typing_extensions as tpe
+
 from nnx.nodes import is_node, register_node_type
 
 # from nnx.ref_field import RefField

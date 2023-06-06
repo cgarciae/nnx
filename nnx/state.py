@@ -1,13 +1,12 @@
 import dataclasses
-from functools import partial
 import functools
-from nnx import reprlib
 import typing as tp
+from functools import partial
 
 import jax
 import jax.tree_util as jtu
 
-from nnx import partitioning, tracers
+from nnx import partitioning, reprlib, tracers
 from nnx.nn import initializers
 from nnx.nodes import register_node_type
 

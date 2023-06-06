@@ -1,10 +1,10 @@
-from .state import State, Variable, merge
+from .module import Initializer, Module
 from .partitioning import (
+    NOTHING,
     Partition,
-    tree_partition,
     get_partition,
     merge_partitions,
-    NOTHING,
+    tree_partition,
 )
 from .rngs import Rngs, RngStream
-from .module import Module, Initializer
+from .state import State, Variable, merge

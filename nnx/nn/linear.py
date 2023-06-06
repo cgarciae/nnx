@@ -1,15 +1,14 @@
 import typing as tp
 
 import jax
-from jax import lax
 import jax.numpy as jnp
 import numpy as np
-from nnx import context
+from jax import lax
 
-from nnx.module import Module
-from nnx.nn import initializers
-from nnx.nn import dtypes
 import nnx
+from nnx import context
+from nnx.module import Module
+from nnx.nn import dtypes, initializers
 
 Array = jax.Array
 PRNGKey = tp.Any

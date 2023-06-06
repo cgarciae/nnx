@@ -1,7 +1,9 @@
 from typing import Any
+
 import jax
 import numpy as np
 import pytest
+
 import nnx
 from nnx.context import _stable_hash
 

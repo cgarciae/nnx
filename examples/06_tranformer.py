@@ -1,10 +1,12 @@
 import dataclasses
-import jax
-import nnx
 import typing as tp
+
+import jax
 import jax.numpy as jnp
-from jax.sharding import PartitionSpec as P
 import numpy as np
+from jax.sharding import PartitionSpec as P
+
+import nnx
 
 ShardSpec = tp.Union[str, tp.Tuple[str, ...], None]
 

@@ -3,11 +3,10 @@ import typing as tp
 
 import jax
 import jax.stages
-from nnx.module import PureModule, Module, ModuleDef, PureModule
-from nnx.state import State
-from nnx import context, tracers
 
-from nnx import partitioning
+from nnx import context, partitioning, tracers
+from nnx.module import Module, ModuleDef, PureModule
+from nnx.state import State
 
 A = tp.TypeVar("A")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])

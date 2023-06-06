@@ -1,8 +1,9 @@
 import builtins
 import dataclasses
 import functools
-from math import e
 import typing as tp
+from math import e
+
 import jax
 import jax.tree_util as jtu
 import numpy as np

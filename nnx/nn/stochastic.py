@@ -4,8 +4,8 @@ from typing import Optional, Sequence
 import jax.numpy as jnp
 from jax import lax, random
 
-from nnx.module import Module
 from nnx import context, utils
+from nnx.module import Module
 
 
 @dataclasses.dataclass

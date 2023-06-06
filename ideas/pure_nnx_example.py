@@ -1,7 +1,9 @@
 from functools import partial
 from typing import Tuple
+
 import jax
 import jax.numpy as jnp
+
 import nnx
 
 

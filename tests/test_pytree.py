@@ -3,9 +3,9 @@ from typing import Generic, TypeVar
 import jax
 import pytest
 from flax import serialization
-from nnx import pytreelib
 
 import nnx
+from nnx import pytreelib
 
 
 class TestPytree:

@@ -4,10 +4,10 @@ import jax
 import jax.numpy as jnp
 from jax import lax
 
-from nnx.module import Module
-from nnx.nn import initializers, dtypes
-from nnx import context, utils
 import nnx
+from nnx import context, utils
+from nnx.module import Module
+from nnx.nn import dtypes, initializers
 
 PRNGKey = jax.Array
 Array = jax.Array

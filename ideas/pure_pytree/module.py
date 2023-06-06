@@ -1,6 +1,6 @@
 import typing as tp
-from pure_pytree.partitioning import PartitionDef
-from pure_pytree.partitioning import Partition, Variable
+
+from pure_pytree.partitioning import Partition, PartitionDef, Variable
 
 A = tp.TypeVar("A", contravariant=True)
 M = tp.TypeVar("M", bound="Module")

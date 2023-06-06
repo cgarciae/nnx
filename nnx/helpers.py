@@ -2,12 +2,10 @@ import typing as tp
 
 import optax
 
-
+from nnx import pytreelib, utils
 from nnx.context import Context
 from nnx.module import ApplyCaller, Module, PureModule
-from nnx import pytreelib
 from nnx.state import State
-from nnx import utils
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound=Module)

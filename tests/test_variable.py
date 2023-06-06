@@ -1,6 +1,7 @@
+import typing as tp
+
 import jax
 import pytest
-import typing as tp
 
 import nnx
 

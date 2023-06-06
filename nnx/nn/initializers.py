@@ -1,4 +1,5 @@
 import jax
+from jax.nn.initializers import Initializer as Initializer
 from jax.nn.initializers import constant as constant
 from jax.nn.initializers import delta_orthogonal as delta_orthogonal
 from jax.nn.initializers import glorot_normal as glorot_normal
@@ -15,7 +16,6 @@ from jax.nn.initializers import uniform as uniform
 from jax.nn.initializers import variance_scaling as variance_scaling
 from jax.nn.initializers import xavier_normal as xavier_normal
 from jax.nn.initializers import xavier_uniform as xavier_uniform
-from jax.nn.initializers import Initializer as Initializer
 
 
 def zeros() -> Initializer:

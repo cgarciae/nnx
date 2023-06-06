@@ -1,8 +1,8 @@
-from abc import abstractmethod
+import contextlib
 import dataclasses
 import threading
 import typing as tp
-import contextlib
+from abc import abstractmethod
 
 
 @dataclasses.dataclass

@@ -5,10 +5,9 @@ from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import errors, partitioning, tracers
+from nnx import errors, partitioning, reprlib, tracers
 from nnx.nodes import is_node, register_node_type
-from nnx.state import Sharding, State, Variable, Node
-from nnx import reprlib
+from nnx.state import Node, Sharding, State, Variable
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")

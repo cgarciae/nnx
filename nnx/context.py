@@ -1,10 +1,11 @@
-from types import MappingProxyType
-import typing as tp
-import jax
 import hashlib
+import typing as tp
+from types import MappingProxyType
+
+import jax
+import jax.tree_util as jtu
 
 from nnx import errors, tracers
-import jax.tree_util as jtu
 
 KeyArray = tp.Union[jax.Array, jax.random.KeyArray]
 

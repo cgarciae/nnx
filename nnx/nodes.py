@@ -3,7 +3,6 @@ import typing as tp
 import jax
 import numpy as np
 
-
 node_types: tp.Tuple[type, ...] = ()
 
 

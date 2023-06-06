@@ -1,7 +1,7 @@
 import typing as tp
 from functools import partial
-import jax
 
+import jax
 import pytest
 
 import nnx

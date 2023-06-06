@@ -1,6 +1,6 @@
 # %%
-from functools import partial
 import typing as tp
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from datasets import load_dataset
+
 import nnx
 
 np.random.seed(42)

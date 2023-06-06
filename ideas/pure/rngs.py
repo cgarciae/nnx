@@ -1,6 +1,6 @@
-import jax
 import typing as tp
 
+import jax
 
 KeyArray = tp.Union[jax.Array, jax.random.KeyArray]
 

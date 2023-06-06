@@ -1,6 +1,8 @@
-import jax
-import nnx
 import typing as tp
+
+import jax
+
+import nnx
 
 
 def any_ref(path, x):

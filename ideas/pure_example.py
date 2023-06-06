@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from functools import partial
 from typing import Tuple
+
 import jax
 import pure
 from pure.rngs import Rngs
