@@ -349,9 +349,8 @@ class Decoder(nnx.Module):
 
             def scan_fn(x, s: tp.Tuple[tp.Any, nnx.State]):
                 key, state = s
-                y, (state, _) = moduledef.apply(state)(
-                    cfg, x, ctx=nnx.Context(dropout=key)
-                )
+                _ctx = nnx.Context(dropout=key)
+                y, (state, _) = moduledef.apply(state)(cfg, x, ctx=_ctx)
                 return y, state
 
             dropout_key = ctx.make_rng("dropout")
