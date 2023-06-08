@@ -329,9 +329,9 @@ class Decoder(nnx.Module):
         )
 
         if cfg.scanned:
-            self.layers = jax.vmap(lambda key: DecoderBlock(cfg, ctx=nnx.Context(key)))(
-                jax.random.split(ctx.make_rng("params"), cfg.layers)
-            )
+            self.layers = jax.vmap(
+                lambda key: DecoderBlock(cfg, ctx=nnx.Context(key)).partition()
+            )(jax.random.split(ctx.make_rng("params"), cfg.layers)).merge()
         else:
             self.layers = nnx.Sequence(
                 DecoderBlock(cfg, ctx=ctx) for _ in range(cfg.layers)
@@ -345,7 +345,7 @@ class Decoder(nnx.Module):
         if cfg.scanned:
             assert isinstance(self.layers, DecoderBlock)
 
-            def scan_fn(x, s: tp.Tuple[tp.Any, DecoderBlock]):
+            def scan_fn(x, s: tp.Tuple[tp.Any, nnx.PureModule[DecoderBlock]]):
                 key, decoder_block = s
                 return decoder_block.apply(cfg, x, ctx=nnx.Context(dropout=key))
 
@@ -353,7 +353,7 @@ class Decoder(nnx.Module):
             x, updates = jax.lax.scan(
                 scan_fn,
                 x,
-                (jax.random.split(dropout_key, cfg.layers), self.layers),
+                (jax.random.split(dropout_key, cfg.layers), self.layers.partition()),
             )
             self.layers.update_state(updates)
         else:
