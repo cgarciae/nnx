@@ -20,12 +20,12 @@ class TestRngStream:
 
         key1 = rng.make_rng()
         assert rng.count == 1
-        assert rng.key is key0
+        assert rng._key is key0
         assert not np.equal(key0, key1).all()
 
         key2 = rng.make_rng()
         assert rng.count == 2
-        assert rng.key is key0
+        assert rng._key is key0
         assert not np.equal(key1, key2).all()
 
     def test_rng_fork(self):
@@ -49,7 +49,7 @@ class TestRngStream:
 
         assert rng1.count == 0
         assert rng1.count_path == (0,)
-        assert rng1.key is rng.key
+        assert rng1._key is rng._key
 
     def test_rng_trace_level_constraints(self):
         rng = nnx.RngStream(jax.random.PRNGKey(0))

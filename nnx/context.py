@@ -30,10 +30,6 @@ class RngStream:
         self._trace_state = tracers.TraceState()
 
     @property
-    def key(self) -> jax.random.KeyArray:
-        return self._key
-
-    @property
     def count(self) -> int:
         return self._count
 
@@ -76,7 +72,7 @@ def _rng_stream_flatten_with_keys(
     tp.Tuple[tp.Tuple[tp.Hashable, jax.random.KeyArray], ...],
     tp.Tuple[int, tp.Tuple[int, ...]],
 ]:
-    return ((jtu.GetAttrKey("key"), rng.key),), (rng.count, rng.count_path)
+    return ((jtu.GetAttrKey("key"), rng._key),), (rng.count, rng.count_path)
 
 
 def _rng_stream_unflatten(
@@ -89,7 +85,7 @@ def _rng_stream_unflatten(
 
 
 def _rng_stream_flatten(rng: RngStream):
-    return (rng.key,), (rng.count, rng.count_path)
+    return (rng._key,), (rng.count, rng.count_path)
 
 
 jax.tree_util.register_pytree_with_keys(
@@ -171,14 +167,6 @@ class Context:
 
         self._rngs = _rngs
         self._flags = MappingProxyType(flags or {})
-
-    @property
-    def rngs(self) -> tp.Mapping[str, RngStream]:
-        return MappingProxyType(self._rngs)
-
-    @property
-    def flags(self) -> tp.Mapping[str, bool]:
-        return self._flags
 
     def has_rng(self, name: str) -> bool:
         return name in self._rngs
