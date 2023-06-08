@@ -41,7 +41,7 @@ class RngStream:
     def count_path(self) -> tp.Tuple[int, ...]:
         return self._count_path
 
-    def next(self) -> jax.random.KeyArray:
+    def make_rng(self) -> jax.random.KeyArray:
         if not self._trace_state.is_valid():
             raise errors.TraceContextError(
                 "Cannot use RngStream from a different trace level"
@@ -59,6 +59,15 @@ class RngStream:
         count_path = self._count_path + (self._count,)
         self._count += 1
         return RngStream(self._key, count_path=count_path)
+
+    def split(self, n: int = 2) -> "RngStream":
+        if not self._trace_state.is_valid():
+            raise errors.TraceContextError(
+                "Cannot use RngStream from a different trace level"
+            )
+        key = self.make_rng()
+        key = jax.random.split(key, n)
+        return RngStream(key)
 
 
 def _rng_stream_flatten_with_keys(
@@ -97,7 +106,7 @@ class ContextDef:
     def __init__(self, flags: tp.Tuple[tp.Tuple[str, bool], ...]):
         self._flags = flags
 
-    def merge(self, rngs: tp.Mapping[str, RngStream]) -> "Context":
+    def merge(self, **rngs: RngStream) -> "Context":
         return Context(rngs=rngs, flags=dict(self._flags))
 
 
@@ -177,7 +186,7 @@ class Context:
     def make_rng(self, name: str) -> KeyArray:
         if name not in self._rngs:
             raise ValueError(f"Unknown Rng Stream: {name}")
-        return self._rngs[name].next()
+        return self._rngs[name].make_rng()
 
     def copy(self) -> "Context":
         return Context(rngs=self._rngs, flags=self._flags)

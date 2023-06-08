@@ -18,12 +18,12 @@ class TestRngStream:
         rng = nnx.RngStream(key0)
         assert rng.count == 0
 
-        key1 = rng.next()
+        key1 = rng.make_rng()
         assert rng.count == 1
         assert rng.key is key0
         assert not np.equal(key0, key1).all()
 
-        key2 = rng.next()
+        key2 = rng.make_rng()
         assert rng.count == 2
         assert rng.key is key0
         assert not np.equal(key1, key2).all()
@@ -36,8 +36,8 @@ class TestRngStream:
         assert rng1.count == 0
         assert rng1.count_path == (0,)
 
-        key1 = rng1.next()
-        key2 = rng.next()
+        key1 = rng1.make_rng()
+        key2 = rng.make_rng()
 
         assert not np.equal(key1, key2).all()
 
@@ -60,7 +60,7 @@ class TestRngStream:
                 nnx.TraceContextError,
                 match="Cannot use RngStream from a different trace level",
             ):
-                rng.next()
+                rng.make_rng()
 
         f()
 
@@ -88,4 +88,4 @@ class TestRngStream:
             nnx.TraceContextError,
             match="Cannot use RngStream from a different trace level",
         ):
-            rng1.next()
+            rng1.make_rng()
