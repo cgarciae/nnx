@@ -1,11 +1,12 @@
+import typing as tp
 from dataclasses import dataclass
 from typing import Any
+
 import jax
 import jax.tree_util as jtu
-import typing as tp
 from pure.partitioning import Partition
+from pure.rngs import KeyArray, Rngs
 from pure.state import State, Variable
-from pure.rngs import Rngs, KeyArray
 
 A = tp.TypeVar("A", contravariant=True)
 

@@ -1,8 +1,7 @@
-from typing import Any, Optional, List
+from typing import Any, List, Optional
 
-from jax import numpy as jnp
 import jax
-
+from jax import numpy as jnp
 
 Dtype = Any
 Array = Any

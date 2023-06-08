@@ -18,26 +18,21 @@ def dataset(batch_size):
 
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = jax.random.uniform(ctx.make_rng("params"), (din, dout))
-        self.b = jnp.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w) + self.b
+        return x @ self.w + self.b
 
 
 class MLP(nnx.Module):
-    count: jax.Array = nnx.ref("state")
-
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = jnp.array(0)
+        self.count = nnx.var("state", jnp.array(0))
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
-    def __call__(self, x):
+    def __call__(self, x) -> jax.Array:
         self.count += 1
         x = self.linear1(x)
         x = jax.nn.relu(x)
@@ -45,49 +40,48 @@ class MLP(nnx.Module):
         return x
 
 
-@jax.jit
-def train_step(model: nnx.ModuleDef[MLP], params, state, batch):
-    x, y = batch
-
-    def loss_fn(params):
-        y_pred, updates = model.apply((params, state))(x)
-        loss = jnp.mean((y - y_pred) ** 2)
-        return loss, updates["state"]
-
-    grad, state = jax.grad(loss_fn, has_aux=True)(params)
-    #                          |-------- sgd ---------|
-    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
-
-    return params, state
+ctx = nnx.Context(jax.random.PRNGKey(0))
+pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).partition()
 
 
 @jax.jit
-def test_step(
-    model: nnx.ModuleDef[MLP], params: nnx.Partition, state: nnx.Partition, batch
-):
+def train_step(pure_model: nnx.PureModule[MLP], batch):
     x, y = batch
-    y_pred, _ = model.apply((params, state))(x)
+    model = pure_model.merge()
+
+    def loss_fn(model: MLP):
+        y_pred = model(x)
+        return jnp.mean((y - y_pred) ** 2)
+
+    grad: nnx.State = nnx.grad(loss_fn)(model)
+    # sdg update
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grad)
+    )
+
+    return model.partition()
+
+
+@jax.jit
+def test_step(pure_model: nnx.PureModule[MLP], batch):
+    x, y = batch
+    y_pred = pure_model.call(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-(params, state), model = model.partition("params", "state")
-
-
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    params, state = train_step(model, params, state, batch)
+    pure_model = train_step(pure_model, batch)
 
     if step % 1000 == 0:
-        logs = test_step(model, params, state, (X, Y))
+        logs = test_step(pure_model, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = model.reref((params, state))
+model = pure_model.merge()
 print("times called:", model.count)
 
 y_pred = model(X)

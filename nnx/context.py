@@ -1,10 +1,11 @@
-from types import MappingProxyType
-import typing as tp
-import jax
 import hashlib
+import typing as tp
+from types import MappingProxyType
 
-from nnx import tracers
+import jax
 import jax.tree_util as jtu
+
+from nnx import errors, tracers
 
 KeyArray = tp.Union[jax.Array, jax.random.KeyArray]
 
@@ -18,39 +19,18 @@ def _stable_hash(data: tp.Tuple[int, ...]) -> int:
 
 
 class RngStream:
-    __slots__ = (
-        "_key",
-        "_count",
-        "_count_path",
-        "_jax_trace",
-        "_context_trace",
-    )
+    __slots__ = ("_key", "_count", "_count_path", "_trace_state")
 
     def __init__(
-        self,
-        key: KeyArray,
-        count: int = 0,
-        count_path: tp.Tuple[int, ...] = (),
-        *,
-        context_trace: tp.Optional[tracers.MainTrace] = None,
+        self, key: KeyArray, count: int = 0, count_path: tp.Tuple[int, ...] = ()
     ):
         self._key = key
         self._count = count
         self._count_path = count_path
-        self._jax_trace = tracers.current_jax_trace()
-        self._context_trace = context_trace or self._jax_trace
-
-    def _validate_trace(self):
-        value_trace = tracers.get_top_trace(self._key)
-        if self._jax_trace is not tracers.current_jax_trace() or (
-            value_trace is not self._jax_trace
-            and value_trace is not self._context_trace
-        ):
-            raise ValueError("Rng used in a different trace")
+        self._trace_state = tracers.TraceState()
 
     @property
     def key(self) -> jax.random.KeyArray:
-        self._validate_trace()
         return self._key
 
     @property
@@ -62,13 +42,20 @@ class RngStream:
         return self._count_path
 
     def next(self) -> jax.random.KeyArray:
-        self._validate_trace()
+        if not self._trace_state.is_valid():
+            raise errors.TraceContextError(
+                "Cannot use RngStream from a different trace level"
+            )
+
         fold_data = _stable_hash(self._count_path + (self._count,))
         self._count += 1
         return jax.random.fold_in(self._key, fold_data)
 
     def fork(self) -> "RngStream":
-        self._validate_trace()
+        if not self._trace_state.is_valid():
+            raise errors.TraceContextError(
+                "Cannot use RngStream from a different trace level"
+            )
         count_path = self._count_path + (self._count,)
         self._count += 1
         return RngStream(self._key, count_path=count_path)
@@ -104,6 +91,47 @@ jax.tree_util.register_pytree_with_keys(
 )
 
 
+class ContextDef:
+    __slots__ = ("_flags",)
+
+    def __init__(self, flags: tp.Tuple[tp.Tuple[str, bool], ...]):
+        self._flags = flags
+
+    def merge(self, rngs: tp.Mapping[str, RngStream]) -> "Context":
+        return Context(rngs=rngs, flags=dict(self._flags))
+
+
+class PureContext(tp.Tuple[tp.Dict[str, RngStream], ContextDef]):
+    @classmethod
+    def new(cls, rngs: tp.Dict[str, RngStream], contextdef: ContextDef):
+        return cls((rngs, contextdef))
+
+    @property
+    def rngs(self) -> tp.Dict[str, RngStream]:
+        return self[0]
+
+    @property
+    def contextdef(self) -> ContextDef:
+        return self[1]
+
+    def merge(self):
+        return self.contextdef.merge(self.rngs)
+
+
+def _pure_context_flatten(pure_context: PureContext):
+    return tuple(pure_context), None
+
+
+def _pure_context_unflatten(
+    aux_data: None,
+    children: tp.Tuple[tp.Dict[str, RngStream], ContextDef],
+) -> PureContext:
+    return PureContext(children)
+
+
+jtu.register_pytree_node(PureContext, _pure_context_flatten, _pure_context_unflatten)
+
+
 class Context:
     __slots__ = ("_rngs", "_flags")
 
@@ -116,8 +144,6 @@ class Context:
         flags: tp.Optional[tp.Mapping[str, bool]] = None,
         **rng_updates: tp.Union[RngStream, KeyArray],
     ):
-        context_trace = tracers.get_top_trace(rngs)
-
         if rngs is None:
             _rngs = {}
         elif isinstance(rngs, tp.Mapping):
@@ -125,14 +151,12 @@ class Context:
         elif isinstance(rngs, RngStream):
             _rngs = dict(params=rngs)
         else:
-            _rngs = dict(params=RngStream(rngs, context_trace=context_trace))
+            _rngs = dict(params=RngStream(rngs))
 
         _rngs.update(**rng_updates)
 
         _rngs = {
-            name: RngStream(key, context_trace=context_trace)
-            if not isinstance(key, RngStream)
-            else key
+            name: RngStream(key) if not isinstance(key, RngStream) else key
             for name, key in _rngs.items()
         }
 
@@ -155,12 +179,6 @@ class Context:
             raise ValueError(f"Unknown Rng Stream: {name}")
         return self._rngs[name].next()
 
-    def fork(self) -> "Context":
-        return Context(
-            rngs={name: stream.fork() for name, stream in self._rngs.items()},
-            flags=self._flags,
-        )
-
     def copy(self) -> "Context":
         return Context(rngs=self._rngs, flags=self._flags)
 
@@ -170,27 +188,6 @@ class Context:
     def get_flag(self, name: str) -> tp.Optional[bool]:
         return self._flags.get(name, None)
 
-
-def _context_flatten_with_keys(ctx: Context):
-    node = (jtu.GetAttrKey("rngs"), ctx._rngs)
-    return (node,), tuple(ctx._flags.items())
-
-
-def _context_unflatten(
-    metadata: tp.Tuple[tp.Tuple[str, bool], ...],
-    nodes: tp.Tuple[tp.Dict[str, RngStream]],
-) -> Context:
-    return Context(rngs=nodes[0], flags=dict(metadata))
-
-
-def _context_flatten(ctx: Context):
-    node = ctx._rngs
-    return (node,), tuple(ctx._flags.items())
-
-
-jtu.register_pytree_with_keys(
-    Context,
-    _context_flatten_with_keys,
-    _context_unflatten,
-    flatten_func=_context_flatten,
-)
+    def partition(self) -> PureContext:
+        rngs = {name: stream.fork() for name, stream in self._rngs.items()}
+        return PureContext.new(rngs, ContextDef(tuple(self._flags.items())))

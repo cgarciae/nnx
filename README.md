@@ -7,7 +7,7 @@ a **Ref**erence system to enable:
 
 * **Simplicity**: Provides an easy-to-understand mental model and implementation.
 * **Shared refereces**: Supports **safe** mutable shared state thanks to its **Ref**erence system.
-* **Leaf Metadata**: Enables semantic splitting a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
+* **Leaf Metadata**: Enables semantic partitioning of a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
 * **Stateful transformations**: Seamless integration with JAX's native transformation capabilities.
 
 NNX was designed to have the same capabilities as Flax with the simplicity of Equinox.
@@ -32,25 +32,31 @@ pip install git+https://github.com/cgarciae/nnx
 
 ## Usage
 
+
 ```python
 import nnx
 import jax
+import jax.numpy as jnp
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
-        self.w = jax.random.uniform(key, (din, dout))
-        self.b = jax.numpy.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.param(jax.numpy.zeros((dout,)))
 
     def __call__(self, x):
         return x @ self.w + self.b
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
+# forward pass
+y = model(jnp.ones((8, 12)))
+```
+### Training
 
+<details><summary>Stateful Transformations</summary>
+
+```python
 @nnx.jit
 def train_step(model, x, y):
     def loss_fn(model):
@@ -58,100 +64,103 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+    )
 
 # yes... there's no return :)
 train_step(model, x, y)
 ```
 
+</details>
+
+<details><summary>Partition API</summary>
+
+```python
+params, moduledef = model.partition("params")
+
+@jax.jit
+def train_step(params, x, y):
+    def loss_fn(params):
+        y_pred, _updates = moduledef.apply(params)(x)
+        return jax.numpy.mean((y_pred - y) ** 2)
+    
+    # compute gradient
+    grads: nnx.State = jax.grad(loss_fn)(params)
+    # SGD update
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
+
+    return params
+
+params = train_step(params, x, y)
+```
+
+</details>
+
 ## Design
 
 ### Modules
 
-`nnx` has a simple and intuitive design with Modules at its core. These modules are built using [simple_pytree](https://github.com/cgarciae/simple-pytree) Pytrees. To create a custom module, simply subclass `nnx.Module` and mark the reference fields with `nnx.ref` or `nnx.param`. These are descriptors that store a `Ref` instance in a separate attribute, making references transparent to the user.
-
-Here's an example of a simple `Linear` module:
+NNX Modules are regular python classes that inherit from `nnx.Module`, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, and other Modules and other NNX types. All other types are treated as static attributes.
 
 ```python
-import nnx
-import jax
-
-class Linear(nnx.Module):
-    w: jax.Array = nnx.ref("params")
-    b: jax.Array = nnx.param() # shortcut for ref("params")
-
+class Foo(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        key = ctx.make_rng("params") # request an RNG key
-        self.w = jax.random.uniform(key, (din, dout))
-        self.b = jax.numpy.zeros((dout,))
+        # node attributes
+        self.variable = nnx.param(jnp.array(1))
+        self.np_buffer = np.array(2)
+        self.jax_buffer = jnp.array(3)
+        self.node = nnx.node([4, 5])
+        self.submodule = nnx.Linear(din, dout, ctx=ctx)
+        # static attributes
+        self.din = din
+        self.dout = dout
 
-    def __call__(self, x):
-        return x @ self.w + self.b
-
-ctx = nnx.Context(params=jax.random.PRNGKey(0))
-model = Linear(din=12, dout=2, ctx=ctx)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = Foo(din=12, dout=2, ctx=ctx)
 ```
+Regular python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
 
-`nnx` uses a `Context` object to propagate RNG and other forms of state throughout the model. `Context` provides a `make_rng` method that creates a new RNG key on demand for a given name (in this case, `"params"`).
-
-#### RefField Descriptor
-
-`nnx.ref` and `nnx.param` are descriptors that create `RefField` instances. A `RefField` is a descriptor that stores a `Ref` instance in a separate `{attribute_name}__ref` attribute. It handles retrieving and setting the value of the reference automatically, so the user doesn't have to manipulate references directly. Additionally, `RefField` inherits from `dataclasses.Field` to ensure compatibility with `nnx.dataclass` when needed.
-
-Here's a simplified version of the `RefField` implementation:
+Since NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be partitioned into the `State` and a `ModuleDef` objects. The `State` object is a flat dictionary-like structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and overall structural definition of the Module.
 
 ```python
-class RefField(dataclasses.Field):
-    def __set_name__(self, cls, name):
-        self.name = name
-
-    def __get__(self, obj, objtype=None):
-        ref = getattr(obj, f"{self.name}__ref")
-        return ref.value
-
-    def __set__(self, obj, value):
-        ref = getattr(obj, f"{self.name}__ref")
-        ref.value = value
+state, moduledef = model.partition()
+print(state)
+```
+```
+State({
+  ('jax_buffer',): Array(3),
+  ('node',): Node(value=[4, 5]),
+  ('np_buffer',): array(2),
+  ('submodule', 'bias'): Variable(collection='params', value=Array(...)),
+  ('submodule', 'kernel'): Variable(collection='params', value=Array(...)),
+  ('variable',): Variable(collection='params', value=Array(1))
+})
 ```
 
-It's important to note that `Ref` instances are created during the first call to `__set__` if the companion `{name}__ref` attribute doesn't exist yet. This should only happen inside the `__init__` method, otherwise, the `Module` will raise an error, as `simple_pytree` Pytrees are frozen after initialization.
-
-#### GetItem and SetItem Syntactic Sugar
-
-`Module` implements `__getitem__` and `__setitem__` to provide syntactic sugar for creating and updating `Partition`s. Although it may appear otherwise, `__setitem__` does not modify the Module's structure. Instead, it updates the values of the references, as demonstrated in this simplified implementation:
+`State` and `ModuleDef` are pytrees so they can be passed to JAX transformations. More over, `ModuleDef` provides 2 very important methods: `merge` and `apply`. The `merge` method can be used to create a new `Module` from a `State` object:
 
 ```python
-class Module(nnx.Pytree):
-    ...
-    def __getitem__(self, collection: str) -> nnx.Partition:
-        return nnx.get_partition(self, collection)
-
-    def __setitem__(self, _: SetItemType, value: nnx.Partition):
-        nnx.update_refs(self, value)
+model = moduledef.merge(state)
 ```
-
-Sample usage might look like this:
+This can be use to e.g. recreate a module inside a JAX transformation. The `apply` provides a functional interface to the module, it can be used call any method or submodule and get both the output and the updated state:
 
 ```python
-# SGD update
-model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+# run __call__
+y, (state, moduledef) = moduledef.apply(state)(x)
+# run some_method
+y, (state, moduledef) = moduledef.apply(state).some_method(x)
+# run submodule
+y, (state, moduledef) = moduledef.apply(state).submodule(x)
 ```
 
-In this example, `model["params"]` returns a `Partition` that contains all the references in the `params` collection. `grads` is a `Partition` with the same structure as `model["params"]`, but with gradients instead of parameters. The statement `model[:] = ...` updates the values of the references in `model` with the values of the new parameters from stochastic gradient descent (SGD) update rule.
+`apply` can call any nested method or submodule as long as it can be accessed via the `.` or `[]` operators.
 
-### Transformations
+### Stateful Transforms
 
-Currently, NNX offers three types of transformations: stateful, filtered, and the partition API. As it is unclear which API is the best, all three will be maintained for now.
-
-#### Stateful Transforms
-
-Stateful transforms take a Pytree of references (e.g., a Module) as their first argument, track changes in the state of the references that occur within the transformation, and automatically propagate those changes to the input Pytree outside the transformation. In general, they have the following properties:
-
-* They behave as stateful functions with respect to the first argument.
-* They can operate on collections and RNG streams according to the transformation's semantics, exactly like Flax's transformations.
-* They handle all relevant global state, such as `nnx.scope` and Refx's trace state.
+Stateful transforms take a Module as their first argument, track changes in the state that occur within the transformation, and automatically propagate those changes to the input Module outside the transformation. In general, they behave as stateful functions with respect to the first argument.
 
 Here's a diagram illustrating how stateful transformations work:
 
@@ -170,87 +179,19 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
     # SGD update
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+    )
 
-# stateful update, no return needed
+# stateful update
 train_step(model, x, y)
 ```
 
-The most interesting aspect of this design is that the code appears very imperative, as the state is automatically propagated in and out of the transformations. However, more consideration is needed to properly support `jit`'s `in_shardings` and `out_shardings` arguments.
-
-Certainly! I've revised the text to improve clarity and readability. Here are the updated sections:
-
----
-#### Filtered Transformations
-
-Filtered transformations offer more flexibility, as they can take Pytrees of references in any of their arguments and return Pytrees of references. They simply `deref` and `reref` all their inputs and outputs to transfer the Pytrees across the transformation. In general, they have the following properties:
-
-* They behave as pure functions.
-* They don't handle any global state except for Refx's trace state.
-
-![filtered-transforms](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/filtered-transforms.png)
-
-Currently, `nnx.jit_filter` is the only filtered transformation.
-
-Here's an example of how a `train_step` function can be implemented using `nnx.jit_filter` and `nnx.grad`:
-
-```python
-@nnx.jit_filter
-def train_step(model, x, y):
-
-    def loss_fn(model):
-        y_pred = model(x)
-        return jax.numpy.mean((y_pred - y) ** 2)
-
-    # compute gradient
-    grads = nnx.grad(loss_fn, wrt="params")(model)
-    # SGD update
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
-    
-    return model
-
-model = train_step(model, x, y)
-```
-
-Filtered transformations must output any state they want to propagate but have more flexibility in how they handle it. Adding support for `jit`'s `in_shardings` and `out_shardings` arguments is likely more straightforward than with stateful transformations.
-
-#### Partition API
-
-The partition API enables splitting a Module's state into sets of reference-less `Partition`s, this provides a general way of interacting with vanilla JAX transformations.
-
-
-![partition-api](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/partition-api.png)
-
-Here's an example of how a `train_step` function can be implemented using the partition API:
-
-```python
-partitions, moddef = model.partition()
-params = partitions["params"]
-
-@jax.jit
-def train_step(params, x, y):
-
-    def loss_fn(params):
-        model: Linear = moddef.reref(params)
-        y_pred = model(x)
-        return jax.numpy.mean((y_pred - y) ** 2)
-
-    # compute gradient
-    grads = jax.grad(loss_fn)(params)
-    # SGD update
-    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
-    
-    return params
-
-params = train_step(params, x, y)
-```
-
-The main benefit of the partition API is its compatibility with other JAX tools, as the training step can be written using regular JAX transformations. The main drawback is that it's more verbose.
+The most interesting aspect of this design is that the code appears very imperative, as the state is automatically propagated in and out of the transformations.
 
 ### Case Studies
-
 #### Shared State
 
 In NNX, you can create modules that share state between them. This is useful when designing complex neural network architectures, as it allows you to reuse certain layers and reduce the number of learnable parameters.

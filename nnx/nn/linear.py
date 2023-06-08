@@ -1,16 +1,14 @@
-import dataclasses
 import typing as tp
 
 import jax
-from jax import lax
 import jax.numpy as jnp
 import numpy as np
-from nnx import context
+from jax import lax
 
+import nnx
+from nnx import context
 from nnx.module import Module
-from nnx.nn import initializers
-from nnx.dataclasses import dataclass, param
-from nnx.nn import dtypes
+from nnx.nn import dtypes, initializers
 
 Array = jax.Array
 PRNGKey = tp.Any
@@ -75,9 +73,6 @@ class Linear(Module):
       bias_init: initializer function for the bias.
     """
 
-    kernel: Array = param()
-    bias: tp.Optional[Array] = param()
-
     def __init__(
         self,
         in_features: int,
@@ -93,12 +88,14 @@ class Linear(Module):
         ctx: context.Context,
     ):
         kernel_key = ctx.make_rng("params")
-        self.kernel = kernel_init(kernel_key, (in_features, out_features), param_dtype)
+        self.kernel = nnx.param(
+            kernel_init(kernel_key, (in_features, out_features), param_dtype)
+        )
         if use_bias:
             bias_key = ctx.make_rng("params")
-            self.bias = bias_init(bias_key, (out_features,), param_dtype)
+            self.bias = nnx.param(bias_init(bias_key, (out_features,), param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.in_features = in_features
         self.out_features = out_features
@@ -174,9 +171,6 @@ class Conv(Module):
       bias_init: initializer for the bias.
     """
 
-    kernel: Array = param()
-    bias: tp.Optional[Array] = param()
-
     def __init__(
         self,
         in_features: int,
@@ -212,14 +206,14 @@ class Conv(Module):
             out_features,
         )
         kernel_key = ctx.make_rng("params")
-        self.kernel = kernel_init(kernel_key, kernel_shape, param_dtype)
+        self.kernel = nnx.param(kernel_init(kernel_key, kernel_shape, param_dtype))
 
         if use_bias:
             bias_shape = (out_features,)
             bias_key = ctx.make_rng("params")
-            self.bias = bias_init(bias_key, bias_shape, param_dtype)
+            self.bias = nnx.param(bias_init(bias_key, bias_shape, param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.in_features = in_features
         self.out_features = out_features
@@ -362,8 +356,6 @@ class Embed(Module):
       embedding_init: embedding initializer.
     """
 
-    embedding: Array = param()
-
     def __init__(
         self,
         num_embeddings: int,
@@ -376,10 +368,10 @@ class Embed(Module):
         ] = default_embed_init,
         ctx: context.Context,
     ):
-        self.embedding = embedding_init(
-            ctx.make_rng("params"),
-            (num_embeddings, features),
-            param_dtype,
+        self.embedding = nnx.param(
+            embedding_init(
+                ctx.make_rng("params"), (num_embeddings, features), param_dtype
+            )
         )
 
         self.num_embeddings = num_embeddings

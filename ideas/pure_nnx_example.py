@@ -1,7 +1,9 @@
 from functools import partial
 from typing import Tuple
+
 import jax
 import jax.numpy as jnp
+
 import nnx
 
 
@@ -20,8 +22,8 @@ class Linear(nnx.Module):
 class BatchNorm(nnx.Module):
     scale: jax.Array = nnx.param()
     bias: jax.Array = nnx.param()
-    mean: jax.Array = nnx.ref("batch_stats")
-    var: jax.Array = nnx.ref("batch_stats")
+    mean: jax.Array = nnx.var("batch_stats")
+    var: jax.Array = nnx.var("batch_stats")
     mu: float = nnx.static_field()
 
     def __init__(self, din: int, mu: float = 0.95, *, ctx: nnx.Context):
@@ -119,8 +121,8 @@ dropout_stream = nnx.RngStream(jax.random.split(dropout_key, n_layers))
 
 
 def scan_fn(
-    carry: Tuple[jax.Array, nnx.Partition],
-    inputs: Tuple[nnx.Partition, nnx.RngStream],
+    carry: Tuple[jax.Array, nnx.State],
+    inputs: Tuple[nnx.State, nnx.RngStream],
 ):
     # extract args
     x, batch_stats = carry

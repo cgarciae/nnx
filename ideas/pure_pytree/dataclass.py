@@ -1,8 +1,9 @@
 import dataclasses
-from dataclasses import field
-from simple_pytree import static_field
 import typing as tp
+from dataclasses import field
+
 import typing_extensions as tpe
+from simple_pytree import static_field
 
 A = tp.TypeVar("A")
 K = tp.TypeVar("K", bound=tp.Hashable)

@@ -17,22 +17,17 @@ def dataset(batch_size):
 
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = jax.random.uniform(ctx.make_rng("params"), (din, dout))
-        self.b = jnp.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w) + self.b
+        return x @ self.w + self.b
 
 
 class MLP(nnx.Module):
-    count: jax.Array = nnx.ref("state")
-
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = jnp.array(0)
+        self.count = nnx.var("state", jnp.array(0))
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
@@ -44,8 +39,8 @@ class MLP(nnx.Module):
         return x
 
 
-def mse(y, y_pred):
-    return jnp.mean((y - y_pred) ** 2)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
 
 
 @nnx.jit
@@ -56,10 +51,12 @@ def train_step(model: MLP, batch):
         y_pred = model(x)
         return jnp.mean((y - y_pred) ** 2)
 
-    #                                      |--default--|
-    grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
-    #                              |-------- sgd ---------|
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    #                                   |--default--|
+    grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+    # sdg update
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grad)
+    )
 
     # no return!!!
 
@@ -71,9 +68,6 @@ def test_step(model: MLP, batch):
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
-
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):

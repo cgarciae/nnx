@@ -1,11 +1,9 @@
-from types import MappingProxyType
 import typing as tp
+from types import MappingProxyType
 
 import jax
 import jax.tree_util as jtu
-
-from pure.partitioning import StateDef, Variable, Partition
-
+from pure.partitioning import Partition, StateDef, Variable
 
 Node = tp.Union[Variable, "State"]
 S = tp.TypeVar("S", bound="State")

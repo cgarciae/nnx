@@ -1,5 +1,4 @@
 # %%
-from typing import Any
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -18,26 +17,21 @@ def dataset(batch_size):
 
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = jax.random.uniform(ctx.make_rng("params"), (din, dout))
-        self.b = jnp.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w) + self.b
+        return x @ self.w + self.b
 
 
 class MLP(nnx.Module):
-    count: jax.Array = nnx.ref("state")
-
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
         self.count = jnp.array(0)
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
-    def __call__(self, x) -> jax.Array:
+    def __call__(self, x):
         self.count += 1
         x = self.linear1(x)
         x = jax.nn.relu(x)
@@ -45,49 +39,52 @@ class MLP(nnx.Module):
         return x
 
 
-@jax.jit
-def train_step(derefmod: nnx.DerefedMod[Any, MLP], batch) -> nnx.DerefedMod[Any, MLP]:
-    x, y = batch
-    model = derefmod.reref()
+ctx = nnx.Context(jax.random.PRNGKey(0))
+(params, buffers), modeldef = MLP(
+    din=1,
+    dhidden=32,
+    dout=1,
+    ctx=ctx,
+).partition("params", ...)
 
-    def loss_fn(model: MLP):
-        y_pred = model(x)
+
+@jax.jit
+def train_step(params, buffers, batch):
+    x, y = batch
+
+    def loss_fn(params):
+        y_pred, (updates, _) = modeldef.apply(params, buffers)(x)
+        _state = updates.filter(nnx.buffers)
         loss = jnp.mean((y - y_pred) ** 2)
-        return loss
+        return loss, _state
 
-    grads = nnx.grad(loss_fn)(model)
-    #                       |-------- sgd ---------|
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
+    grad, buffers = jax.grad(loss_fn, has_aux=True)(params)
+    #                          |-------- sgd ---------|
+    params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grad)
 
-    return model.deref()
+    return params, buffers
 
 
 @jax.jit
-def test_step(unbound: nnx.DerefedMod[Any, MLP], batch):
+def test_step(params: nnx.State, buffers: nnx.State, batch):
     x, y = batch
-    model = unbound.reref()
-    y_pred = model(x)
+    y_pred, _ = modeldef.apply(params, buffers)(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-derefmod = model.deref()
-
-
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    derefmod = train_step(derefmod, batch)
+    params, buffers = train_step(params, buffers, batch)
 
     if step % 1000 == 0:
-        logs = test_step(derefmod, (X, Y))
+        logs = test_step(params, buffers, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
-model = derefmod.reref()
+model = modeldef.merge(params, buffers)
 print("times called:", model.count)
 
 y_pred = model(X)

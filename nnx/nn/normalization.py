@@ -4,10 +4,10 @@ import jax
 import jax.numpy as jnp
 from jax import lax
 
-from nnx.module import Module
-from nnx.nn import initializers, dtypes
+import nnx
 from nnx import context, utils
-from nnx.dataclasses import param, ref
+from nnx.module import Module
+from nnx.nn import dtypes, initializers
 
 PRNGKey = jax.Array
 Array = jax.Array
@@ -175,11 +175,6 @@ class BatchNorm(Module):
         for more details.
     """
 
-    mean: Array = ref("batch_stats", init=False)
-    var: Array = ref("batch_stats", init=False)
-    scale: tp.Optional[Array] = param(init=False)
-    bias: tp.Optional[Array] = param(init=False)
-
     def __init__(
         self,
         num_features: int,
@@ -199,20 +194,20 @@ class BatchNorm(Module):
         ctx: context.Context,
     ):
         feature_shape = (num_features,)
-        self.mean = jnp.zeros(feature_shape, jnp.float32)
-        self.var = jnp.ones(feature_shape, jnp.float32)
+        self.mean = nnx.var("batch_stats", jnp.zeros(feature_shape, jnp.float32))
+        self.var = nnx.var("batch_stats", jnp.ones(feature_shape, jnp.float32))
 
         if use_scale:
             key = ctx.make_rng("params")
-            self.scale = scale_init(key, feature_shape, param_dtype)
+            self.scale = nnx.param(scale_init(key, feature_shape, param_dtype))
         else:
-            self.scale = None
+            self.scale = nnx.param(None)
 
         if use_bias:
             key = ctx.make_rng("params")
-            self.bias = bias_init(key, feature_shape, param_dtype)
+            self.bias = nnx.param(bias_init(key, feature_shape, param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.num_features = num_features
         self.use_running_average = use_running_average
@@ -312,9 +307,6 @@ class LayerNorm(Module):
             for more details.
     """
 
-    scale: tp.Optional[Array] = param(init=False)
-    bias: tp.Optional[Array] = param(init=False)
-
     def __init__(
         self,
         num_features: int,
@@ -336,15 +328,15 @@ class LayerNorm(Module):
 
         if use_scale:
             key = ctx.make_rng("params")
-            self.scale = scale_init(key, feature_shape, param_dtype)
+            self.scale = nnx.param(scale_init(key, feature_shape, param_dtype))
         else:
-            self.scale = None
+            self.scale = nnx.param(None)
 
         if use_bias:
             key = ctx.make_rng("params")
-            self.bias = bias_init(key, feature_shape, param_dtype)
+            self.bias = nnx.param(bias_init(key, feature_shape, param_dtype))
         else:
-            self.bias = None
+            self.bias = nnx.param(None)
 
         self.num_features = num_features
         self.epsilon = epsilon
@@ -383,6 +375,3 @@ class LayerNorm(Module):
             self.dtype,
             self.epsilon,
         )
-
-
-

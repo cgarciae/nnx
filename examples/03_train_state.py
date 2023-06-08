@@ -3,7 +3,8 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from jax.nn import initializers
+import optax
+from flax.training import train_state
 
 import nnx
 
@@ -18,20 +19,15 @@ def dataset(batch_size):
 
 
 class Linear(nnx.Module):
-    w: jax.Array = nnx.param()
-    b: jax.Array = nnx.param()
-
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = jax.random.uniform(ctx.make_rng("params"), (din, dout))
-        self.b = jnp.zeros((dout,))
+        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.param(jnp.zeros((dout,)))
 
     def __call__(self, x):
-        return jnp.dot(x, self.w) + self.b
+        return x @ self.w + self.b
 
 
 class MLP(nnx.Module):
-    count: jax.Array = nnx.ref("state")
-
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
         self.count = jnp.array(0)
         self.linear1 = Linear(din, dhidden, ctx=ctx)
@@ -45,48 +41,60 @@ class MLP(nnx.Module):
         return x
 
 
-def mse(y, y_pred):
-    return jnp.mean((y - y_pred) ** 2)
+ctx = nnx.Context(jax.random.PRNGKey(0))
+(params, buffers), modeldef = MLP(
+    din=1,
+    dhidden=32,
+    dout=1,
+    ctx=ctx,
+).partition("params", ...)
+
+state = nnx.TrainState(
+    apply_fn=modeldef.apply,
+    params=params,
+    tx=optax.sgd(0.1),
+    buffers=buffers,
+)
+del params, buffers
 
 
-@nnx.jit_filter
-def train_step(model: MLP, batch):
+@jax.jit
+def train_step(state: nnx.TrainState, batch):
     x, y = batch
 
-    def loss_fn(model: MLP):
-        y_pred = model(x)
-        return jnp.mean((y - y_pred) ** 2)
+    def loss_fn(params):
+        y_pred, (updates, _) = state.apply_fn(params, state.buffers)(x)
+        buffers = updates.filter(nnx.buffers)
+        loss = jnp.mean((y - y_pred) ** 2)
+        return loss, buffers
 
-    #                                      |--default--|
-    grad: nnx.Partition = nnx.grad(loss_fn, wrt="params")(model)
-    #                              |-------- sgd ---------|
-    model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grad)
+    grads, buffers = jax.grad(loss_fn, has_aux=True)(state.params)
+    # sdg update
+    state = state.apply_gradients(grads=grads, buffers=buffers)
 
-    return model
+    return state
 
 
-@nnx.jit_filter
-def test_step(model: MLP, batch):
+@jax.jit
+def test_step(state: nnx.TrainState, batch):
     x, y = batch
-    y_pred = model(x)
+    y_pred, _ = state.apply_fn(state.params, state.buffers)(x)
     loss = jnp.mean((y - y_pred) ** 2)
     return {"loss": loss}
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(din=1, dhidden=32, dout=1, ctx=ctx)
-
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    model = train_step(model, batch)
+    state = train_step(state, batch)
 
     if step % 1000 == 0:
-        logs = test_step(model, (X, Y))
+        logs = test_step(state, (X, Y))
         print(f"step: {step}, loss: {logs['loss']}")
 
     if step >= total_steps - 1:
         break
 
+model = modeldef.merge(state.params, state.buffers)
 print("times called:", model.count)
 
 y_pred = model(X)

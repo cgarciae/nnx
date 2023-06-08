@@ -1,15 +1,7 @@
-import contextlib
-import typing as tp
 import inspect
+import typing as tp
 
 A = tp.TypeVar("A")
-
-
-@contextlib.contextmanager
-def contexts(*contexts: tp.ContextManager[tp.Any]) -> tp.Iterator[tp.Tuple[tp.Any]]:
-    """Context manager that enters multiple contexts."""
-    with contextlib.ExitStack() as stack:
-        yield tuple(stack.enter_context(context) for context in contexts)
 
 
 def first_from(*args: tp.Optional[A]) -> A:
@@ -20,9 +12,9 @@ def first_from(*args: tp.Optional[A]) -> A:
     raise ValueError("No non-None arguments found.")
 
 
-def has_kwarg(fn: tp.Callable[..., tp.Any], kwarg: str) -> bool:
-    """Return True if the function has the given keyword argument."""
-    parameters = inspect.signature(fn).parameters
-    return (
-        kwarg in parameters and parameters[kwarg].kind == inspect.Parameter.KEYWORD_ONLY
+def has_keyword_arg(func: tp.Callable[..., tp.Any], name: str) -> bool:
+    """Return True if func has keyword-only arguments with the given name."""
+    return any(
+        param.name == name and param.kind == inspect.Parameter.KEYWORD_ONLY
+        for param in inspect.signature(func).parameters.values()
     )
