@@ -158,11 +158,7 @@ y, (state, moduledef) = moduledef.apply(state).submodule(x)
 
 `apply` can call any nested method or submodule as long as it can be accessed via the `.` or `[]` operators.
 
-### Transformations
-
-Currently, NNX offers three types of transformations: stateful, filtered, and the partition API. As it is unclear which API is the best, all three will be maintained for now.
-
-#### Stateful Transforms
+### Stateful Transforms
 
 Stateful transforms take a Module as their first argument, track changes in the state that occur within the transformation, and automatically propagate those changes to the input Module outside the transformation. In general, they behave as stateful functions with respect to the first argument.
 
