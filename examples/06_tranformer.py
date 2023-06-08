@@ -345,17 +345,22 @@ class Decoder(nnx.Module):
         if cfg.scanned:
             assert isinstance(self.layers, DecoderBlock)
 
-            def scan_fn(x, s: tp.Tuple[tp.Any, nnx.PureModule[DecoderBlock]]):
-                key, decoder_block = s
-                return decoder_block.apply(cfg, x, ctx=nnx.Context(dropout=key))
+            state, moduledef = self.layers.partition()
+
+            def scan_fn(x, s: tp.Tuple[tp.Any, nnx.State]):
+                key, state = s
+                y, (state, _) = moduledef.apply(state)(
+                    cfg, x, ctx=nnx.Context(dropout=key)
+                )
+                return y, state
 
             dropout_key = ctx.make_rng("dropout")
-            x, updates = jax.lax.scan(
+            x, state = jax.lax.scan(
                 scan_fn,
                 x,
-                (jax.random.split(dropout_key, cfg.layers), self.layers.partition()),
+                (jax.random.split(dropout_key, cfg.layers), state),
             )
-            self.layers.update_state(updates)
+            self.layers.update_state(state)
         else:
             assert isinstance(self.layers, nnx.Sequence)
             for decoder_block in self.layers:
