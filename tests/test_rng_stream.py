@@ -89,3 +89,20 @@ class TestRngStream:
             match="Cannot use RngStream from a different trace level",
         ):
             rng1.make_rng()
+
+
+class TestContext:
+    def test_partition_merge(self):
+        ctx = nnx.Context(dropout=jax.random.PRNGKey(0))
+
+        keys, ctxdef = ctx.partition()
+
+        assert "dropout" in keys
+        assert ctxdef._rng_counts == (("dropout", (0,)),)
+
+        ctx2 = ctxdef.merge(keys)
+
+        key1 = ctx.make_rng("dropout")
+        key2 = ctx2.make_rng("dropout")
+
+        assert not np.equal(key1, key2).all()

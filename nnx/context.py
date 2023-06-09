@@ -7,10 +7,11 @@ import jax.tree_util as jtu
 
 from nnx import errors, tracers
 
-KeyArray = tp.Union[jax.Array, jax.random.KeyArray]
+KeyArray = jax.Array
+Counts = tp.Tuple[int, ...]
 
 
-def _stable_hash(data: tp.Tuple[int, ...]) -> int:
+def _stable_hash(data: Counts) -> int:
     hash_str = " ".join(str(x) for x in data)
     _hash = hashlib.blake2s(hash_str.encode())
     hash_bytes = _hash.digest()
@@ -21,9 +22,7 @@ def _stable_hash(data: tp.Tuple[int, ...]) -> int:
 class RngStream:
     __slots__ = ("_key", "_count", "_count_path", "_trace_state")
 
-    def __init__(
-        self, key: KeyArray, count: int = 0, count_path: tp.Tuple[int, ...] = ()
-    ):
+    def __init__(self, key: KeyArray, count: int = 0, count_path: Counts = ()):
         self._key = key
         self._count = count
         self._count_path = count_path
@@ -34,7 +33,7 @@ class RngStream:
         return self._count
 
     @property
-    def count_path(self) -> tp.Tuple[int, ...]:
+    def count_path(self) -> Counts:
         return self._count_path
 
     def make_rng(self) -> jax.random.KeyArray:
@@ -70,13 +69,13 @@ def _rng_stream_flatten_with_keys(
     rng: RngStream,
 ) -> tp.Tuple[
     tp.Tuple[tp.Tuple[tp.Hashable, jax.random.KeyArray], ...],
-    tp.Tuple[int, tp.Tuple[int, ...]],
+    tp.Tuple[int, Counts],
 ]:
     return ((jtu.GetAttrKey("key"), rng._key),), (rng.count, rng.count_path)
 
 
 def _rng_stream_unflatten(
-    aux_data: tp.Tuple[int, tp.Tuple[int, ...]],
+    aux_data: tp.Tuple[int, Counts],
     children: tp.Tuple[jax.random.KeyArray, ...],
 ) -> RngStream:
     count, count_path = aux_data
@@ -97,22 +96,31 @@ jax.tree_util.register_pytree_with_keys(
 
 
 class ContextDef:
-    __slots__ = ("_flags",)
+    __slots__ = ("_rng_counts", "_flags")
 
-    def __init__(self, flags: tp.Tuple[tp.Tuple[str, bool], ...]):
+    def __init__(
+        self,
+        rng_counts: tp.Tuple[tp.Tuple[str, Counts], ...],
+        flags: tp.Tuple[tp.Tuple[str, bool], ...],
+    ):
+        self._rng_counts = rng_counts
         self._flags = flags
 
-    def merge(self, **rngs: RngStream) -> "Context":
+    def merge(self, keys: tp.Mapping[str, KeyArray]) -> "Context":
+        rngs = {
+            name: RngStream(keys[name], count=0, count_path=count_path)
+            for name, count_path in self._rng_counts
+        }
         return Context(rngs=rngs, flags=dict(self._flags))
 
 
-class PureContext(tp.Tuple[tp.Dict[str, RngStream], ContextDef]):
+class PureContext(tp.Tuple[tp.Dict[str, KeyArray], ContextDef]):
     @classmethod
-    def new(cls, rngs: tp.Dict[str, RngStream], contextdef: ContextDef):
-        return cls((rngs, contextdef))
+    def new(cls, keys: tp.Dict[str, KeyArray], contextdef: ContextDef):
+        return cls((keys, contextdef))
 
     @property
-    def rngs(self) -> tp.Dict[str, RngStream]:
+    def keys(self) -> tp.Dict[str, KeyArray]:
         return self[0]
 
     @property
@@ -120,7 +128,7 @@ class PureContext(tp.Tuple[tp.Dict[str, RngStream], ContextDef]):
         return self[1]
 
     def merge(self):
-        return self.contextdef.merge(self.rngs)
+        return self.contextdef.merge(self.keys)
 
 
 def _pure_context_flatten(pure_context: PureContext):
@@ -187,4 +195,6 @@ class Context:
 
     def partition(self) -> PureContext:
         rngs = {name: stream.fork() for name, stream in self._rngs.items()}
-        return PureContext.new(rngs, ContextDef(tuple(self._flags.items())))
+        keys = {name: stream._key for name, stream in rngs.items()}
+        rng_counts = tuple((name, stream.count_path) for name, stream in rngs.items())
+        return PureContext.new(keys, ContextDef(rng_counts, tuple(self._flags.items())))

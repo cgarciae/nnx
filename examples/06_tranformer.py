@@ -347,18 +347,18 @@ class Decoder(nnx.Module):
 
             state, moduledef = self.layers.partition()
             rngs, ctxdef = ctx.partition()
-            dropout_stream = rngs.pop("dropout").split(cfg.layers)
+            dropout_key = jax.random.split(rngs["dropout"], cfg.layers)
 
-            def scan_fn(x, s: tp.Tuple[nnx.RngStream, nnx.State]):
-                dropout_stream, state = s
-                ctx = ctxdef.merge(dropout=dropout_stream)
+            def scan_fn(x, s: tp.Tuple[jax.random.KeyArray, nnx.State]):
+                dropout_key, state = s
+                ctx = ctxdef.merge({"dropout": dropout_key})
                 y, (state, _) = moduledef.apply(state)(cfg, x, ctx=ctx)
                 return y, state
 
             x, state = jax.lax.scan(
                 scan_fn,
                 x,
-                (dropout_stream, state),
+                (dropout_key, state),
             )
             self.layers.update_state(state)
         else:
