@@ -6,7 +6,7 @@ _**N**eural **N**etworks for JA**X**_
 
 NNX is a Neural Networks library for JAX that provides a simple yet powerful module system that respects regular python semantics. Its designed to be as powerful as [Flax](https://flax.readthedocs.io/en/latest/) but with a highly simplified pythonic API reminiscent of [PyTorch](https://pytorch.org/)
 
-* **Vanilla Python Semantics**: Modules are normal python classes that respect regular python semantics such as mutability and reference sharing. No mandatory dataclass behavior.
+* **Vanilla Python Semantics**: No mandatory dataclass behavior. Modules are normal python classes that respect regular python semantics such as mutability and reference sharing.
 * **Safety**: NNX is designed to with safety in mind, it includes mechanisms to prevent tracer leakage, avoid stale RNGs, and proper state propagation.
 * **Semantic Partitioning**: NNX enables you mark attributes as members of specific collections such as `params`, `batch_stats`, etc, so that each collection can be processed independently when needed.
 * **Lifted transforms**: NNX provides a set of Module-aware transforms that take care of handling the Module's state and provide APIs to process each collection differently by the underlying JAX transform.
