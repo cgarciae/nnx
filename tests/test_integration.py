@@ -109,3 +109,80 @@ class TestIntegration:
         assert model.block1.linear.kernel is model.block2.linear.kernel
         assert model.block1.linear.bias is model.block2.linear.bias
         assert model.block1.bn is not model.block2.bn
+
+    def test_stateful_example(self):
+        class Linear(nnx.Module):
+            def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+                key = ctx.make_rng("params")
+                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.param(jnp.zeros((dout,)))
+                self.count = nnx.var("state", 0)
+
+            def __call__(self, x):
+                self.count += 1
+                return x @ self.w + self.b
+
+        ctx = nnx.Context(params=jax.random.PRNGKey(0))
+        model = Linear(din=12, dout=2, ctx=ctx)
+        # forward pass
+        x = jnp.ones((8, 12))
+        y = model(x)
+        assert model.count == 1
+
+        @nnx.jit
+        def train_step(model, x, y):
+            def loss_fn(model):
+                y_pred = model(x)
+                return jax.numpy.mean((y_pred - y) ** 2)
+
+            # compute gradient
+            grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+            # SGD update
+            model.update_state(
+                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+            )
+
+        # execute the training step
+        train_step(model, x, y)
+        assert model.count == 2
+
+    def test_functional_example(self):
+        class Linear(nnx.Module):
+            def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+                key = ctx.make_rng("params")
+                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.param(jnp.zeros((dout,)))
+                self.count = nnx.var("state", 0)
+
+            def __call__(self, x):
+                self.count += 1
+                return x @ self.w + self.b
+
+        ctx = nnx.Context(params=jax.random.PRNGKey(0))
+        model = Linear(din=12, dout=2, ctx=ctx)
+        # forward pass
+        x = jnp.ones((8, 12))
+        y = model(x)
+        assert model.count == 1
+
+        (params, state), moduledef = model.partition("params", "state")
+
+        @jax.jit
+        def train_step(params, state, x, y):
+            def loss_fn(params):
+                y_pred, updates = moduledef.apply(params, state)(x)
+                new_state = updates.filter("state")
+                loss = jax.numpy.mean((y_pred - y) ** 2)
+                return loss, new_state
+
+            # compute gradient
+            grads, state = jax.grad(loss_fn, has_aux=True)(params)
+            # SGD update
+            params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
+
+            return params, state
+
+        # execute the training step
+        params, state = train_step(params, state, x, y)
+        model = moduledef.merge(params, state)
+        assert model.count == 2

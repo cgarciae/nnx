@@ -35,15 +35,19 @@ class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
         self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jax.numpy.zeros((dout,)))
+        self.b = nnx.param(jnp.zeros((dout,)))
+        self.count = nnx.var("state", 0)
 
     def __call__(self, x):
+        self.count += 1
         return x @ self.w + self.b
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
 # forward pass
-y = model(jnp.ones((8, 12)))
+x = jnp.ones((8, 12))
+y = model(x)
+assert model.count == 1
 ```
 
 ### Training
@@ -68,6 +72,7 @@ def train_step(model, x, y):
 
 # execute the training step
 train_step(model, x, y)
+assert model.count == 2
 ```
 
 </details>
@@ -77,23 +82,26 @@ train_step(model, x, y)
 In this example, we utilize the functional API for training. This approach provides more control over the parameters and allows you to use regular JAX transformations. The model is also trained using Stochastic Gradient Descent (SGD).
 
 ```python
-params, moduledef = model.partition("params")
+(params, state), moduledef = model.partition("params", "state")
 
 @jax.jit
-def train_step(params, x, y):
+def train_step(params, state, x, y):
     def loss_fn(params):
-        y_pred, _updates = moduledef.apply(params)(x)
-        return jax.numpy.mean((y_pred - y) ** 2)
-    
+        y_pred, updates = moduledef.apply(params, state)(x)
+        loss = jax.numpy.mean((y_pred - y) ** 2)
+        return loss, updates.filter("state")
+
     # compute gradient
-    grads: nnx.State = jax.grad(loss_fn)(params)
+    grads, state = jax.grad(loss_fn, has_aux=True)(params)
     # SGD update
     params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
 
-    return params
+    return params, state
 
 # execute the training step
-params = train_step(params, x, y)
+params, state = train_step(params, state, x, y)
+model = moduledef.merge(params, state)
+assert model.count == 2
 ```
 
 </details>
