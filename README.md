@@ -4,7 +4,7 @@
 
 _**N**eural **N**etworks for JA**X**_
 
-NNX is a Neural Networks library for JAX that provides a simple module system that respects regular python semantics. Its designed to be as powerful as [Flax](https://flax.readthedocs.io/en/latest/) but with a highly simplified pythonic API reminiscent of [PyTorch](https://pytorch.org/)
+NNX is a Neural Networks library for JAX that provides a simple yet powerful module system that respects regular python semantics. Its designed to be as powerful as [Flax](https://flax.readthedocs.io/en/latest/) but with a highly simplified pythonic API reminiscent of [PyTorch](https://pytorch.org/)
 
 * **Vanilla Python Semantics**: Modules are normal python classes that respect regular python semantics such as mutability and reference sharing. No mandatory dataclass behavior.
 * **Safety**: NNX is designed to with safety in mind, it includes mechanisms to prevent tracer leakage, avoid stale RNGs, and proper state propagation.
