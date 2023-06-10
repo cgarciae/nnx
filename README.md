@@ -180,7 +180,7 @@ Collection names can be passed as filters to the `partition` method to split the
 (path: Tuple[str, ...], value: Any) -> bool
 ```
 
-To reconstruct the module from a set of substates, you can use `merge` as usual but passing the substates as variadic arguments:
+To reconstruct the module from a set of substates, you can use `merge` as usual but passing the substates as additional arguments:
 
 ```python
 model = moduledef.merge(params, batch_stats, rest)
