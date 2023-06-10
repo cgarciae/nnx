@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/gh/cgarciae/nnx/branch/main/graph/badge.svg?token=VqJjL474Z7)](https://codecov.io/gh/cgarciae/nnx)
+
 # NNX
 
 _**N**eural **N**etworks for JA**X**_
