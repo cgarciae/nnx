@@ -4,21 +4,21 @@
 
 _**N**eural **N**etworks for JA**X**_
 
-NNX is a Neural Networks library for JAX that provides a simple yet powerful module system that respects regular python semantics. Its designed to be as powerful as [Flax](https://flax.readthedocs.io/en/latest/) but with a highly simplified pythonic API reminiscent of [PyTorch](https://pytorch.org/)
+NNX is a Neural Networks library for JAX that provides a simple yet powerful module system that adheres to standard Python semantics. Its aim is to combine the robustness of [Flax](https://flax.readthedocs.io/en/latest/) with a simplified, Pythonic API akin to that of [PyTorch](https://pytorch.org/).
 
-* **Vanilla Python Semantics**: No mandatory dataclass behavior. Modules are normal python classes that respect regular python semantics such as mutability and reference sharing.
-* **Safety**: NNX is designed to with safety in mind, it includes mechanisms to prevent tracer leakage, avoid stale RNGs, and proper state propagation.
-* **Semantic Partitioning**: NNX enables you mark attributes as members of specific collections such as `params`, `batch_stats`, etc, so that each collection can be processed independently when needed.
-* **Lifted transforms**: NNX provides a set of Module-aware transforms that take care of handling the Module's state and provide APIs to process each collection differently by the underlying JAX transform.
+* **Standard Python Semantics**: No mandatory dataclass behavior. Modules are constructed as typical Python classes, embracing regular Python semantics such as mutability and reference sharing.
+* **Safety**: NNX is designed with an emphasis on safety, incorporating mechanisms to prevent tracer leakage, stale RNGs, and ensure proper state propagation.
+* **Semantic Partitioning**: NNX allows you to classify attributes as members of distinct collections like `params`, `batch_stats`, and so on, enabling separate processing of each collection as required.
+* **Lifted Transforms**: NNX offers a set of Module-aware transforms that adeptly manage the Module's state, providing APIs to handle each collection differently by the corresponding JAX transform.
 
 ## Installation
 
-To get started with `nnx`, first install the package using pip:
+To get started with `nnx`, install the package via pip:
 
 ```
 pip install nnx
 ```
-To get the latest version, install directly from GitHub:
+For the most recent version, install directly from our GitHub repository:
 
 ```
 pip install git+https://github.com/cgarciae/nnx
