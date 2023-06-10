@@ -45,9 +45,12 @@ model = Linear(din=12, dout=2, ctx=ctx)
 # forward pass
 y = model(jnp.ones((8, 12)))
 ```
+
 ### Training
 
 <details><summary>Stateful Transforms</summary>
+
+In this example, we uset the `nnx.jit` and `nnx.grad` stateful transforms to define the training step. The model is trained using Stochastic Gradient Descent (SGD) and doesn't require an explicit return statement.
 
 ```python
 @nnx.jit
@@ -63,13 +66,15 @@ def train_step(model, x, y):
         jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
     )
 
-# yes... there's no return :)
+# execute the training step
 train_step(model, x, y)
 ```
 
 </details>
 
-<details><summary>Functional API</summary>
+<details><summary>Functional API </summary>
+
+In this example, we utilize the functional API for training. This approach provides more control over the parameters and allows you to use regular JAX transformations. The model is also trained using Stochastic Gradient Descent (SGD).
 
 ```python
 params, moduledef = model.partition("params")
@@ -87,6 +92,7 @@ def train_step(params, x, y):
 
     return params
 
+# execute the training step
 params = train_step(params, x, y)
 ```
 
