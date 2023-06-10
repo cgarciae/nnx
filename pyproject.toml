@@ -10,6 +10,7 @@ python = ">=3.8,<3.12"
 jax = "*"
 jaxlib = "*"
 optax = "*"
+typing-extensions = "*"
 
 
 [tool.poetry.group.test.dependencies]
