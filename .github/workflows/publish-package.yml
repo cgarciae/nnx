@@ -1,0 +1,62 @@
+name: Publish Package
+on:
+  release:
+    types: [published]
+jobs:
+  publish-docs-and-package:
+    name: Publish Docs and Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1.3.3
+        with:
+          version: 1.4.0
+
+      - name: Setup Poetry
+        run: |
+          poetry config virtualenvs.in-project true
+
+      - name: Cache
+        id: cache
+        uses: actions/cache@v3.2.2
+        with:
+          path: '.venv'
+          key: publish-package-${{ hashFiles('poetry.lock') }}
+
+      - name: Install Dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          poetry install --without dev
+      
+      - name: Install Package
+        run: |
+          poetry install --without dev
+      
+      # ----------------------------------------
+      # No docs for now
+      # ----------------------------------------
+      # - name: Build Docs 🔨
+      #   run: |
+      #     cp README.md docs/index.md
+      #     poetry run mkdocs build
+        
+      # - name: Deploy Page 🚀
+      #   uses: JamesIves/github-pages-deploy-action@4.1.6
+      #   with:
+      #     branch: gh-pages
+      #     folder: site
+
+      - name: Publish to PyPI
+        run: |
+          poetry build
+          poetry publish \
+            --username ${{ secrets.PYPI_USERNAME }} \
+            --password ${{ secrets.PYPI_PASSWORD }}
