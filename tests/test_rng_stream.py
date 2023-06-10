@@ -104,5 +104,8 @@ class TestContext:
 
         key1 = ctx.make_rng("dropout")
         key2 = ctx2.make_rng("dropout")
-
         assert not np.equal(key1, key2).all()
+
+        ctx3 = ctxdef.merge(keys)
+        key3 = ctx3.make_rng("dropout")
+        assert np.equal(key2, key3).all()

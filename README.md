@@ -1,16 +1,13 @@
-# nnx
+# NNX
 
 _**N**eural **N**etworks for JA**X**_
 
-`nnx` is a Neural Networks library for JAX that uses Pytree-based Modules and a novel 
-a **Ref**erence system to enable:
+NNX is a Neural Networks library for JAX that provides a simple module system that respects regular python semantics. Its designed to be as powerful as [Flax](https://flax.readthedocs.io/en/latest/) but with a highly simplified API reminiscent of [PyTorch](https://pytorch.org/)
 
-* **Simplicity**: Provides an easy-to-understand mental model and implementation.
-* **Shared refereces**: Supports **safe** mutable shared state thanks to its **Ref**erence system.
-* **Leaf Metadata**: Enables semantic partitioning of a Module's state (similar to Flax collections) and adding [Axis Metadata](https://github.com/google/flax/blob/main/docs/flip/2434-general-metadata.md#flip-axis-metadata). 
-* **Stateful transformations**: Seamless integration with JAX's native transformation capabilities.
-
-NNX was designed to have the same capabilities as Flax with the simplicity of Equinox.
+* **Vanilla Python Semantics**: Modules are normal python classes that respect regular python semantics such as mutability and reference sharing.
+* **Safety**: NNX is designed to with safety in mind, it includes mechanism to prevent tracer leakage, avoid stale RNGs, and proper state propagation.
+* **Semantic Partitioning**: NNX enables you mark attributes as members of specific collections such as `params`, `batch_stats`, etc, so that each collection can be processed independently when needed.
+* **Lifted transforms**: NNX provides a set of Module-aware transforms that take care of handling the Module's state and provide APIs to process each collection differently by the underlying JAX transform.
 
 ## Status
 
@@ -31,7 +28,6 @@ pip install git+https://github.com/cgarciae/nnx
 ```
 
 ## Usage
-
 
 ```python
 import nnx
@@ -54,7 +50,7 @@ y = model(jnp.ones((8, 12)))
 ```
 ### Training
 
-<details><summary>Stateful Transformations</summary>
+<details><summary>Stateful Transforms</summary>
 
 ```python
 @nnx.jit
@@ -76,7 +72,7 @@ train_step(model, x, y)
 
 </details>
 
-<details><summary>Partition API</summary>
+<details><summary>Functional API</summary>
 
 ```python
 params, moduledef = model.partition("params")
