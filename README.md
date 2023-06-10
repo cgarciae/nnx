@@ -4,8 +4,8 @@ _**N**eural **N**etworks for JA**X**_
 
 NNX is a Neural Networks library for JAX that provides a simple module system that respects regular python semantics. Its designed to be as powerful as [Flax](https://flax.readthedocs.io/en/latest/) but with a highly simplified API reminiscent of [PyTorch](https://pytorch.org/)
 
-* **Vanilla Python Semantics**: Modules are normal python classes that respect regular python semantics such as mutability and reference sharing.
-* **Safety**: NNX is designed to with safety in mind, it includes mechanism to prevent tracer leakage, avoid stale RNGs, and proper state propagation.
+* **Vanilla Python Semantics**: Modules are normal python classes that respect regular python semantics such as mutability and reference sharing. No mandatory dataclass behavior.
+* **Safety**: NNX is designed to with safety in mind, it includes mechanisms to prevent tracer leakage, avoid stale RNGs, and proper state propagation.
 * **Semantic Partitioning**: NNX enables you mark attributes as members of specific collections such as `params`, `batch_stats`, etc, so that each collection can be processed independently when needed.
 * **Lifted transforms**: NNX provides a set of Module-aware transforms that take care of handling the Module's state and provide APIs to process each collection differently by the underlying JAX transform.
 
@@ -22,7 +22,7 @@ To get the latest version, install directly from GitHub:
 pip install git+https://github.com/cgarciae/nnx
 ```
 
-## Usage
+## Basic Usage
 
 ```python
 import nnx
@@ -94,31 +94,34 @@ params = train_step(params, x, y)
 
 ### Modules
 
-NNX Modules are regular python classes that inherit from `nnx.Module`, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, and other Modules and other NNX types. All other types are treated as static attributes.
+NNX Modules are regular python classes that inherit from `nnx.Module`, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
 
 ```python
 class Foo(nnx.Module):
-    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+    def __init__(self, ctx: nnx.Context):
         # node attributes
         self.variable = nnx.param(jnp.array(1))
         self.np_buffer = np.array(2)
         self.jax_buffer = jnp.array(3)
         self.node = nnx.node([4, 5])
-        self.submodule = nnx.Linear(din, dout, ctx=ctx)
+        self.submodule = nnx.Linear(2, 4, ctx=ctx)
         # static attributes
-        self.din = din
-        self.dout = dout
+        self.int = 1
+        self.float = 2.0
+        self.str = "hello"
+        self.list = [1, 2, 3]
 
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = Foo(din=12, dout=2, ctx=ctx)
 ```
-Regular python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
+As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
 
-Since NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be partitioned into the `State` and a `ModuleDef` objects. The `State` object is a flat dictionary-like structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and overall structural definition of the Module.
+### Functional API
+
+NNX Modules are not pytrees so they cannot be passed to JAX transformations. In order to interact with JAX, a Module must be partitioned into a `State` and `ModuleDef` objects. The `State` object is a flat dictionary-like pytree structure that contains all the deduplicated node attributes, and the `ModuleDef` contains the static attributes and structural information needed to reconstruct the Module.
 
 ```python
 state, moduledef = model.partition()
-print(state)
 ```
 ```
 State({
@@ -136,7 +139,7 @@ State({
 ```python
 model = moduledef.merge(state)
 ```
-This can be use to e.g. recreate a module inside a JAX transformation. The `apply` provides a functional interface to the module, it can be used call any method or submodule and get both the output and the updated state:
+This can be use to e.g. recreate a module inside a JAX transformation. The `apply` provides a functional interface to the module, it can be used call any method or submodule and get the output and the updated state:
 
 ```python
 # run __call__
@@ -148,6 +151,57 @@ y, (state, moduledef) = moduledef.apply(state).submodule(x)
 ```
 
 `apply` can call any nested method or submodule as long as it can be accessed via the `.` or `[]` operators.
+
+### Partitioning State
+`nnx.var` lets you create `Variable` attributes with `collection` metadata, this metadata can be used to partition the state into multiple substates. `nnx.param` is a special case of `nnx.var` where `collection="params"`.
+
+```python
+class Foo(nnx.Module):
+    def __init__(self):
+        self.a = nnx.param(1.0)
+        self.b = nnx.var("batch_stats", 2.0)
+        self.c = jax.numpy.array(3.0)
+
+    def __call__(self, x):
+        return x * self.a + self.b
+
+model = Foo()
+```
+Collection names can be passed as filters to the `partition` method to split the state into mutually exclusive substates containing only the node attributes with the corresponding collection name:
+
+```python
+(params, batch_stats, rest), moduledef = model.partition("params", "batch_stats", ...)
+```
+`partition` will make sure all nodes are match by atleast one filter, else it will raise an error. If you have non-`Variable` nodes like `nnx.node`, `jax.Array`, or `numpy.ndarray` attributes, you can use the `...` filter which will match any node. For a more general filter you can pass a predicate function of the form:
+
+```python
+(path: Tuple[str, ...], value: Any) -> bool
+```
+
+To reconstruct the module from a set of substates, you can use `merge` as usual but passing the substates as variadic arguments:
+
+```python
+model = moduledef.merge(params, batch_stats, rest)
+```
+
+The same is true for `apply`.
+
+```python
+y, (state, moduledef) = moduledef.apply(params, batch_stats, rest)(x)
+```
+
+ Note that `apply` will return a single `state` object, if you need to re-partition the state you can use `State`'s own `partition` method:
+
+```python
+params, batch_stats, rest = state.partition("params", "batch_stats", ...)
+```
+
+Alternatively, if you are just interested in a subset of partitions, you can use the `State.filter` method which will not raise an error if some nodes are not matched by any filter:
+
+```python
+params, batch_stats = state.filter("params", "batch_stats")
+```
+
 
 ### Stateful Transforms
 
