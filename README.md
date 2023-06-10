@@ -218,6 +218,41 @@ Alternatively, if you are just interested in a subset of partitions, you can use
 params, batch_stats = state.filter("params", "batch_stats")
 ```
 
+### Capturing Intermediate Values
+
+```python
+class Linear(nnx.Module):
+    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+        key = ctx.make_rng("params")
+        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.param(jnp.zeros((dout,)))
+
+    def __call__(self, x):
+        y = x @ self.w + self.b
+        self.y = nnx.var("intermediates", y)
+        return y
+
+ctx = nnx.Context(jax.random.PRNGKey(0))
+model = Linear(12, 2, ctx=ctx)
+```
+```python
+y = model(jnp.ones((8, 12)))
+intermediates = model.pop_state("intermediates")
+```
+```python
+state, moduledef = model.partition()
+
+y, (state, _) = moduledef.apply(state)(jnp.ones((8, 12)))
+intermediates, state = state.partition("intermediates", ...)
+```
+```
+State({
+  ('y',): Variable(
+    collection='intermediates',
+    value=Array(...)
+  )
+})
+```
 
 ### Stateful Transforms
 
@@ -251,6 +286,7 @@ train_step(model, x, y)
 ```
 
 The most interesting aspect of this design is that the code appears very imperative, as the state is automatically propagated in and out of the transformations.
+
 
 ### Case Studies
 #### Shared State

@@ -186,3 +186,47 @@ class TestIntegration:
         params, state = train_step(params, state, x, y)
         model = moduledef.merge(params, state)
         assert model.count == 2
+
+    def test_intermediates_example(self):
+        class Linear(nnx.Module):
+            def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+                key = ctx.make_rng("params")
+                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.param(jnp.zeros((dout,)))
+
+            def __call__(self, x):
+                y = x @ self.w + self.b
+                self.y = nnx.var("intermediate", y)
+                return y
+
+        ctx = nnx.Context(jax.random.PRNGKey(0))
+        model = Linear(12, 2, ctx=ctx)
+
+        y = model(jnp.ones((8, 12)))
+
+        intermediates = model.pop_state("intermediate")
+
+        assert ("y",) in intermediates
+
+    def test_intermediates_example_functional(self):
+        class Linear(nnx.Module):
+            def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+                key = ctx.make_rng("params")
+                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.param(jnp.zeros((dout,)))
+
+            def __call__(self, x):
+                y = x @ self.w + self.b
+                self.y = nnx.var("intermediate", y)
+                return y
+
+        ctx = nnx.Context(jax.random.PRNGKey(0))
+        model = Linear(12, 2, ctx=ctx)
+
+        state, moduledef = model.partition()
+
+        y, (state, _) = moduledef.apply(state)(jnp.ones((8, 12)))
+
+        intermediates, state = state.partition("intermediate", ...)
+
+        assert ("y",) in intermediates

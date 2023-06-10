@@ -243,7 +243,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         if len(filters) == 0:
             raise ValueError("At least one filter must be provided")
         else:
-            *states, rest = self.state.partition(*filters)
+            *states, rest = self.state.partition(*filters, ...)
 
         if len(states) == 1:
             states = states[0]
