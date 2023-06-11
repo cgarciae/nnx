@@ -36,7 +36,7 @@ class Linear(nnx.Module):
         key = ctx.make_rng("params")
         self.w = nnx.param(jax.random.uniform(key, (din, dout)))
         self.b = nnx.param(jnp.zeros((dout,)))
-        self.count = nnx.var("state", 0)
+        self.count = nnx.var("counts", 0)
 
     def __call__(self, x):
         self.count += 1
@@ -83,25 +83,25 @@ assert model.count == 2
 In this example, we utilize the functional API for training. This approach provides more control over the parameters and allows you to use regular JAX transformations. The model is also trained using Stochastic Gradient Descent (SGD).
 
 ```python
-(params, state), moduledef = model.partition("params", "state")
+(params, counts), moduledef = model.partition("params", "counts")
 
 @jax.jit
-def train_step(params, state, x, y):
+def train_step(params, counts, x, y):
     def loss_fn(params):
-        y_pred, updates = moduledef.apply(params, state)(x)
+        y_pred, updates = moduledef.apply(params, counts)(x)
         loss = jax.numpy.mean((y_pred - y) ** 2)
-        return loss, updates.filter("state")
+        return loss, updates.filter("counts")
 
     # compute gradient
-    grads, state = jax.grad(loss_fn, has_aux=True)(params)
+    grads, counts = jax.grad(loss_fn, has_aux=True)(params)
     # SGD update
     params = jax.tree_map(lambda w, g: w - 0.1 * g, params, grads)
 
-    return params, state
+    return params, counts
 
 # execute the training step
-params, state = train_step(params, state, x, y)
-model = moduledef.merge(params, state)
+params, counts = train_step(params, counts, x, y)
+model = moduledef.merge(params, counts)
 assert model.count == 2
 ```
 
