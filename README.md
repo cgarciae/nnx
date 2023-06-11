@@ -12,6 +12,13 @@ NNX is a Neural Networks library for JAX that provides a simple yet powerful mod
 * **Semantic**: Partition a Module's state into different semantic collections, allowing for fine-grained control when applying JAX transformations.
 * **Lifted Transforms**: NNX offers a set of Module-aware transforms that automatically manage the Module's state and provide APIs to instruct the underlying JAX transform how to handle each state collection.
 
+**Table of Contents**
+* [Installation](#installation)
+* [Getting Started](#getting-started)
+* [FAQs](#faqs)
+* [Examples](#examples)
+* [User Guide](#user-guide)
+
 ## Installation
 
 To get started with `nnx`, install the package via pip:
