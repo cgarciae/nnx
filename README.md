@@ -125,7 +125,7 @@ NNX takes the best features that allow Flax to scale to large projects and integ
 One place in which NNX strongly deviates from Flax is that (currently) it avoids shape inference in favor of static initialization. It is not a technichal limitation but rather a design choice. This design both simplifies the internal implementation and makes it easier to reason about the code for the user, at the cost of being more verbose at times. On the other hand, Pytorch users will feel right at home.
 
 ### How is it different from Equinox?
-While they might look similar at a surface-level, NNX's Module system is much more powerful and flexible than Equinox's, it contains the following extra features:
+While they might look similar at a surface-level, NNX's Module system is more powerful and flexible than Equinox's, it contains the following additional features:
 
 * Uses regular python classes (no mandatory dataclass behavior).
 * Modules are mutable
