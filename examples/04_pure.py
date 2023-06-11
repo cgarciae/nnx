@@ -3,7 +3,6 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from jax.nn import initializers
 
 import nnx
 

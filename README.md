@@ -114,6 +114,16 @@ assert model.count == 2
 
 </details>
 
+## Examples
+
+* [Using Lifted Transforms](https://github.com/cgarciae/nnx/blob/main/examples/01_jit_transform.py): Shows how to train a simple model using lifted transforms.
+* [Using the Functional API](https://github.com/cgarciae/nnx/blob/main/examples/02_functional_api.py): Shows how to train a simple model using the functional API.
+* [Using TrainState](https://github.com/cgarciae/nnx/blob/main/examples/03_train_state.py): Shows how to train a simple model using the functional API with the help of `TrainState`.
+* [Using PureModule](https://github.com/cgarciae/nnx/blob/main/examples/04_pure.py) (experimental): Shows how to train a simple model using the functional API and leveraging `PureModule` to simplify the code.
+* [Training a VAE](https://github.com/cgarciae/nnx/blob/main/examples/05_vae.py): Shows how to train a VAE on the binarized MNIST dataset, uses the functional API, `TrainState`, and shows how to use capture intermediate values to retrieve `kl_loss`.
+* [Scan over layers](https://github.com/cgarciae/nnx/blob/main/examples/06_scan_over_layers.py): An contrived example that implements scan over layers with dropout and a share BatcNorm layer to showcase how lifted transforms can be implemented. It uses the functional API along with `jax.vmap` and `jax.lax.scan`.
+* [Creating a Transformer](https://github.com/cgarciae/nnx/blob/main/examples/07_tranformer.py): Shows how to create a Transformer with an auto-regressive decoder that uses scan over layers and a kv-cache for fast inference. Credits to @levskaya.
+
 ## FAQs
 
 ### Status
