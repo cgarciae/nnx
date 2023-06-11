@@ -147,10 +147,10 @@ While they might look similar at a surface-level, NNX's Module system is more po
 * Uses regular python classes (no mandatory dataclass behavior).
 * Modules are mutable
 * Reference sharing between Modules is allowed
-* Mutable state lives inside the Module (no need for a separate [State container])(https://docs.kidger.site/equinox/examples/stateful/)).
+* Mutable state lives inside the Module (no need for a separate [State container](https://docs.kidger.site/equinox/examples/stateful/)).
 * Supports node metadata and semantic partitioning.
 
-One major difference between the two frameworks is that, by design, NNX Modules are not Pytrees. This adds a safety layer as it prevents state updates from being lost by accident due to referential transparency. It also removes the need of threading a separate [State container])(https://docs.kidger.site/equinox/examples/stateful/) throughout the code in order to propagate state. In NNX state updates are either always preserved or explicitly discarded by the user.
+One major difference between the two frameworks is that, by design, NNX Modules are not Pytrees. This adds a safety layer as it prevents state updates from being lost by accident due to referential transparency. It also removes the need of threading a separate [State container](https://docs.kidger.site/equinox/examples/stateful/) throughout the code in order to propagate state. In NNX state updates are either always preserved or explicitly discarded by the user.
 
 ## User Guide
 
