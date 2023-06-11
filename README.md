@@ -44,6 +44,7 @@ class Linear(nnx.Module):
 
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
+
 # forward pass
 x = jnp.ones((8, 12))
 y = model(x)
