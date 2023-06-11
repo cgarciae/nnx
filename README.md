@@ -6,7 +6,7 @@ _**N**eural **N**etworks for JA**X**_
 
 NNX is a Neural Networks library for JAX that provides a simple yet powerful module system that adheres to standard Python semantics. Its aim is to combine the robustness of [Flax](https://flax.readthedocs.io/en/latest/) with a simplified, Pythonic API akin to that of [PyTorch](https://pytorch.org/).
 
-* **Pythonic**: Modules are just regular python classes you know and love, they contain their own state, are fully mutable, and allow sharing references between Modules.
+* **Pythonic**: Modules are just regular python classes, they contain their own state, are fully mutable, and allow sharing references between Modules.
 * **Fully Compatible**: Easy convert back and forth between Modules and pure pytrees compatible with any JAX transformation and other JAX tooling.
 * **Safe**: NNX incorporates mechanisms to try to prevent tracer leakage, avoid stale RNGs, and ensure proper state propagation in order to help produce correct JAX programs.
 * **Semantic**: Partition a Module's state into different semantic collections, allowing for fine-grained control when applying JAX transformations.
@@ -56,8 +56,7 @@ assert model.count == 1
 
 ### Training
 
-Here we show case two different approaches to training the model. The first one uses lifted transforms and the second one uses the functional API. Both approaches are equivalent and produce the same results.
-
+Here we show case two different approaches to training the model defined in the previous secition. The first one uses lifted transforms and the second one uses the functional API. Both approaches are equivalent and produce the same results.
 
 <details><summary>Lifted Transforms</summary>
 
@@ -115,7 +114,28 @@ assert model.count == 2
 
 </details>
 
-## Design
+## FAQs
+
+### Status
+NNX is still in early development so expect bugs and breaking changes. That said, current API is the result of months of experimentation and we don't expect any major changes in the near future.
+
+### How is it different from Flax?
+NNX takes the best features that allow Flax to scale to large projects and integrates them into a much simpler Module system with pythonic semantics. 
+
+One place in which NNX strongly deviates from Flax is that (currently) it avoids shape inference in favor of static initialization. It is not a technichal limitation but rather a design choice. This design both simplifies the internal implementation and makes it easier to reason about the code for the user, at the cost of being more verbose at times. On the other hand, Pytorch users will feel right at home.
+
+### How is it different from Equinox?
+While they might look similar at a surface-level, NNX's Module system is much more powerful and flexible than Equinox's, it contains the following extra features:
+
+* Uses regular python classes (no mandatory dataclass behavior).
+* Modules are mutable
+* Reference sharing between Modules is allowed
+* Mutable state lives inside the Module (no need for a separate [State container])(https://docs.kidger.site/equinox/examples/stateful/)).
+* Supports node metadata and semantic partitioning.
+
+One major difference between the two frameworks is that, by design, NNX Modules are not Pytrees. This adds a safety layer as it prevents state updates from being lost by accident due to referential transparency, and removes the need of threading a separate [State container])(https://docs.kidger.site/equinox/examples/stateful/) throughout the code in order to propagate state. In NNX state updates are either always preserved or explicitly discarded by the user.
+
+## User Guide
 
 ### Modules
 
