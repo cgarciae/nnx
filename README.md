@@ -198,24 +198,21 @@ y, (state, moduledef) = moduledef.apply(state).submodule(x)
 `apply` can call any nested method or submodule as long as it can be accessed via the `.` or `[]` operators.
 
 ### Partitioning State
-`nnx.var` lets you create `Variable` attributes with `collection` metadata, this metadata can be used to partition the state into multiple substates. `nnx.param` is a special case of `nnx.var` where `collection="params"`.
+`nnx.var` lets you create `Variable` attributes with `collection` metadata, this metadata can be used to partition the state into multiple substates. `nnx.param` is a special case of `nnx.var` where `collection="params"`. 
+
+Here are various examples of how you can use the `partition` method along with collection names to partition a module into multiple substates:
 
 ```python
-class Foo(nnx.Module):
-    def __init__(self):
-        self.a = nnx.param(1.0)
-        self.b = nnx.var("batch_stats", 2.0)
-        self.c = jax.numpy.array(3.0)
-
-    def __call__(self, x):
-        return x * self.a + self.b
-
-model = Foo()
-```
-Collection names can be passed as filters to the `partition` method to split the state into mutually exclusive substates containing only the node attributes with the corresponding collection name:
-
-```python
+# partition the module into the state with all the nodes and the moduledef
+state, moduledef = model.partition()
+# verify that the state contains only params, else raise an error
+params, moduledef = model.partition("params")
+# split the state into params and batch_stats, verify no nodes are left
+(params, batch_stats), moduledef = model.partition("params", "batch_stats")
+# if there are any nodes left, use the `...` filter to capture them
 (params, batch_stats, rest), moduledef = model.partition("params", "batch_stats", ...)
+# using `...` as the only filter is equivalent to not passing any filters
+model.partition(...) = model.partition()
 ```
 `partition` will make sure all nodes are match by atleast one filter, else it will raise an error. If you have non-`Variable` nodes like `nnx.node`, `jax.Array`, or `numpy.ndarray` attributes, you can use the `...` filter which will match any node. For a more general filter you can pass a predicate function of the form:
 
@@ -244,6 +241,9 @@ params, batch_stats, rest = state.partition("params", "batch_stats", ...)
 Alternatively, if you are just interested in a subset of partitions, you can use the `State.filter` method which will not raise an error if some nodes are not matched by any filter:
 
 ```python
+# only get params
+params = state.filter("params")
+# get params and batch_stats
 params, batch_stats = state.filter("params", "batch_stats")
 ```
 
