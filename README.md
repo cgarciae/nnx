@@ -248,6 +248,9 @@ params, batch_stats = state.filter("params", "batch_stats")
 ```
 
 ### Capturing Intermediate Values
+In NNX you can easily propagate intemediate values by simply assigning them to an attribute at runtime. For convenience, you should assign them to a `Variable` attribute with a `collection` name by using `nnx.var` so you can easily retrieve them later.
+
+Here is an example of how to create a `Linear` module that captures its output into a `Variable` attribute with the `intermediates` collection name:
 
 ```python
 class Linear(nnx.Module):
@@ -264,16 +267,14 @@ class Linear(nnx.Module):
 ctx = nnx.Context(jax.random.PRNGKey(0))
 model = Linear(12, 2, ctx=ctx)
 ```
+Since `y` is only created when the module is called, it is not available upon initialization. However, once you call the module `y` will be created. It is recommended that you use `pop_state` to retrieve temporary collections like `intermediates`:
+
 ```python
 y = model(jnp.ones((8, 12)))
 intermediates = model.pop_state("intermediates")
 ```
-```python
-state, moduledef = model.partition()
+`pop_state` will return a `State` object with the nodes that match the given filter and remove them from the module's attributes.
 
-y, (state, _) = moduledef.apply(state)(jnp.ones((8, 12)))
-intermediates, state = state.partition("intermediates", ...)
-```
 ```
 State({
   ('y',): Variable(
@@ -282,6 +283,19 @@ State({
   )
 })
 ```
+
+If you use the functional API to call the module instead, the `intermediates` nodes will be present in the output `state`. To retrieve the `intermediates` nodes and optionally separate them from the output `state` you can use `State.partition`:
+
+```python
+state, moduledef = model.partition()
+y, (state, moduledef) = moduledef.apply(state)(jnp.ones((8, 12)))
+# "pop" the intermediates from the state
+intermediates, state = state.partition("intermediates", ...)
+```
+
+Alternatively, you can use `State.filter` to retrieve the `intermediates` nodes without removing them from the `state`.
+
+
 
 ### Stateful Transforms
 
