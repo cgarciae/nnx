@@ -6,10 +6,11 @@ _**N**eural **N**etworks for JA**X**_
 
 NNX is a Neural Networks library for JAX that provides a simple yet powerful module system that adheres to standard Python semantics. Its aim is to combine the robustness of [Flax](https://flax.readthedocs.io/en/latest/) with a simplified, Pythonic API akin to that of [PyTorch](https://pytorch.org/).
 
-* **Standard Python Semantics**: No mandatory dataclass behavior. Modules are constructed as typical Python classes, embracing regular Python semantics such as mutability and reference sharing.
-* **Safety**: NNX is designed with an emphasis on safety, incorporating mechanisms to prevent tracer leakage, stale RNGs, and ensure proper state propagation.
-* **Semantic Partitioning**: NNX allows you to classify attributes as members of distinct collections like `params`, `batch_stats`, and so on, enabling separate processing of each collection as required.
-* **Lifted Transforms**: NNX offers a set of Module-aware transforms that adeptly manage the Module's state, providing APIs to handle each collection differently by the corresponding JAX transform.
+* **Pythonic**: Modules are just regular python classes you know and love, they contain their own state, are fully mutable, and allow sharing references between Modules.
+* **Fully Compatible**: Easy convert back and forth between Modules and pure pytrees compatible with any JAX transformation and other JAX tooling.
+* **Safe**: NNX incorporates mechanisms to try to prevent tracer leakage, avoid stale RNGs, and ensure proper state propagation in order to help produce correct JAX programs.
+* **Semantic**: Partition a Module's state into different semantic collections, allowing for fine-grained control when applying JAX transformations.
+* **Lifted Transforms**: NNX offers a set of Module-aware transforms that automatically manage the Module's state and provide APIs to instruct the underlying JAX transform how to handle each state collection.
 
 ## Installation
 
@@ -24,7 +25,9 @@ For the most recent version, install directly from our GitHub repository:
 pip install git+https://github.com/cgarciae/nnx
 ```
 
-## Basic Usage
+## Getting Started
+
+The following example guides you through creating a basic `Linear` model with NNX and executing a forward pass. It also demonstrate how handle mutable state by showing how to keep track of the number of times the model has been called.
 
 ```python
 import nnx
@@ -36,7 +39,7 @@ class Linear(nnx.Module):
         key = ctx.make_rng("params")
         self.w = nnx.param(jax.random.uniform(key, (din, dout)))
         self.b = nnx.param(jnp.zeros((dout,)))
-        self.count = nnx.var("counts", 0)
+        self.count = nnx.var("counts", 0)  # track the number of calls
 
     def __call__(self, x):
         self.count += 1
@@ -45,7 +48,7 @@ class Linear(nnx.Module):
 ctx = nnx.Context(params=jax.random.PRNGKey(0))
 model = Linear(din=12, dout=2, ctx=ctx)
 
-# forward pass
+# Forward pass and verify the call count
 x = jnp.ones((8, 12))
 y = model(x)
 assert model.count == 1
@@ -53,9 +56,12 @@ assert model.count == 1
 
 ### Training
 
-<details><summary>Stateful Transforms</summary>
+Here we show case two different approaches to training the model. The first one uses lifted transforms and the second one uses the functional API. Both approaches are equivalent and produce the same results.
 
-In this example, we uset the `nnx.jit` and `nnx.grad` stateful transforms to define the training step. The model is trained using Stochastic Gradient Descent (SGD) and doesn't require an explicit return statement.
+
+<details><summary>Lifted Transforms</summary>
+
+In this example, we uset the `nnx.jit` and `nnx.grad` lifted transforms to define the training step. The model is trained using Stochastic Gradient Descent (SGD) and `train_step` doesn't require a return statement in this case as the model's state is automatically updated.
 
 ```python
 @nnx.jit
@@ -76,11 +82,13 @@ train_step(model, x, y)
 assert model.count == 2
 ```
 
+**Note**: Using `nnx.jit` can introduce some overhead when compared to using `jax.jit` directly. Use `nnx.jit` for simple prototypes and getting started quickly. For more advanced use cases, use the functional API.
+
 </details>
 
 <details><summary>Functional API </summary>
 
-In this example, we utilize the functional API for training. This approach provides more control over the parameters and allows you to use regular JAX transformations. The model is also trained using Stochastic Gradient Descent (SGD).
+In this example, we utilize the functional API for training. This approach provides more control over the state and allows you to use regular JAX transformations. The model is also trained using Stochastic Gradient Descent (SGD).
 
 ```python
 (params, counts), moduledef = model.partition("params", "counts")
@@ -88,7 +96,7 @@ In this example, we utilize the functional API for training. This approach provi
 @jax.jit
 def train_step(params, counts, x, y):
     def loss_fn(params):
-        y_pred, updates = moduledef.apply(params, counts)(x)
+        y_pred, (updates, _) = moduledef.apply(params, counts)(x)
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss, updates.filter("counts")
 
@@ -111,7 +119,7 @@ assert model.count == 2
 
 ### Modules
 
-NNX Modules are regular python classes that inherit from `nnx.Module`, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
+NNX Modules are normal python classes, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
 
 ```python
 class Foo(nnx.Module):
