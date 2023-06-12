@@ -150,31 +150,11 @@ class Context:
 
     def __init__(
         self,
-        rngs: tp.Union[
-            tp.Mapping[str, tp.Union[RngStream, KeyArray]], RngStream, KeyArray, None
-        ] = None,
-        *,
-        flags: tp.Optional[tp.Mapping[str, bool]] = None,
-        **rng_updates: tp.Union[RngStream, KeyArray],
+        rngs: tp.Mapping[str, RngStream],
+        flags: tp.Mapping[str, bool],
     ):
-        if rngs is None:
-            _rngs = {}
-        elif isinstance(rngs, tp.Mapping):
-            _rngs = dict(rngs)
-        elif isinstance(rngs, RngStream):
-            _rngs = dict(params=rngs)
-        else:
-            _rngs = dict(params=RngStream(rngs))
-
-        _rngs.update(**rng_updates)
-
-        _rngs = {
-            name: RngStream(key) if not isinstance(key, RngStream) else key
-            for name, key in _rngs.items()
-        }
-
-        self._rngs = _rngs
-        self._flags = MappingProxyType(flags or {})
+        self._rngs = rngs
+        self._flags = flags
 
     def has_rng(self, name: str) -> bool:
         return name in self._rngs
@@ -198,3 +178,26 @@ class Context:
         keys = {name: stream._key for name, stream in rngs.items()}
         rng_counts = tuple((name, stream.count_path) for name, stream in rngs.items())
         return PureContext.new(keys, ContextDef(rng_counts, tuple(self._flags.items())))
+
+
+def context(
+    params: tp.Union[int, KeyArray, RngStream, None] = None,
+    *,
+    flags: tp.Optional[tp.Mapping[str, bool]] = None,
+    **rngs: tp.Union[int, KeyArray, RngStream],
+) -> Context:
+    _flags = flags or {}
+
+    if params is not None:
+        rngs["params"] = params
+
+    _rngs = {
+        name: RngStream(jax.random.PRNGKey(value))
+        if isinstance(value, int)
+        else RngStream(value)
+        if isinstance(value, jax.Array)
+        else value
+        for name, value in rngs.items()
+    }
+
+    return Context(rngs=_rngs, flags=_flags)

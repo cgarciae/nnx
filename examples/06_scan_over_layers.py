@@ -71,8 +71,7 @@ class MLP(nnx.Module):
         return x
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = MLP(10, 20, 30, ctx=ctx)
+model = MLP(10, 20, 30, ctx=nnx.context(0))
 
 
 @nnx.jit
@@ -80,8 +79,7 @@ def train_step(model: MLP, key, batch):
     x, y = batch
 
     def loss(model: MLP):
-        ctx = nnx.Context(rngs=dict(dropout=key))
-        y_pred = model(x, train=True, ctx=ctx)
+        y_pred = model(x, train=True, ctx=nnx.context(dropout=key))
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
 
@@ -102,8 +100,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 
 @partial(jax.vmap, in_axes=0, out_axes=(0, None, None))
 def create_state(params_key: jax.random.KeyArray):
-    ctx = nnx.Context(rngs=dict(params=params_key))
-    model = MLP(10, 20, 10, ctx=ctx)
+    model = MLP(10, 20, 10, ctx=nnx.context(params_key))
     (params, batch_stats), modeldef = model.partition("params", "batch_stats")
     return params, batch_stats, modeldef
 
@@ -123,7 +120,7 @@ def scan_fn(
 
     # create state and ctx
     model = modeldef.merge(params, batch_stats)
-    ctx = nnx.Context(dropout=dropout_key)
+    ctx = nnx.context(dropout=dropout_key)
 
     # forward pass
     x = model(x, train=True, ctx=ctx)

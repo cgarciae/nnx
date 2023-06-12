@@ -39,12 +39,8 @@ class MLP(nnx.Module):
         return x
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
 (params, buffers), modeldef = MLP(
-    din=1,
-    dhidden=32,
-    dout=1,
-    ctx=ctx,
+    din=1, dhidden=32, dout=1, ctx=nnx.context(0)
 ).partition("params", ...)
 
 

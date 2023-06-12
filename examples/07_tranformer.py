@@ -330,7 +330,7 @@ class Decoder(nnx.Module):
 
         if cfg.scanned:
             self.layers = jax.vmap(
-                lambda key: DecoderBlock(cfg, ctx=nnx.Context(key)).partition()
+                lambda key: DecoderBlock(cfg, ctx=nnx.context(key)).partition()
             )(jax.random.split(ctx.make_rng("params"), cfg.layers)).merge()
         else:
             self.layers = nnx.Sequence(

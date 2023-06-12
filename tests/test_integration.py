@@ -32,7 +32,7 @@ class TestIntegration:
         def train_step(model: Model, x, y):
             @nnx.grad
             def loss_fn(model: Model):
-                ctx = nnx.Context(flags=dict(use_running_average=False))
+                ctx = nnx.context(flags=dict(use_running_average=False))
                 y_pred = model(x, ctx=ctx)
                 return jnp.mean((y - y_pred) ** 2)
 
@@ -41,8 +41,7 @@ class TestIntegration:
                 jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
             )
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
-        model = Model(ctx=ctx)
+        model = Model(ctx=nnx.context(0))
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))
@@ -82,7 +81,7 @@ class TestIntegration:
 
             @nnx.grad
             def loss_fn(model: Model):
-                ctx = nnx.Context(flags=dict(use_running_average=False))
+                ctx = nnx.context(flags=dict(use_running_average=False))
                 y_pred = model(x, ctx=ctx)
                 return jnp.mean((y - y_pred) ** 2)
 
@@ -93,8 +92,7 @@ class TestIntegration:
 
             return model.partition()
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
-        pure_module = Model(ctx=ctx).partition()
+        pure_module = Model(ctx=nnx.context(0)).partition()
 
         x = np.random.uniform(size=(4, 2))
         y = np.random.uniform(size=(4, 2))
@@ -122,8 +120,7 @@ class TestIntegration:
                 self.count += 1
                 return x @ self.w + self.b
 
-        ctx = nnx.Context(params=jax.random.PRNGKey(0))
-        model = Linear(din=12, dout=2, ctx=ctx)
+        model = Linear(din=12, dout=2, ctx=nnx.context(0))
         # forward pass
         x = jnp.ones((8, 12))
         y = model(x)
@@ -158,8 +155,7 @@ class TestIntegration:
                 self.count += 1
                 return x @ self.w + self.b
 
-        ctx = nnx.Context(params=jax.random.PRNGKey(0))
-        model = Linear(din=12, dout=2, ctx=ctx)
+        model = Linear(din=12, dout=2, ctx=nnx.context(0))
         # forward pass
         x = jnp.ones((8, 12))
         y = model(x)
@@ -198,8 +194,7 @@ class TestIntegration:
                 self.y = nnx.var("intermediate", y)
                 return y
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
-        model = Linear(12, 2, ctx=ctx)
+        model = Linear(12, 2, ctx=nnx.context(0))
 
         y = model(jnp.ones((8, 12)))
 
@@ -219,8 +214,7 @@ class TestIntegration:
                 self.y = nnx.var("intermediate", y)
                 return y
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
-        model = Linear(12, 2, ctx=ctx)
+        model = Linear(12, 2, ctx=nnx.context(0))
 
         state, moduledef = model.partition()
 

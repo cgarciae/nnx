@@ -52,14 +52,16 @@ class Linear(nnx.Module):
         self.count += 1
         return x @ self.w + self.b
 
-ctx = nnx.Context(params=jax.random.PRNGKey(0))
-model = Linear(din=12, dout=2, ctx=ctx)
+model = Linear(din=12, dout=2, ctx=nnx.context(0))
 
 # Forward pass and verify the call count
 x = jnp.ones((8, 12))
 y = model(x)
 assert model.count == 1
 ```
+
+In this example `nnx.context(0)` create a `PRNGKey` for `params` with seed `0`, this is used by `make_rng`
+inside `__init__` to generate a random key for initializing the parameters.
 
 ### Training
 
@@ -173,8 +175,7 @@ class Foo(nnx.Module):
         self.str = "hello"
         self.list = [1, 2, 3]
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = Foo(din=12, dout=2, ctx=ctx)
+model = Foo(din=12, dout=2, ctx=nnx.context(0))
 ```
 As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
 
@@ -281,8 +282,7 @@ class Linear(nnx.Module):
         self.y = nnx.var("intermediates", y)
         return y
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-model = Linear(12, 2, ctx=ctx)
+model = Linear(12, 2, ctx=nnx.context(0))
 ```
 Since `y` is only created when the module is called, it is not available upon initialization. However, once you call the module `y` will be created. It is recommended that you use `pop_state` to retrieve temporary collections like `intermediates`:
 
@@ -385,7 +385,7 @@ Here's an example of computing the loss for a `Model` instance:
 
 ```python
 def loss_fn(model: Model, x: jax.Array, y: jax.Array):
-    ctx = nnx.Context(flags=dict(use_running_average=True))
+    ctx = nnx.context(flags=dict(use_running_average=True))
     y_pred = model(x, ctx=ctx)
     return jnp.mean((y - y_pred) ** 2)
 ```

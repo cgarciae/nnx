@@ -3,7 +3,7 @@ import typing as tp
 import optax
 
 from nnx import pytreelib, utils
-from nnx.context import Context
+from nnx.contextlib import Context
 from nnx.module import ApplyCaller, Module, PureModule
 from nnx.state import State
 

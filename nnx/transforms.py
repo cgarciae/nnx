@@ -4,7 +4,7 @@ import typing as tp
 import jax
 import jax.stages
 
-from nnx import context, partitioning, tracers
+from nnx import contextlib, partitioning, tracers
 from nnx.module import Module, ModuleDef, PureModule
 from nnx.state import State
 
@@ -26,7 +26,7 @@ class JitTransform(jax.stages.Wrapped):
     ):
         @functools.partial(jax.jit, **jit_kwargs)
         def jitted_fn(pure_module: PureModule[Module], *args, **kwargs):
-            if "ctx" in kwargs and isinstance(kwargs["ctx"], context.PureContext):
+            if "ctx" in kwargs and isinstance(kwargs["ctx"], contextlib.PureContext):
                 kwargs["ctx"] = kwargs["ctx"].merge()
 
             nnx_trace = tracers.get_top_trace((args, kwargs))
@@ -46,7 +46,7 @@ class JitTransform(jax.stages.Wrapped):
     def __call__(self, module: tp.Any, *args, **kwargs):
         if not isinstance(module, Module):
             raise TypeError(f"Expected Module, got {type(module).__name__}")
-        if "ctx" in kwargs and isinstance(kwargs["ctx"], context.Context):
+        if "ctx" in kwargs and isinstance(kwargs["ctx"], contextlib.Context):
             kwargs["ctx"] = kwargs["ctx"].partition()
 
         pure_module = module.partition()

@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jax import lax
 
 import nnx
-from nnx import context, utils
+from nnx import contextlib, utils
 from nnx.module import Module
 from nnx.nn import dtypes, initializers
 
@@ -191,7 +191,7 @@ class BatchNorm(Module):
         scale_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.ones(),
         axis_name: tp.Optional[str] = None,
         axis_index_groups: tp.Any = None,
-        ctx: context.Context,
+        ctx: contextlib.Context,
     ):
         feature_shape = (num_features,)
         self.mean = nnx.var("batch_stats", jnp.zeros(feature_shape, jnp.float32))
@@ -228,7 +228,7 @@ class BatchNorm(Module):
         x,
         use_running_average: tp.Optional[bool] = None,
         *,
-        ctx: tp.Optional[context.Context] = None,
+        ctx: tp.Optional[contextlib.Context] = None,
     ):
         """Normalizes the input using batch statistics.
 
@@ -322,7 +322,7 @@ class LayerNorm(Module):
         feature_axes: Axes = -1,
         axis_name: tp.Optional[str] = None,
         axis_index_groups: tp.Any = None,
-        ctx: context.Context,
+        ctx: contextlib.Context,
     ):
         feature_shape = (num_features,)
 
