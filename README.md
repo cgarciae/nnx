@@ -60,6 +60,9 @@ y = model(x)
 assert model.count == 1
 ```
 
+In this example `nnx.context(0)` create a `PRNGKey` for `params` with seed `0`, this is used by `make_rng`
+inside `__init__` to generate a random key for initializing the parameters.
+
 ### Training
 
 Here we show case two different approaches to training the model defined in the previous secition. The first one uses lifted transforms and the second one uses the functional API. Both approaches are equivalent and produce the same results.
