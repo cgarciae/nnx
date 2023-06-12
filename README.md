@@ -61,7 +61,7 @@ assert model.count == 1
 ```
 
 In this example `nnx.context(0)` create a `PRNGKey` for `params` with seed `0`, this is used by `make_rng`
-inside `__init__` to generate a random key for initializing the parameters.
+inside `__init__` to generate a random key to initialize the parameters.
 
 ### Training
 
