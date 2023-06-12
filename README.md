@@ -172,8 +172,7 @@ class Foo(nnx.Module):
         self.str = "hello"
         self.list = [1, 2, 3]
 
-ctx = nnx.context(0)
-model = Foo(din=12, dout=2, ctx=ctx)
+model = Foo(din=12, dout=2, ctx=nnx.context(0))
 ```
 As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
 
@@ -280,8 +279,7 @@ class Linear(nnx.Module):
         self.y = nnx.var("intermediates", y)
         return y
 
-ctx = nnx.context(0)
-model = Linear(12, 2, ctx=ctx)
+model = Linear(12, 2, ctx=nnx.context(0))
 ```
 Since `y` is only created when the module is called, it is not available upon initialization. However, once you call the module `y` will be created. It is recommended that you use `pop_state` to retrieve temporary collections like `intermediates`:
 
