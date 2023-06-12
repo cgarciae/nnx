@@ -6,7 +6,7 @@ import numpy as np
 from jax import lax
 
 import nnx
-from nnx import context
+from nnx import contextlib
 from nnx.module import Module
 from nnx.nn import dtypes, initializers
 
@@ -85,7 +85,7 @@ class Linear(Module):
         kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
         bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
         dot_general: DotGeneralT = lax.dot_general,
-        ctx: context.Context,
+        ctx: contextlib.Context,
     ):
         kernel_key = ctx.make_rng("params")
         self.kernel = nnx.param(
@@ -190,7 +190,7 @@ class Conv(Module):
         kernel_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init,
         bias_init: tp.Callable[[PRNGKey, Shape, Dtype], Array] = initializers.zeros(),
         conv_general_dilated: ConvGeneralDilatedT = lax.conv_general_dilated,
-        ctx: context.Context,
+        ctx: contextlib.Context,
     ):
         if isinstance(kernel_size, int):
             raise TypeError(
@@ -366,7 +366,7 @@ class Embed(Module):
         embedding_init: tp.Callable[
             [PRNGKey, Shape, Dtype], Array
         ] = default_embed_init,
-        ctx: context.Context,
+        ctx: contextlib.Context,
     ):
         self.embedding = nnx.param(
             embedding_init(

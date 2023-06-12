@@ -39,8 +39,7 @@ class MLP(nnx.Module):
         return x
 
 
-ctx = nnx.Context(jax.random.PRNGKey(0))
-pure_model = MLP(din=1, dhidden=32, dout=1, ctx=ctx).partition()
+pure_model = MLP(din=1, dhidden=32, dout=1, ctx=nnx.context(0)).partition()
 
 
 @jax.jit

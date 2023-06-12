@@ -101,7 +101,7 @@ params, moduledef = VAE(
     hidden_size=256,
     latent_size=latent_size,
     output_shape=image_shape,
-    ctx=nnx.Context(params=jax.random.PRNGKey(0)),
+    ctx=nnx.context(0),
 ).partition("params")
 
 state = nnx.TrainState(
@@ -115,7 +115,7 @@ state = nnx.TrainState(
 @jax.jit
 def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
     def loss_fn(params: nnx.State):
-        ctx = nnx.Context(noise=jax.random.fold_in(key, state.step))
+        ctx = nnx.context(noise=jax.random.fold_in(key, state.step))
         logits, (updates, _) = state.apply_fn(params)(x, ctx=ctx)
 
         losses = updates.filter("losses")
@@ -134,7 +134,7 @@ def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
 
 @partial(jax.jit, donate_argnums=(0,))
 def forward(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array) -> jax.Array:
-    ctx = nnx.Context(noise=key)
+    ctx = nnx.context(noise=key)
     y_pred = state.apply_fn(state.params)(x, ctx=ctx)[0]
     return jax.nn.sigmoid(y_pred)
 

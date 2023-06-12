@@ -6,11 +6,11 @@ from abc import abstractmethod
 
 
 @dataclasses.dataclass
-class Context(threading.local):
+class ReprContext(threading.local):
     indent_stack: tp.List[str] = dataclasses.field(default_factory=lambda: [""])
 
 
-CONTEXT = Context()
+REPR_CONTEXT = ReprContext()
 
 
 @dataclasses.dataclass
@@ -44,16 +44,16 @@ class Representable:
 
 @contextlib.contextmanager
 def add_indent(indent: str) -> tp.Iterator[None]:
-    CONTEXT.indent_stack.append(CONTEXT.indent_stack[-1] + indent)
+    REPR_CONTEXT.indent_stack.append(REPR_CONTEXT.indent_stack[-1] + indent)
 
     try:
         yield
     finally:
-        CONTEXT.indent_stack.pop()
+        REPR_CONTEXT.indent_stack.pop()
 
 
 def get_indent() -> str:
-    return CONTEXT.indent_stack[-1]
+    return REPR_CONTEXT.indent_stack[-1]
 
 
 def get_repr(obj: Representable) -> str:

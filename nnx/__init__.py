@@ -1,7 +1,7 @@
 __version__ = "0.0.0"
 
 
-from .context import Context, RngStream
+from .contextlib import Context, RngStream, context
 from .errors import TraceContextError
 from .helpers import Map, Sequence, TrainState
 from .module import Module, ModuleDef, PureModule

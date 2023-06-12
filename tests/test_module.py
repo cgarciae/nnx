@@ -81,11 +81,9 @@ class TestModule:
                 key = ctx.make_rng("e")
                 return self.w * x + jax.random.normal(key, ()) + self.c
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
-        foo = Foo(c=1.0, ctx=ctx)
+        foo = Foo(c=1.0, ctx=nnx.context(0))
 
-        ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y = foo(x=2.0, ctx=ctx)
+        y = foo(x=2.0, ctx=nnx.context(e=1))
 
         assert isinstance(y, jax.Array)
 
@@ -242,7 +240,7 @@ class TestModuleDef:
                 key = ctx.make_rng("e")
                 return self.w * x + jax.random.normal(key, ()) + self.c
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
+        ctx = nnx.context(0)
         foo = Foo(c=1.0, ctx=ctx)
 
         states, moduledef = foo.partition()
@@ -251,8 +249,7 @@ class TestModuleDef:
         assert "params" in collections
         assert None in collections
 
-        ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, updates = moduledef.apply(states)(x=2.0, ctx=ctx)
+        y, _updates = moduledef.apply(states)(x=2.0, ctx=nnx.context(e=1))
 
         assert isinstance(y, jax.Array)
 
@@ -268,8 +265,7 @@ class TestModuleDef:
                 key = ctx.make_rng("e")
                 return self.w * x + jax.random.normal(key, ()) + self.c
 
-        ctx = nnx.Context(jax.random.PRNGKey(0))
-        foo = Foo(c=1.0, ctx=ctx)
+        foo = Foo(c=1.0, ctx=nnx.context(0))
 
         pure_module = foo.partition()
         collections = pure_module.state.get_collections()
@@ -277,7 +273,6 @@ class TestModuleDef:
         assert "params" in collections
         assert None in collections
 
-        ctx = nnx.Context(dict(e=jax.random.PRNGKey(1)))
-        y, states = pure_module.apply(x=2.0, ctx=ctx)
+        y, states = pure_module.apply(x=2.0, ctx=nnx.context(e=1))
 
         assert isinstance(y, jax.Array)

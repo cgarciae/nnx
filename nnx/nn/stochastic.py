@@ -4,7 +4,7 @@ from typing import Optional, Sequence
 import jax.numpy as jnp
 from jax import lax, random
 
-from nnx import context, utils
+from nnx import contextlib, utils
 from nnx.module import Module
 
 
@@ -31,7 +31,7 @@ class Dropout(Module):
         inputs,
         *,
         deterministic: Optional[bool] = None,
-        ctx: Optional[context.Context] = None,
+        ctx: Optional[contextlib.Context] = None,
     ):
         """Applies a random dropout mask to the input.
 

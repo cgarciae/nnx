@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import nnx
-from nnx.context import _stable_hash
+from nnx.contextlib import _stable_hash
 
 
 class TestRngStream:
@@ -93,7 +93,7 @@ class TestRngStream:
 
 class TestContext:
     def test_partition_merge(self):
-        ctx = nnx.Context(dropout=jax.random.PRNGKey(0))
+        ctx = nnx.context(dropout=0)
 
         keys, ctxdef = ctx.partition()
 
