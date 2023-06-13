@@ -5,9 +5,9 @@ from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import errors, partitioning, reprlib, tracers
-from nnx.nodes import is_node, register_node_type
-from nnx.state import Node, Sharding, State, Variable
+from nnx import errors, nodes, partitioning, reprlib, tracers
+from nnx.containers import Container, Sharding, Variable
+from nnx.state import State
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
@@ -351,6 +351,18 @@ class ModuleMeta(ABCMeta):
         module = self.__new__(self, *args, **kwargs)
         vars(module)["_module__state"] = ModuleState(tracers.TraceState())
         module.__init__(*args, **kwargs)
+
+        if dataclasses.is_dataclass(module):
+            assert isinstance(module, Module)
+            for field in dataclasses.fields(module):
+                if "nnx_container_fn" not in field.metadata:
+                    continue
+
+                container_fn = field.metadata["nnx_container_fn"]
+                value = vars(module)[field.name]
+                value = container_fn(value)
+                vars(module)[field.name] = value
+
         return module
 
 
@@ -362,7 +374,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, Node):
+            if isinstance(value, Container):
                 return value.value
             return value
 
@@ -376,14 +388,10 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             )
 
         vars_dict = vars(self)
-        if (
-            name in vars_dict
-            and isinstance(vars_dict[name], Node)
-            and not isinstance(value, Node)
-        ):
-            vars_dict[name] = vars_dict[name].replace(value=value)
+        if name in vars_dict and isinstance(vars_dict[name], Container):
+            vars_dict[name] = vars_dict[name].replace_value(value)
         else:
-            if isinstance(value, Node):
+            if isinstance(value, Container):
                 value = value.copy()
             vars_dict[name] = value
 
@@ -401,7 +409,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         try:
             for name, value in vars(self).items():
                 if isinstance(value, Module) or (
-                    not is_node(value) and not name.startswith("_")
+                    not nodes.is_node(value) and not name.startswith("_")
                 ):
                     yield reprlib.Attr(name, value)
         finally:
@@ -613,19 +621,19 @@ class MutableLeaf(reprlib.Representable):
 
     @property
     def collection(self) -> tp.Optional[str]:
-        obj = vars(self._module)[self._name]
-        if not isinstance(obj, Variable):
+        module = vars(self._module)[self._name]
+        if not isinstance(module, Variable):
             return None
 
-        return obj.collection
+        return module.collection
 
     @property
     def sharding(self) -> tp.Optional[Sharding]:
-        obj = vars(self._module)[self._name]
-        if not isinstance(obj, Variable):
+        module = vars(self._module)[self._name]
+        if not isinstance(module, Variable):
             return None
 
-        return obj.sharding
+        return module.sharding
 
 
 def _get_module_state(module: Module) -> State:
@@ -661,7 +669,7 @@ def _make_module_def_recursive(
         if isinstance(value, Module):
             submodule_def = _make_module_def_recursive(value, module_index, value_path)
             submodules.append((name, submodule_def))
-        elif not is_node(value) and not name.startswith("_module__"):
+        elif not nodes.is_node(value) and not name.startswith("_module__"):
             static_fields.append((name, value))
 
     module_def = ModuleDef(
@@ -692,22 +700,22 @@ def _iter_state_recursive(
         value_path = (*path, name)
         if isinstance(value, Module):
             yield from _iter_state_recursive(value, seen_modules, value_path)
-        elif is_node(value):
+        elif nodes.is_node(value):
             yield value_path, value
 
 
-def _set_value_at_path(obj: tp.Any, path: tp.Sequence[str], value: tp.Any):
+def _set_value_at_path(module: tp.Any, path: tp.Sequence[str], value: tp.Any):
     if len(path) == 1:
-        vars(obj)[path[0]] = value
+        setattr(module, path[0], value)
     else:
-        _set_value_at_path(vars(obj)[path[0]], path[1:], value)
+        _set_value_at_path(vars(module)[path[0]], path[1:], value)
 
 
-def _get_value_path(obj: tp.Any, path: tp.Sequence[str]) -> tp.Any:
+def _get_value_path(module: tp.Any, path: tp.Sequence[str]) -> tp.Any:
     if len(path) == 0:
-        return obj
+        return module
     else:
-        return _get_value_path(vars(obj)[path[0]], path[1:])
+        return _get_value_path(vars(module)[path[0]], path[1:])
 
 
 def _build_module(moduledef: ModuleDef[M]) -> M:
@@ -769,7 +777,7 @@ def _pop_recursive(
         if isinstance(value, Module):
             _pop_recursive(value, module_index, value_path, states, predicates)
             continue
-        elif not is_node(value):
+        elif not nodes.is_node(value):
             continue
 
         for state, predicate in zip(states, predicates):
@@ -800,5 +808,5 @@ def _update_module(
 
 
 # register nodes
-register_node_type(Module)
-register_node_type(PureModule)
+nodes.register_node_type(Module)
+nodes.register_node_type(PureModule)

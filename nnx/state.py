@@ -1,20 +1,15 @@
-import dataclasses
-import functools
 import typing as tp
-from functools import partial
 
 import jax
 import jax.tree_util as jtu
 
-from nnx import partitioning, reprlib, tracers
-from nnx.nn import initializers
-from nnx.nodes import register_node_type
+from nnx import nodes, partitioning, reprlib
+from nnx.containers import Variable
 
 A = tp.TypeVar("A")
 
 Leaf = tp.Any
 Path = tp.Tuple[str, ...]
-Sharding = jax.sharding.PartitionSpec
 StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
 
@@ -198,176 +193,5 @@ def _split_state(
     return states
 
 
-class Node(tp.Generic[A], reprlib.Representable):
-    __slots__ = ("_value",)
-
-    def __init__(self, value: A):
-        self._value = value
-
-    @property
-    def value(self) -> A:
-        return self._value
-
-    def __nnx_repr__(self):
-        yield reprlib.Object(type=type(self))
-        yield reprlib.Attr(
-            "value", repr(self._value) if isinstance(self._value, str) else self._value
-        )
-
-    def copy(self) -> "Node[A]":
-        return Node(self._value)
-
-    def replace(
-        self,
-        **kwargs: tp.Any,
-    ) -> "Node[tp.Any]":
-        updates: tp.Dict[str, tp.Any] = {"value": self._value}
-        updates.update(kwargs)
-        return Node(**updates)
-
-
-def _node_flatten(
-    x: Node[tp.Any],
-    *,
-    with_keys: bool,
-):
-    if with_keys:
-        node = (jtu.GetAttrKey("value"), x._value)
-    else:
-        node = x._value
-
-    return (node,), None
-
-
-def _node_unflatten(metadata: None, children: tp.Tuple[A]) -> Node[A]:
-    return Node(children[0])
-
-
-jtu.register_pytree_with_keys(
-    Node,
-    partial(_node_flatten, with_keys=True),
-    _node_unflatten,
-    flatten_func=partial(_node_flatten, with_keys=False),
-)
-
-
-@dataclasses.dataclass
-class VarMetadata(tp.Generic[A]):
-    value: A
-    sharding: Sharding
-
-
-def with_partitioning(
-    initializer: initializers.Initializer,
-    sharding: Sharding,
-) -> initializers.Initializer:
-    @functools.wraps(initializer)
-    def wrapper(*args):
-        return VarMetadata(initializer(*args), sharding)
-
-    return wrapper  # type: ignore
-
-
-def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
-    return VarMetadata(value, sharding)
-
-
-class Variable(Node[A]):
-    __slots__ = ("_collection", "_sharding")
-
-    def __init__(
-        self,
-        value: A,
-        collection: str,
-        sharding: tp.Optional[Sharding],
-    ):
-        self._value = value
-        self._collection = collection
-        self._sharding = sharding
-
-    @property
-    def collection(self) -> str:
-        return self._collection
-
-    @property
-    def sharding(self) -> tp.Optional[Sharding]:
-        return self._sharding
-
-    def __nnx_repr__(self):
-        yield reprlib.Object(type=type(self))
-        yield reprlib.Attr("collection", repr(self._collection))
-        yield reprlib.Attr(
-            "value", repr(self._value) if isinstance(self._value, str) else self._value
-        )
-        if self._sharding is not None:
-            yield reprlib.Attr("sharding", self._sharding)
-
-    def copy(self) -> "Variable[A]":
-        return Variable(self._value, self._collection, self._sharding)
-
-    def replace(
-        self,
-        **kwargs: tp.Any,
-    ) -> "Variable[A]":
-        updates: tp.Dict[str, tp.Any] = {
-            "value": self._value,
-            "collection": self._collection,
-            "sharding": self._sharding,
-        }
-        updates.update(kwargs)
-        return Variable(**updates)
-
-
-def _variable_flatten(
-    x: Variable[tp.Any],
-    *,
-    with_keys: bool,
-):
-    if with_keys:
-        node = (jtu.GetAttrKey("value"), x._value)
-    else:
-        node = x._value
-
-    return (node,), (x._collection, x._sharding)
-
-
-def _variable_unflatten(
-    metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> Variable[A]:
-    return Variable(children[0], *metadata)
-
-
-jtu.register_pytree_with_keys(
-    Variable,
-    partial(_variable_flatten, with_keys=True),
-    _variable_unflatten,
-    flatten_func=partial(_variable_flatten, with_keys=False),
-)
-
-
-def var(
-    collection: str,
-    value: tp.Union[A, VarMetadata[A]],
-    sharding: tp.Optional[Sharding] = None,
-) -> A:
-    return Variable(  # type: ignore
-        value,
-        collection=collection,
-        sharding=sharding,
-    )
-
-
-def param(
-    value: tp.Union[A, VarMetadata[A]],
-    sharding: tp.Optional[Sharding] = None,
-) -> A:
-    return var("params", value, sharding=sharding)
-
-
-def node(value: A) -> A:
-    return Node(value)  # type: ignore
-
-
 # register nodes
-register_node_type(State)
-register_node_type(Node)
+nodes.register_node_type(State)
