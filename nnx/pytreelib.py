@@ -10,6 +10,8 @@ from types import MappingProxyType
 import jax
 import typing_extensions as tpe
 
+from nnx import container
+from nnx.container import Container
 from nnx.nodes import is_node, register_node_type
 
 # from nnx.ref_field import RefField
@@ -26,49 +28,64 @@ class PytreeMeta(ABCMeta):
 
     def call(cls: tp.Type[P], *args: tp.Any, **kwargs: tp.Any) -> P:
         obj: P = cls.__new__(cls, *args, **kwargs)
-        obj.__dict__["_pytree__initializing"] = True
+        vars_dict = vars(obj)
+        vars_dict["_pytree__is_mutable"] = True
         try:
             obj.__init__(*args, **kwargs)
         finally:
-            del obj.__dict__["_pytree__initializing"]
+            del vars_dict["_pytree__is_mutable"]
 
-        vars_dict = vars(obj)
-        vars_dict["_pytree__sorted_fields"] = None
+        vars_dict["_pytree__sorted_fields"] = None  # add name so that it can be sorted
         vars_dict["_pytree__sorted_fields"] = tuple(sorted(vars_dict))
+
+        if dataclasses.is_dataclass(obj):
+            for field in dataclasses.fields(obj):
+                if "pytree_node" not in field.metadata:
+                    continue
+
+                if field.metadata["pytree_node"]:
+                    vars_dict[field.name] = container.node(vars_dict[field.name])
+                else:
+                    vars_dict[field.name] = container.static(vars_dict[field.name])
+
         return obj
 
 
 class Pytree(metaclass=PytreeMeta):
-    _pytree__initializing: bool
+    _pytree__is_mutable: bool
     _pytree__class_is_mutable: bool
-    _pytree__is_node_field: tp.Mapping[str, bool]
     _pytree__sorted_fields: tp.Tuple[str, ...]
-    _pytree__setter_descriptors: tp.FrozenSet[str]
+
+    if not tp.TYPE_CHECKING:
+
+        def __getattribute__(self, name: str) -> tp.Any:
+            value = object.__getattribute__(self, name)
+            if isinstance(value, Container):
+                return value.value
+            return value
+
+        def __setattr__(self, name: str, value: tp.Any) -> None:
+            self._setattr(name, value)
+
+    def _setattr(self: P, name: str, value: tp.Any):
+        if not self._pytree__is_mutable and not self._pytree__class_is_mutable:
+            raise AttributeError(
+                f"{type(self)} is immutable, trying to update field {name}"
+            )
+
+        vars_dict = vars(self)
+        if name in vars_dict and isinstance(vars_dict[name], Container):
+            vars_dict[name] = vars_dict[name].replace_value(value)
+        else:
+            if isinstance(value, Container):
+                value = value.copy()
+            vars_dict[name] = value
 
     def __init_subclass__(cls, mutable: bool = False):
         super().__init_subclass__()
-
-        # gather class info
-        class_vars = vars(cls)
-        setter_descriptors = set()
-        is_node_field = _inherited_is_node_field(cls)
-
-        # add special static fields
-        is_node_field["_pytree__sorted_fields"] = False
-
-        for field, value in class_vars.items():
-            if isinstance(value, dataclasses.Field) and "pytree_node" in value.metadata:
-                is_node_field[field] = value.metadata["pytree_node"]
-
-            # add setter descriptors
-            if hasattr(value, "__set__"):
-                setter_descriptors.add(field)
-
         # init class variables
-        cls._pytree__initializing = False
+        cls._pytree__is_mutable = False
         cls._pytree__class_is_mutable = mutable
-        cls._pytree__is_node_field = MappingProxyType(is_node_field)
-        cls._pytree__setter_descriptors = frozenset(setter_descriptors)
 
         # TODO: clean up this in the future once minimal supported version is 0.4.7
         if hasattr(jax.tree_util, "register_pytree_with_keys"):
@@ -130,7 +147,7 @@ class Pytree(metaclass=PytreeMeta):
         for field in pytree._pytree__sorted_fields:
             value = all_vars[field]
 
-            if pytree._pytree__value_is_node(field, value):
+            if is_node(value):
                 node_names.append(field)
                 if with_key_paths:
                     node_values.append((jax.tree_util.GetAttrKey(field), value))
@@ -140,12 +157,6 @@ class Pytree(metaclass=PytreeMeta):
                 static[field] = value
 
         return node_values, (tuple(node_names), MappingProxyType(static))
-
-    def _pytree__value_is_node(self, field: str, value: tp.Any) -> bool:
-        if field in self._pytree__is_node_field:
-            return self._pytree__is_node_field[field]
-
-        return is_node(value)
 
     @classmethod
     def _pytree__unflatten(
@@ -166,7 +177,7 @@ class Pytree(metaclass=PytreeMeta):
         state_dict = {
             name: serialization.to_state_dict(getattr(pytree, name))
             for name, value in vars(pytree).items()
-            if pytree._pytree__value_is_node(name, value)
+            if is_node(value)
         }
         return state_dict
 
@@ -182,7 +193,7 @@ class Pytree(metaclass=PytreeMeta):
         state = state.copy()  # copy the state so we can pop the restored fields.
         updates = {}
         for name, value in vars(pytree).items():
-            if not pytree._pytree__value_is_node(name, value):
+            if not is_node(value):
                 continue
             if name not in state:
                 raise ValueError(
@@ -212,43 +223,20 @@ class Pytree(metaclass=PytreeMeta):
             return dataclasses.replace(self, **kwargs)
 
         unknown_keys = set(kwargs) - set(vars(self))
-        if unknown_keys:
+        if unknown_keys and not self._pytree__class_is_mutable:
             raise ValueError(
                 f"Trying to replace unknown fields {unknown_keys} "
                 f"for '{type(self).__name__}'"
             )
 
         pytree = copy(self)
-        pytree.__dict__.update(kwargs)
-        return pytree
-
-    if not tp.TYPE_CHECKING:
-
-        def __setattr__(self: P, field: str, value: tp.Any):
-            if self._pytree__initializing or field in self._pytree__setter_descriptors:
-                pass
-            elif not hasattr(self, field) and not self._pytree__initializing:
-                raise AttributeError(
-                    f"Cannot add new fields to {type(self)} after initialization"
-                )
-            elif not self._pytree__class_is_mutable:
-                raise AttributeError(
-                    f"{type(self)} is immutable, trying to update field {field}"
-                )
-
-            object.__setattr__(self, field, value)
-
-
-def _inherited_is_node_field(cls: type) -> tp.Dict[str, bool]:
-    is_node_field = dict()
-    for parent_class in cls.mro():
-        if (
-            parent_class is not cls
-            and parent_class is not Pytree
-            and issubclass(parent_class, Pytree)
-        ):
-            is_node_field.update(parent_class._pytree__is_node_field)
-    return is_node_field
+        vars_dict = vars(pytree)
+        vars_dict["_pytree__is_mutable"] = True
+        try:
+            for key, value in kwargs.items():
+                setattr(pytree, key, value)
+        finally:
+            del vars_dict["_pytree__is_mutable"]
 
 
 # register node types

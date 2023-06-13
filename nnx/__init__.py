@@ -1,6 +1,18 @@
 __version__ = "0.0.0"
 
 
+from .container import (
+    Container,
+    NodeContainer,
+    Variable,
+    VarMetadata,
+    node,
+    param,
+    static,
+    var,
+    var_metadata,
+    with_partitioning,
+)
 from .contextlib import Context, RngStream, context
 from .errors import TraceContextError
 from .helpers import Map, Sequence, TrainState
@@ -58,14 +70,5 @@ from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
 from .partitioning import buffers
-from .state import (
-    State,
-    Variable,
-    VarMetadata,
-    node,
-    param,
-    var,
-    var_metadata,
-    with_partitioning,
-)
+from .state import State
 from .transforms import grad, jit

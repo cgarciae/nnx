@@ -381,7 +381,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             and isinstance(vars_dict[name], Node)
             and not isinstance(value, Node)
         ):
-            vars_dict[name] = vars_dict[name].replace(value=value)
+            vars_dict[name] = vars_dict[name].replace_value(value)
         else:
             if isinstance(value, Node):
                 value = value.copy()
