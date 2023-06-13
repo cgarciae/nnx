@@ -48,16 +48,16 @@ class PytreeMeta(ABCMeta):
         with _mutable(obj), _initializing(obj):
             obj.__init__(*args, **kwargs)
 
-            if dataclasses.is_dataclass(obj):
-                assert isinstance(obj, Pytree)
-                for field in dataclasses.fields(obj):
-                    if "nnx_container_fn" not in field.metadata:
-                        continue
+        if dataclasses.is_dataclass(obj):
+            assert isinstance(obj, Pytree)
+            for field in dataclasses.fields(obj):
+                if "nnx_container_fn" not in field.metadata:
+                    continue
 
-                    container_fn = field.metadata["nnx_container_fn"]
-                    value = vars(obj)[field.name]
-                    value = container_fn(value)
-                    obj._setattr(field.name, value)
+                container_fn = field.metadata["nnx_container_fn"]
+                value = vars(obj)[field.name]
+                value = container_fn(value)
+                vars(obj)[field.name] = value
 
         vars(obj)["_pytree__sorted_fields"] = sorted(vars(obj))
 

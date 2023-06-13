@@ -361,7 +361,7 @@ class ModuleMeta(ABCMeta):
                 container_fn = field.metadata["nnx_container_fn"]
                 value = vars(module)[field.name]
                 value = container_fn(value)
-                setattr(module, field.name, value)
+                vars(module)[field.name] = value
 
         return module
 

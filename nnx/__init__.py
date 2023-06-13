@@ -26,6 +26,7 @@ from .dataclasses import (
 from .errors import TraceContextError
 from .helpers import Map, Sequence, TrainState
 from .module import Module, ModuleDef, PureModule
+from .nn import initializers
 from .nn.activations import (
     celu,
     elu,
@@ -52,27 +53,6 @@ from .nn.activations import (
     standardize,
     swish,
     tanh,
-)
-from .nn.initializers import (
-    Initializer,
-    constant,
-    delta_orthogonal,
-    glorot_normal,
-    glorot_uniform,
-    he_normal,
-    he_uniform,
-    kaiming_normal,
-    kaiming_uniform,
-    lecun_normal,
-    lecun_uniform,
-    normal,
-    ones,
-    orthogonal,
-    uniform,
-    variance_scaling,
-    xavier_normal,
-    xavier_uniform,
-    zeros,
 )
 from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
