@@ -59,6 +59,9 @@ class Node(Container[A], reprlib.Representable):
             "value", repr(self._value) if isinstance(self._value, str) else self._value
         )
 
+    def __eq__(self, other: object) -> bool:
+        return type(other) is Node and self._value == other._value
+
     def copy(self) -> "Node[A]":
         return Node(self._value)
 
@@ -134,6 +137,14 @@ class Variable(Container[A], reprlib.Representable):
         self._value = value
         self._collection = collection
         self._sharding = sharding
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is Variable
+            and self._value == other._value
+            and self._collection == other._collection
+            and self._sharding == other._sharding
+        )
 
     @property
     def collection(self) -> str:

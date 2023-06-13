@@ -229,6 +229,45 @@ class TestModule:
         assert m.b.d == m2.b.d
 
 
+class TestModuleDataclass:
+    def test_basic(self):
+        @nnx.dataclass
+        class Foo(nnx.Module):
+            a: int = nnx.static_field()
+            b: int = nnx.node_field()
+            c: int = nnx.param_field()
+            d: int = nnx.var_field("batch_stats")
+            e: int
+            f: int
+
+        m = Foo(
+            a=1,  # static
+            b=2,  # node
+            c=3,  # param
+            d=4,  # var
+            e=5,  # static int
+            f=nnx.node(6),  # test that we can pass in a node
+        )
+
+        state, moduledef = m.partition()
+
+        assert len(state) == 4
+        assert state[("b",)] == nnx.node(2)
+        assert state[("c",)] == nnx.param(3)
+        assert state[("d",)] == nnx.var("batch_stats", 4)
+        assert state[("f",)] == nnx.node(6)
+
+    def test_no_override(self):
+        @nnx.dataclass
+        class Foo(nnx.Module):
+            a: int = nnx.node_field()
+
+        with pytest.raises(ValueError, match="is not equivalent to"):
+            _m = Foo(a=nnx.param(1))
+
+        _m = Foo(a=nnx.node(1))
+
+
 class TestModuleDef:
     def test_apply(self):
         class Foo(nnx.Module):
