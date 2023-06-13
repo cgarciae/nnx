@@ -6,7 +6,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import errors, partitioning, reprlib, tracers
-from nnx.container import Container, Sharding, Variable
+from nnx.containers import Container, Sharding, Variable
 from nnx.nodes import is_node, register_node_type
 from nnx.state import State
 
@@ -695,7 +695,7 @@ def _iter_state_recursive(
 
 def _set_value_at_path(obj: tp.Any, path: tp.Sequence[str], value: tp.Any):
     if len(path) == 1:
-        vars(obj)[path[0]] = value
+        setattr(obj, path[0], value)
     else:
         _set_value_at_path(vars(obj)[path[0]], path[1:], value)
 

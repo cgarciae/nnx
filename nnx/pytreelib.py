@@ -11,8 +11,8 @@ from types import MappingProxyType
 import jax
 import typing_extensions as tpe
 
-from nnx import container
-from nnx.container import Container
+from nnx import containers
+from nnx.containers import Container
 from nnx.nodes import is_node, register_node_type
 
 # from nnx.ref_field import RefField
@@ -60,9 +60,9 @@ class PytreeMeta(ABCMeta):
                     value = getattr(obj, field.name)
 
                     if field.metadata["pytree_node"]:
-                        value = container.node(value)
+                        value = containers.node(value)
                     else:
-                        value = container.static(value)
+                        value = containers.static(value)
 
                     obj._setattr(field.name, value)
 

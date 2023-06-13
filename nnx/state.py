@@ -4,6 +4,7 @@ import jax
 import jax.tree_util as jtu
 
 from nnx import partitioning, reprlib
+from nnx.containers import Variable
 from nnx.nodes import register_node_type
 
 A = tp.TypeVar("A")
