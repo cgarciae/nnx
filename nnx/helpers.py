@@ -2,7 +2,7 @@ import typing as tp
 
 import optax
 
-from nnx import pytreelib, utils
+from nnx import containers, pytreelib, utils
 from nnx.contextlib import Context
 from nnx.module import ApplyCaller, Module, PureModule
 from nnx.state import State
@@ -92,10 +92,6 @@ class ModuleDefApply(tp.Protocol, tp.Generic[M]):
 
 
 class TrainState(pytreelib.Pytree, tp.Generic[M]):
-    params: State = pytreelib.node_field()
-    opt_state: optax.OptState = pytreelib.node_field()
-    step: int = pytreelib.node_field()
-
     def __init__(
         self,
         *,
@@ -106,10 +102,10 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
         **kwargs,
     ):
         self.apply_fn = apply_fn
-        self.params: State = params
+        self.params: State = containers.node(params)
         self.tx = tx
-        self.opt_state = tx.init(self.params)
-        self.step = step
+        self.opt_state = containers.node(tx.init(self.params))
+        self.step = containers.node(step)
         for name, value in kwargs.items():
             setattr(self, name, value)
 

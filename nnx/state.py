@@ -3,9 +3,8 @@ import typing as tp
 import jax
 import jax.tree_util as jtu
 
-from nnx import partitioning, reprlib
+from nnx import nodes, partitioning, reprlib
 from nnx.containers import Variable
-from nnx.nodes import register_node_type
 
 A = tp.TypeVar("A")
 
@@ -195,4 +194,4 @@ def _split_state(
 
 
 # register nodes
-register_node_type(State)
+nodes.register_node_type(State)

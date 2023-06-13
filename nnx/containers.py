@@ -3,19 +3,16 @@ import functools
 import typing as tp
 from abc import ABC, abstractmethod
 from functools import partial
-from re import S
 
-import jax
 import jax.tree_util as jtu
 
-from nnx import reprlib
+from nnx import nodes, reprlib
 from nnx.nn import initializers
-from nnx.nodes import register_node_type
 
 A = tp.TypeVar("A")
 B = tp.TypeVar("B")
-C = tp.TypeVar("C", bound="Container")
-F = tp.TypeVar("F", bound=tp.Callable[..., "Container[tp.Any]"])
+C = tp.TypeVar("C", bound="Container[tp.Any]")
+F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 Sharding = tp.Tuple[str, ...]
 
 
@@ -121,7 +118,7 @@ def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
     return VarMetadata(value, sharding)
 
 
-class Variable(Container[A]):
+class Variable(Container[A], reprlib.Representable):
     __slots__ = ("_collection", "_sharding")
 
     def __init__(
@@ -203,7 +200,13 @@ jtu.register_pytree_with_keys(
 )
 
 
-class Static(Container[A]):
+class Static(Container[A], reprlib.Representable):
+    def __hash__(self) -> int:
+        return hash(self._value)
+
+    def __eq__(self, other: tp.Any) -> bool:
+        return type(other) is Static and self._value == other._value
+
     def copy(self) -> "Static[A]":
         return Static(self._value)
 
@@ -255,9 +258,7 @@ def check_container(f: F, *, num_arg: int) -> F:
         output = f(*args, **kwargs)
 
         if container is not None and not container.is_equivalent(output):
-            raise ValueError(
-                f"container {container} is not equivalent to variable {output}"
-            )
+            raise ValueError(f"Container {container} is not equivalent to {output}")
 
         return output
 
@@ -268,10 +269,9 @@ def check_container(f: F, *, num_arg: int) -> F:
 def var(
     collection: str,
     value: A,
-    /,
     sharding: tp.Optional[Sharding] = None,
 ) -> A:
-    return Variable(
+    return Variable(  # type: ignore
         value,
         collection=collection,
         sharding=sharding,
@@ -280,22 +280,21 @@ def var(
 
 def param(
     value: A,
-    /,
     sharding: tp.Optional[Sharding] = None,
 ) -> A:
     return var("params", value, sharding=sharding)
 
 
 @partial(check_container, num_arg=0)
-def node(value: A, /) -> A:
-    return Node(value)
+def node(value: A) -> A:
+    return Node(value)  # type: ignore
 
 
 @partial(check_container, num_arg=0)
-def static(value: A, /) -> A:
+def static(value: A) -> A:
     return Static(value)  # type: ignore
 
 
 # register nodes
-register_node_type(Node)
-register_node_type(Variable)
+nodes.register_node_type(Node)
+nodes.register_node_type(Variable)

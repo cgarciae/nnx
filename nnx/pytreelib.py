@@ -11,9 +11,8 @@ from types import MappingProxyType
 import jax
 import typing_extensions as tpe
 
-from nnx import containers
+from nnx import containers, nodes
 from nnx.containers import Container
-from nnx.nodes import is_node, register_node_type
 
 # from nnx.ref_field import RefField
 
@@ -174,7 +173,7 @@ class Pytree(metaclass=PytreeMeta):
         for field in pytree._pytree__sorted_fields:
             value = all_vars[field]
 
-            if is_node(value):
+            if nodes.is_node(value):
                 node_names.append(field)
                 if with_key_paths:
                     node_values.append((jax.tree_util.GetAttrKey(field), value))
@@ -204,7 +203,7 @@ class Pytree(metaclass=PytreeMeta):
         state_dict = {
             name: serialization.to_state_dict(getattr(pytree, name))
             for name, value in vars(pytree).items()
-            if is_node(value)
+            if nodes.is_node(value)
         }
         return state_dict
 
@@ -220,7 +219,7 @@ class Pytree(metaclass=PytreeMeta):
         state = state.copy()  # copy the state so we can pop the restored fields.
         updates = {}
         for name, value in vars(pytree).items():
-            if not is_node(value):
+            if not nodes.is_node(value):
                 continue
             if name not in state:
                 raise ValueError(
@@ -265,7 +264,7 @@ class Pytree(metaclass=PytreeMeta):
 
 
 # register node types
-register_node_type(Pytree)
+nodes.register_node_type(Pytree)
 
 # ------------------------------------------
 # dataclass
