@@ -1,3 +1,4 @@
+import contextlib
 import dataclasses
 import importlib.util
 import inspect
@@ -20,6 +21,24 @@ A = tp.TypeVar("A")
 P = tp.TypeVar("P", bound="Pytree")
 
 
+@contextlib.contextmanager
+def _mutable(obj: P) -> tp.Iterator[None]:
+    vars(obj)["_pytree__is_mutable"] = True
+    try:
+        yield
+    finally:
+        del vars(obj)["_pytree__is_mutable"]
+
+
+@contextlib.contextmanager
+def _initializing(obj: P) -> tp.Iterator[None]:
+    vars(obj)["_pytree__initializing"] = True
+    try:
+        yield
+    finally:
+        del vars(obj)["_pytree__initializing"]
+
+
 class PytreeMeta(ABCMeta):
     if not tp.TYPE_CHECKING:
 
@@ -28,25 +47,26 @@ class PytreeMeta(ABCMeta):
 
     def call(cls: tp.Type[P], *args: tp.Any, **kwargs: tp.Any) -> P:
         obj: P = cls.__new__(cls, *args, **kwargs)
-        vars_dict = vars(obj)
-        vars_dict["_pytree__is_mutable"] = True
-        try:
+        vars(obj)["_pytree__sorted_fields"] = ["_pytree__sorted_fields"]
+
+        with _mutable(obj), _initializing(obj):
             obj.__init__(*args, **kwargs)
-        finally:
-            del vars_dict["_pytree__is_mutable"]
 
-        vars_dict["_pytree__sorted_fields"] = None  # add name so that it can be sorted
-        vars_dict["_pytree__sorted_fields"] = tuple(sorted(vars_dict))
+            if dataclasses.is_dataclass(obj):
+                for field in dataclasses.fields(obj):
+                    if "pytree_node" not in field.metadata:
+                        continue
 
-        if dataclasses.is_dataclass(obj):
-            for field in dataclasses.fields(obj):
-                if "pytree_node" not in field.metadata:
-                    continue
+                    value = getattr(obj, field.name)
 
-                if field.metadata["pytree_node"]:
-                    vars_dict[field.name] = container.node(vars_dict[field.name])
-                else:
-                    vars_dict[field.name] = container.static(vars_dict[field.name])
+                    if field.metadata["pytree_node"]:
+                        value = container.node(value)
+                    else:
+                        value = container.static(value)
+
+                    obj._setattr(field.name, value)
+
+        vars(obj)["_pytree__sorted_fields"] = sorted(vars(obj))
 
         return obj
 
@@ -68,12 +88,19 @@ class Pytree(metaclass=PytreeMeta):
             self._setattr(name, value)
 
     def _setattr(self: P, name: str, value: tp.Any):
-        if not self._pytree__is_mutable and not self._pytree__class_is_mutable:
+        vars_dict = vars(self)
+        if "_pytree__initializing" in vars_dict:
+            pass
+        elif name not in vars_dict:
+            raise AttributeError(r"Cannot add new fields to an initialized Pytree")
+        elif (
+            "_pytree__is_mutable" not in vars_dict
+            and not self._pytree__class_is_mutable
+        ):
             raise AttributeError(
                 f"{type(self)} is immutable, trying to update field {name}"
             )
 
-        vars_dict = vars(self)
         if name in vars_dict and isinstance(vars_dict[name], Container):
             vars_dict[name] = vars_dict[name].replace_value(value)
         else:
@@ -230,13 +257,11 @@ class Pytree(metaclass=PytreeMeta):
             )
 
         pytree = copy(self)
-        vars_dict = vars(pytree)
-        vars_dict["_pytree__is_mutable"] = True
-        try:
+        with _mutable(pytree):
             for key, value in kwargs.items():
                 setattr(pytree, key, value)
-        finally:
-            del vars_dict["_pytree__is_mutable"]
+
+        return pytree
 
 
 # register node types

@@ -53,11 +53,7 @@ class Container(ABC, tp.Generic[A]):
         ...
 
 
-class NodeContainer(Container[A]):
-    __slots__ = ()
-
-
-class Node(NodeContainer[A], reprlib.Representable):
+class Node(Container[A], reprlib.Representable):
     __slots__ = ()
 
     def __nnx_repr__(self):
@@ -125,7 +121,7 @@ def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
     return VarMetadata(value, sharding)
 
 
-class Variable(Node[A]):
+class Variable(Container[A]):
     __slots__ = ("_collection", "_sharding")
 
     def __init__(
@@ -301,4 +297,5 @@ def static(value: A, /) -> A:
 
 
 # register nodes
-register_node_type(NodeContainer)
+register_node_type(Node)
+register_node_type(Variable)

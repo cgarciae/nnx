@@ -6,8 +6,9 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import errors, partitioning, reprlib, tracers
+from nnx.container import Container, Sharding, Variable
 from nnx.nodes import is_node, register_node_type
-from nnx.state import Node, Sharding, State, Variable
+from nnx.state import State
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
@@ -362,7 +363,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, Node):
+            if isinstance(value, Container):
                 return value.value
             return value
 
@@ -376,14 +377,10 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             )
 
         vars_dict = vars(self)
-        if (
-            name in vars_dict
-            and isinstance(vars_dict[name], Node)
-            and not isinstance(value, Node)
-        ):
+        if name in vars_dict and isinstance(vars_dict[name], Container):
             vars_dict[name] = vars_dict[name].replace_value(value)
         else:
-            if isinstance(value, Node):
+            if isinstance(value, Container):
                 value = value.copy()
             vars_dict[name] = value
 

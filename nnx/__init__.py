@@ -3,7 +3,7 @@ __version__ = "0.0.0"
 
 from .container import (
     Container,
-    NodeContainer,
+    Node,
     Variable,
     VarMetadata,
     node,
@@ -70,5 +70,6 @@ from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
 from .partitioning import buffers
+from .pytreelib import Pytree, dataclass, field, node_field, static_field
 from .state import State
 from .transforms import grad, jit

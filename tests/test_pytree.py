@@ -5,17 +5,14 @@ import pytest
 from flax import serialization
 
 import nnx
-from nnx import pytreelib
 
 
 class TestPytree:
     def test_immutable_pytree(self):
-        class Foo(pytreelib.Pytree):
-            y: int = pytreelib.node_field()
-
+        class Foo(nnx.Pytree):
             def __init__(self, y) -> None:
                 self.x = 2
-                self.y = y
+                self.y = nnx.node(y)
 
         pytree = Foo(y=3)
 
@@ -36,10 +33,10 @@ class TestPytree:
             pytree.x = 4
 
     def test_immutable_pytree_dataclass(self):
-        @pytreelib.dataclass(frozen=True)
-        class Foo(pytreelib.Pytree):
-            y: int = pytreelib.node_field()
-            x: int = pytreelib.field(default=2)
+        @nnx.dataclass(frozen=True)
+        class Foo(nnx.Pytree):
+            y: int = nnx.node_field()
+            x: int = nnx.field(default=2)
 
         pytree = Foo(y=3)
 
@@ -58,10 +55,10 @@ class TestPytree:
             pytree.x = 4
 
     def test_jit(self):
-        @pytreelib.dataclass
-        class Foo(pytreelib.Pytree):
-            a: int = pytreelib.node_field()
-            b: int = pytreelib.field()
+        @nnx.dataclass
+        class Foo(nnx.Pytree):
+            a: int = nnx.node_field()
+            b: int = nnx.field()
 
         module = Foo(a=1, b=2)
 
@@ -72,19 +69,16 @@ class TestPytree:
         assert f(module) == 3
 
     def test_flax_serialization(self):
-        class Bar(pytreelib.Pytree):
-            a: int = pytreelib.field()
-            b: int = pytreelib.node_field()
-
+        class Bar(nnx.Pytree):
             def __init__(self, a, b):
                 self.a = a
-                self.b = b
+                self.b = nnx.node(b)
 
-        @pytreelib.dataclass
-        class Foo(pytreelib.Pytree):
+        @nnx.dataclass
+        class Foo(nnx.Pytree):
             bar: Bar
-            c: int = pytreelib.node_field()
-            d: int = pytreelib.field()
+            c: int = nnx.node_field()
+            d: int = nnx.field()
 
         foo: Foo = Foo(bar=Bar(a=1, b=2), c=3, d=4)
 
@@ -119,71 +113,55 @@ class TestPytree:
     def test_generics(self):
         T = TypeVar("T")
 
-        class MyClass(pytreelib.Pytree, Generic[T]):
+        class MyClass(nnx.Pytree, Generic[T]):
             def __init__(self, x: T):
                 self.x = x
 
         MyClass[int]
 
     def test_key_paths(self):
-        @pytreelib.dataclass
-        class Bar(pytreelib.Pytree):
-            a: int = pytreelib.node_field(default=1)
-            b: int = pytreelib.field(default=2)
+        @nnx.dataclass
+        class Bar(nnx.Pytree):
+            a: int = nnx.node_field(default=1)
+            b: int = nnx.field(default=2)
 
-        @pytreelib.dataclass
-        class Foo(pytreelib.Pytree):
-            x: int = pytreelib.node_field(default=3)
-            y: int = pytreelib.field(default=4)
-            z: Bar = pytreelib.node_field(default_factory=Bar)
+        @nnx.dataclass
+        class Foo(nnx.Pytree):
+            x: int = nnx.node_field(default=3)
+            y: int = nnx.field(default=4)
+            z: Bar = nnx.node_field(default_factory=Bar)
 
         foo = Foo()
 
         path_values, treedef = jax.tree_util.tree_flatten_with_path(foo)
         path_values = [(list(map(str, path)), value) for path, value in path_values]
 
-        assert path_values[0] == ([".x"], 3)
-        assert path_values[1] == ([".z", ".a"], 1)
-
-    def test_setter_attribute_allowed(self):
-        n = None
-
-        class SetterDescriptor:
-            def __set__(self, _, value):
-                nonlocal n
-                n = value
-
-        class Foo(pytreelib.Pytree):
-            x = SetterDescriptor()
-
-        foo = Foo()
-        foo.x = 1
-
-        assert n == 1
+        assert path_values[0] == ([".x", ".value"], 3)
+        assert path_values[1] == ([".z", ".value", ".a", ".value"], 1)
 
     def test_replace_unknown_fields_error(self):
-        class Foo(pytreelib.Pytree):
+        class Foo(nnx.Pytree):
             pass
 
         with pytest.raises(ValueError, match="Trying to replace unknown fields"):
             Foo().replace(y=1)
 
     def test_dataclass_inheritance(self):
-        @pytreelib.dataclass
-        class A(pytreelib.Pytree):
-            a: int = pytreelib.node_field(default=1)
-            b: int = pytreelib.field(default=2)
+        @nnx.dataclass
+        class A(nnx.Pytree):
+            a: int = nnx.node_field(default=1)
+            b: int = nnx.field(default=2)
 
-        @pytreelib.dataclass
+        @nnx.dataclass
         class B(A):
-            c: int = pytreelib.node_field(default=3)
+            c: int = nnx.node_field(default=3)
 
         pytree = B()
         leaves = jax.tree_util.tree_leaves(pytree)
         assert leaves == [1, 3]
 
     def test_pytree_with_new(self):
-        class A(pytreelib.Pytree):
+        class A(nnx.Pytree):
             def __init__(self, a):
                 self.a = a
 
@@ -195,7 +173,7 @@ class TestPytree:
         pytree = jax.tree_map(lambda x: x * 2, pytree)
 
     def test_deterministic_order(self):
-        class A(pytreelib.Pytree):
+        class A(nnx.Pytree):
             def __init__(self, order: bool):
                 if order:
                     self.a = 1
@@ -215,12 +193,10 @@ class TestPytree:
 
 class TestMutablePytree:
     def test_pytree(self):
-        class Foo(pytreelib.Pytree, mutable=True):
-            y: int = pytreelib.node_field()
-
+        class Foo(nnx.Pytree, mutable=True):
             def __init__(self, y) -> None:
                 self.x = 2
-                self.y = y
+                self.y = nnx.node(y)
 
         pytree = Foo(y=3)
 
@@ -240,11 +216,9 @@ class TestMutablePytree:
         assert pytree.x == 4
 
     def test_no_new_fields_after_init(self):
-        class Foo(pytreelib.Pytree, mutable=True):
-            x: int = pytreelib.node_field()
-
+        class Foo(nnx.Pytree, mutable=True):
             def __init__(self, x):
-                self.x = x
+                self.x = nnx.node(x)
 
         foo = Foo(x=1)
         foo.x = 2
@@ -253,10 +227,10 @@ class TestMutablePytree:
             foo.y = 2
 
     def test_pytree_dataclass(self):
-        @pytreelib.dataclass
-        class Foo(pytreelib.Pytree, mutable=True):
-            y: int = pytreelib.node_field()
-            x: int = pytreelib.field(default=2)
+        @nnx.dataclass
+        class Foo(nnx.Pytree, mutable=True):
+            y: int = nnx.node_field()
+            x: int = nnx.field(default=2)
 
         pytree: Foo = Foo(y=3)
 
