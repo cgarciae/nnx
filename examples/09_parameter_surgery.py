@@ -23,17 +23,16 @@ class Classifier(nnx.Module):
         return x
 
 
-# load the backbone
 backbone = load_backbone()
 
-# create the classifier using the pretrained backbone, here we are doing
-# "parameter surgery", however, compared to Flax where you must manually
+# create the classifier using the pretrained backbone, here we are technically
+# doing "parameter surgery", however, compared to Haiku/Flax where you must manually
 # construct the parameter structure, in NNX this is done automatically
 model = Classifier(backbone, ctx=nnx.context(42))
 
 # create a filter to select all the parameters that are not part of the
 # backbone, i.e. the classifier parameters
-is_trainable = nnx.All(lambda path, x: path[0] != "backbone", "params")
+is_trainable = nnx.All("params", lambda path, node: path[0] != "backbone")
 
 # partition the parameters into trainable and non-trainable parameters
 (trainable_params, rest), moduledef = model.partition(is_trainable, ...)
