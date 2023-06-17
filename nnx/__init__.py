@@ -58,7 +58,7 @@ from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
-from .partitioning import Not, buffers
+from .partitioning import All, Not, buffers
 from .pytreelib import Pytree
 from .state import State
 from .transforms import grad, jit

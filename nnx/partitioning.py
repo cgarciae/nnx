@@ -28,7 +28,7 @@ def to_predicate(filter: Filter) -> Predicate:
     elif callable(filter):
         return filter
     elif isinstance(filter, tp.Tuple):
-        return Any(filter)
+        return Any(*filter)
     else:
         raise TypeError(f"Invalid collection filter: {filter}")
 
@@ -52,13 +52,23 @@ class OfType:
 
 
 class Any:
-    def __init__(self, collection_filters: tp.Sequence[Filter]):
+    def __init__(self, *filters: Filter):
         self.predicates = tuple(
-            to_predicate(collection_filter) for collection_filter in collection_filters
+            to_predicate(collection_filter) for collection_filter in filters
         )
 
     def __call__(self, path: Path, x: tp.Any):
         return any(predicate(path, x) for predicate in self.predicates)
+
+
+class All:
+    def __init__(self, *filters: Filter):
+        self.predicates = tuple(
+            to_predicate(collection_filter) for collection_filter in filters
+        )
+
+    def __call__(self, path: Path, x: tp.Any):
+        return all(predicate(path, x) for predicate in self.predicates)
 
 
 class Not:
