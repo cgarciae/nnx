@@ -177,7 +177,7 @@ class Foo(nnx.Module):
 
 model = Foo(din=12, dout=2, ctx=nnx.context(0))
 ```
-As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
+As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Dict` Modules.
 
 ### Functional API
 
@@ -264,6 +264,28 @@ params = state.filter("params")
 # get params and batch_stats
 params, batch_stats = state.filter("params", "batch_stats")
 ```
+
+### Filters
+
+Filters let you select subsets of nodes based on some criteria. These are use throughout the API in method like `partition`, `filter`, and `pop_state`. There are 4 types of filters:
+
+* `str`: matches all `Variable` nodes (e.g. `nnx.param` or `nnx.var`) with the given `collection` name.
+* `type`: matches all node instances of the given type.
+* `...`: matches all nodes.
+* `(path, any) -> bool`: a predicate function that takes a node path and value and returns a boolean.
+* `Tuple[Filter, ...]`: a tuple of filters, matches all nodes that match any of the filters.
+
+NNX also provides the following custom filters:
+
+* `nnx.Not(filter)`: matches all nodes that do not match the given filter
+* `nnx.buffers`: matches all `numpy.ndarray` and `jax.Array` nodes
+
+Here is an example of how to use `Not` and `buffers`:
+```python
+rest = module.filter(nnx.Not("params"))
+buffers = module.filter(nnx.buffers)
+```
+
 
 ### Capturing Intermediate Values
 In NNX you can easily propagate intemediate values by simply assigning them to an attribute at runtime. For convenience, you should assign them to a `Variable` attribute with a `collection` name by using `nnx.var` so you can easily retrieve them later.

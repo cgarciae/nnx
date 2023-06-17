@@ -11,7 +11,7 @@ A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound=Module)
 
 
-class Map(Module, tp.Mapping[str, A]):
+class Dict(Module, tp.Mapping[str, A]):
     @tp.overload
     def __init__(self, __iterable: tp.Iterable[tp.Tuple[str, A]]):
         ...

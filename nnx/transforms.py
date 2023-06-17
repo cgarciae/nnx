@@ -189,7 +189,7 @@ class GradTransform:
 @tp.overload
 def grad(
     fun: tp.Callable[..., tp.Any],
-    wrt: partitioning.CollectionFilter = "params",
+    wrt: partitioning.Filter = "params",
     *,
     stateful: bool = True,
     holomorphic: bool = False,
@@ -202,7 +202,7 @@ def grad(
 @tp.overload
 def grad(
     fun: tp.Callable[..., tp.Any],
-    wrt: partitioning.CollectionFilter = "params",
+    wrt: partitioning.Filter = "params",
     *,
     stateful: bool = True,
     has_aux: tp.Literal[True],
@@ -215,7 +215,7 @@ def grad(
 
 def grad(
     fun: tp.Callable[..., tp.Any],
-    wrt: partitioning.CollectionFilter = "params",
+    wrt: partitioning.Filter = "params",
     *,
     stateful: bool = True,
     has_aux: bool = False,

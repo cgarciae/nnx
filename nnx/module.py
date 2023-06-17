@@ -177,7 +177,7 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
     @tp.overload
     def filter(
         self,
-        filter: partitioning.CollectionFilter,
+        filter: partitioning.Filter,
         /,
     ) -> State:
         ...
@@ -185,35 +185,35 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
     @tp.overload
     def filter(
         self,
-        filter: partitioning.CollectionFilter,
-        filter2: partitioning.CollectionFilter,
+        filter: partitioning.Filter,
+        filter2: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple[State, ...]:
         ...
 
     def filter(
-        self, *filters: partitioning.CollectionFilter
+        self, *filters: partitioning.Filter
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         return self.state.filter(*filters)
 
     @tp.overload
-    def partition(self, first: partitioning.CollectionFilter, /) -> "PureModule[M]":
+    def partition(self, first: partitioning.Filter, /) -> "PureModule[M]":
         ...
 
     @tp.overload
     def partition(
         self,
-        first: partitioning.CollectionFilter,
-        second: partitioning.CollectionFilter,
+        first: partitioning.Filter,
+        second: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]:
         ...
 
     def partition(
         self,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Union["PureModule[M]", tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]],]:
         states = self.state.partition(*filters)
         if isinstance(states, State):
@@ -223,22 +223,22 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
 
     @tp.overload
     def pop_state(
-        self, filter: partitioning.CollectionFilter, /
+        self, filter: partitioning.Filter, /
     ) -> tp.Tuple[State, "PureModule[M]"]:
         ...
 
     @tp.overload
     def pop_state(
         self,
-        filter: partitioning.CollectionFilter,
-        filter2: partitioning.CollectionFilter,
+        filter: partitioning.Filter,
+        filter2: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple[tp.Tuple[State, ...], "PureModule[M]"]:
         ...
 
     def pop_state(
-        self, *filters: partitioning.CollectionFilter
+        self, *filters: partitioning.Filter
     ) -> tp.Tuple[tp.Union[State, tp.Tuple[State, ...]], "PureModule[M]"]:
         if len(filters) == 0:
             raise ValueError("At least one filter must be provided")
@@ -423,22 +423,22 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         ...
 
     @tp.overload
-    def partition(self: M, first: partitioning.CollectionFilter, /) -> PureModule[M]:
+    def partition(self: M, first: partitioning.Filter, /) -> PureModule[M]:
         ...
 
     @tp.overload
     def partition(
         self: M,
-        first: partitioning.CollectionFilter,
-        second: partitioning.CollectionFilter,
+        first: partitioning.Filter,
+        second: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]:
         ...
 
     def partition(
         self: M,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Union[PureModule[M], tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]]:
         moduledef = _get_module_def(self)
         state = _get_module_state(self)
@@ -459,24 +459,24 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         return _get_module_state(self)
 
     @tp.overload
-    def filter(self, first: partitioning.CollectionFilter, /) -> State:
+    def filter(self, first: partitioning.Filter, /) -> State:
         ...
 
     @tp.overload
     def filter(
         self,
-        first: partitioning.CollectionFilter,
-        second: partitioning.CollectionFilter,
+        first: partitioning.Filter,
+        second: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple[State, ...]:
         ...
 
     def filter(
         self,
-        first: partitioning.CollectionFilter,
+        first: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         state = _get_module_state(self)
 
@@ -490,7 +490,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     @tp.overload
     def pop_state(
         self,
-        filter: partitioning.CollectionFilter,
+        filter: partitioning.Filter,
         /,
     ) -> State:
         ...
@@ -498,15 +498,15 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     @tp.overload
     def pop_state(
         self,
-        filter: partitioning.CollectionFilter,
-        filter2: partitioning.CollectionFilter,
+        filter: partitioning.Filter,
+        filter2: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple[State, ...]:
         ...
 
     def pop_state(
-        self, *filters: partitioning.CollectionFilter
+        self, *filters: partitioning.Filter
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
         if len(filters) == 0:
             raise ValueError("Expected at least one filter")
@@ -751,7 +751,7 @@ def _build_module_recursive(
 
 def _pop(
     module: Module,
-    filters: tp.Tuple[partitioning.CollectionFilter, ...],
+    filters: tp.Tuple[partitioning.Filter, ...],
 ) -> tp.Tuple[State, ...]:
     module_index: tp.Dict[int, int] = {}
     path: Path = ()

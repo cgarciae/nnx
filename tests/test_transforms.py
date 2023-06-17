@@ -13,10 +13,10 @@ def collection(collection: str):
 
 class TestJIT:
     def test_jit(self):
-        m = nnx.Map(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.param(1))
 
         @nnx.jit
-        def g(m: nnx.Map):
+        def g(m: nnx.Dict):
             m.a = 2
             return 1.0
 
@@ -26,10 +26,10 @@ class TestJIT:
         assert out == 1.0
 
     def test_jit_stateless(self):
-        m = nnx.Map(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.param(1))
 
         @partial(nnx.jit, stateful=False)
-        def g(m: nnx.Map):
+        def g(m: nnx.Dict):
             m.a = 2
             return 1.0
 
@@ -44,7 +44,7 @@ class TestGrad:
         p1 = nnx.param(10.0)
         p2 = nnx.param(20.0)
 
-        m = nnx.Map(
+        m = nnx.Dict(
             a=nnx.Sequence([p1, p2]),
             b=p1,
             c=7,
@@ -52,7 +52,7 @@ class TestGrad:
         )
 
         @nnx.grad
-        def f(m: nnx.Map):
+        def f(m: nnx.Dict):
             # sum all params
             return m["a"][0] + m["a"][1] + m["b"]
 
@@ -76,7 +76,7 @@ class TestGrad:
         assert m["d"] == 5.0
 
     def test_grad_with_multiple_ref_types(self):
-        m = nnx.Map(
+        m = nnx.Dict(
             a=nnx.Sequence([nnx.param(10.0), nnx.var("batch_stats", 20.0)]),
             b=nnx.param(10.0),
             c=7,
@@ -84,7 +84,7 @@ class TestGrad:
         )
 
         @nnx.grad
-        def f(m: nnx.Map):
+        def f(m: nnx.Dict):
             # sum all params
             return m.a[0] + m.a[1] + m.b
 
@@ -105,7 +105,7 @@ class TestGrad:
         assert m.d == 5.0
 
     def test_grad_with_type_predicate(self):
-        m = nnx.Map(
+        m = nnx.Dict(
             a=nnx.Sequence([nnx.param(10.0), nnx.var("batch_stats", 20.0)]),
             b=nnx.param(10.0),
             c=7,
@@ -113,7 +113,7 @@ class TestGrad:
         )
 
         @partial(nnx.grad, wrt="batch_stats")
-        def f(m: nnx.Map):
+        def f(m: nnx.Dict):
             # sum all params
             return m.a[0] + m.a[1] + m.b
 

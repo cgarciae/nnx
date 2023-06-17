@@ -6,7 +6,7 @@ import nnx
 
 class TestHelpers:
     def test_train_state(self):
-        m = nnx.Map(a=nnx.param(1), b=nnx.var("batch_stats", 2))
+        m = nnx.Dict(a=nnx.param(1), b=nnx.var("batch_stats", 2))
 
         (params, batch_stats), moduledef = m.partition("params", "batch_stats")
 

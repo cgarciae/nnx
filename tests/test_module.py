@@ -17,7 +17,7 @@ class TestModule:
         assert hasattr(foo, "_module__state")
 
     def test_trace_level(self):
-        m = nnx.Map(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.param(1))
 
         @jax.jit
         def f():
@@ -30,10 +30,10 @@ class TestModule:
         f()
 
     def test_split_merge(self):
-        m = nnx.Map(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.param(1))
 
         @jax.jit
-        def g(pure_module: nnx.PureModule[nnx.Map[int]]):
+        def g(pure_module: nnx.PureModule[nnx.Dict[int]]):
             m = pure_module.merge()
             m.a = 2
             return m.partition()
@@ -45,7 +45,7 @@ class TestModule:
     def test_no_trace_level_error_on_grad(self):
         # No trace level error occurs because jax doesn't update
         # its top trace for grad.
-        m = nnx.Map(a=nnx.param(1.0))
+        m = nnx.Dict(a=nnx.param(1.0))
 
         @jax.grad
         def f(_):
@@ -57,7 +57,7 @@ class TestModule:
     def test_trace_level_error_on_nnx_grad(self):
         # error occurs because nnx updates its nnx_trace
         # in nnx.grad.
-        m = nnx.Map(a=nnx.param(1.0))
+        m = nnx.Dict(a=nnx.param(1.0))
 
         @nnx.grad
         def f(_):
@@ -88,8 +88,8 @@ class TestModule:
         assert isinstance(y, jax.Array)
 
     def test_shared_module(self):
-        m1 = nnx.Map(a=nnx.param(1), b=nnx.param(2))
-        m2 = nnx.Map(x=m1, y=m1, z=nnx.param(3))
+        m1 = nnx.Dict(a=nnx.param(1), b=nnx.param(2))
+        m2 = nnx.Dict(x=m1, y=m1, z=nnx.param(3))
 
         m3 = m2.partition().merge()
 
@@ -115,10 +115,10 @@ class TestModule:
         r1 = nnx.Variable(1, "", None)
         r2 = nnx.Variable(2, "", None)
 
-        m = m0 = nnx.Map({"a": nnx.Sequence([r1, r2]), "b": r1})
+        m = m0 = nnx.Dict({"a": nnx.Sequence([r1, r2]), "b": r1})
 
         @jax.jit
-        def f(pure_module: nnx.PureModule[nnx.Map[Any]]):
+        def f(pure_module: nnx.PureModule[nnx.Dict[Any]]):
             m = pure_module.merge()
 
             assert m["a"][0] is not m["b"]
@@ -137,10 +137,10 @@ class TestModule:
         assert m["b"] is not m0["b"]
 
     def test_cross_barrier(self):
-        m = nnx.Map(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.param(1))
 
         @jax.jit
-        def g(pure_module: nnx.PureModule[nnx.Map[int]]):
+        def g(pure_module: nnx.PureModule[nnx.Dict[int]]):
             m = pure_module.merge()
             m.a += 1
             return m.partition()
@@ -152,7 +152,7 @@ class TestModule:
 
     def test_no_rejit(self):
         n = 0
-        m = nnx.Map(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.param(1))
 
         @jax.jit
         def g(pure_module):
@@ -184,10 +184,10 @@ class TestModule:
         r1 = nnx.Variable(1, "", None)
         r2 = nnx.Variable(2, "", None)
         v1 = 3
-        m = nnx.Map(
+        m = nnx.Dict(
             {
                 "a": nnx.Sequence([r1, r2, v1]),
-                "b": nnx.Map({"c": r1, "d": r2}),
+                "b": nnx.Dict({"c": r1, "d": r2}),
             }
         )
 
@@ -200,10 +200,10 @@ class TestModule:
         r1 = nnx.Variable(1, "", None)
         r2 = nnx.Variable(2, "", None)
         v1 = jax.numpy.array(3)
-        m = nnx.Map(
+        m = nnx.Dict(
             {
                 "a": nnx.Sequence([r1, r2, v1]),
-                "b": nnx.Map({"c": r1, "d": r2}),
+                "b": nnx.Dict({"c": r1, "d": r2}),
             }
         )
 
@@ -212,9 +212,9 @@ class TestModule:
         assert len(jax.tree_util.tree_leaves(p)) == 5
 
     def test_clone(self):
-        m = nnx.Map(
+        m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), 3]),
-            b=nnx.Map(c=nnx.param(1), d=nnx.param(2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.param(2)),
         )
 
         m2 = m.clone()

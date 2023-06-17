@@ -52,24 +52,24 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
             yield reprlib.Attr(str(k), v)
 
     @tp.overload
-    def partition(self, first: partitioning.CollectionFilter, /) -> "State":
+    def partition(self, first: partitioning.Filter, /) -> "State":
         ...
 
     @tp.overload
     def partition(
         self,
-        first: partitioning.CollectionFilter,
-        second: partitioning.CollectionFilter,
+        first: partitioning.Filter,
+        second: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple["State", ...]:
         ...
 
     def partition(
         self,
-        first: partitioning.CollectionFilter,
+        first: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Union["State", tp.Tuple["State", ...]]:
         *states, rest = _split_state(self, first, *filters)
 
@@ -88,7 +88,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     @tp.overload
     def filter(
         self,
-        first: partitioning.CollectionFilter,
+        first: partitioning.Filter,
         /,
     ) -> "State":
         ...
@@ -96,18 +96,18 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
     @tp.overload
     def filter(
         self,
-        first: partitioning.CollectionFilter,
-        second: partitioning.CollectionFilter,
+        first: partitioning.Filter,
+        second: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Tuple["State", ...]:
         ...
 
     def filter(
         self,
-        first: partitioning.CollectionFilter,
+        first: partitioning.Filter,
         /,
-        *filters: partitioning.CollectionFilter,
+        *filters: partitioning.Filter,
     ) -> tp.Union["State", tp.Tuple["State", ...]]:
         (*states, _rest) = _split_state(self, first, *filters)
 
@@ -173,7 +173,7 @@ jax.tree_util.register_pytree_with_keys(
 
 def _split_state(
     state: StateMapping,
-    *filters: partitioning.CollectionFilter,
+    *filters: partitioning.Filter,
 ) -> tp.Tuple[StateDict, ...]:
     predicates = tuple(map(partitioning.to_predicate, filters))
 
