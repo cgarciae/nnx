@@ -11,6 +11,7 @@ from nnx.state import State
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
+S = tp.TypeVar("S", bound=tp.Union[State, tp.Tuple[State, ...]])
 
 Path = tp.Tuple[str, ...]
 StateDict = tp.Dict[Path, tp.Any]
@@ -92,11 +93,8 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
     def static_fields(self) -> tp.Tuple[tp.Tuple[str, tp.Any], ...]:
         return self._static_fields
 
-    @tp.overload
     def merge(self, state: State, *states: State) -> M:
-        ...
-
-    def merge(self, *states: State) -> M:
+        states = (state, *states)
         module = _build_module(self)
         current_state = State({})
 
@@ -104,10 +102,10 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
 
         return module
 
-    def apply(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
+    def apply(self, state: State, *states: State) -> ApplyCaller["Pure[State, M]"]:
         accessesor = DelayedAccessor()
 
-        def _context(accessesor, *args, **kwargs) -> tp.Tuple[tp.Any, PureModule[M]]:
+        def _context(accessesor, *args, **kwargs) -> tp.Tuple[tp.Any, Pure[State, M]]:
             module = self.merge(state, *states)
             fn = accessesor(module)
             out = fn(*args, **kwargs)
@@ -140,13 +138,13 @@ def _moddef_unflatten(
 jtu.register_pytree_node(ModuleDef, _moddef_flatten, _moddef_unflatten)
 
 
-class PureModule(tp.Tuple[State, ModuleDef[M]]):
+class Pure(tp.Tuple[S, ModuleDef[M]]):
     @classmethod
-    def new(cls, state: State, moduledef: ModuleDef[M]) -> "PureModule[M]":
-        return cls((state, moduledef))
+    def new(cls, states: S, moduledef: ModuleDef[M]) -> "Pure[S, M]":
+        return cls((states, moduledef))
 
     @property
-    def state(self) -> State:
+    def states(self) -> S:
         return self[0]
 
     @property
@@ -154,11 +152,17 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         return self[1]
 
     def merge(self) -> M:
-        return self.moduledef.merge(self.state)
+        if isinstance(self.states, tuple):
+            return self.moduledef.merge(*self.states)
+        else:
+            return self.moduledef.merge(self.states)
 
     @property
-    def apply(self) -> ApplyCaller["PureModule[M]"]:
-        return self.moduledef.apply(self.state)
+    def apply(self) -> ApplyCaller["Pure[State, M]"]:
+        if isinstance(self.states, tuple):
+            return self.moduledef.apply(*self.states)
+        else:
+            return self.moduledef.apply(self.states)
 
     @property
     def call(self) -> M:
@@ -172,7 +176,9 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         return CallableProxy(_context, accessesor)  # type: ignore
 
     def get_state(self) -> State:
-        return self.state
+        if isinstance(self.states, tuple):
+            return State.merge(*self.states)
+        return self.states
 
     @tp.overload
     def filter(
@@ -193,12 +199,22 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         ...
 
     def filter(
-        self, *filters: partitioning.Filter
+        self, filter: partitioning.Filter, *filters: partitioning.Filter
     ) -> tp.Union[State, tp.Tuple[State, ...]]:
-        return self.state.filter(*filters)
+        filters = (filter, *filters)
+        state = self.get_state()
+
+        if len(filters) == 1:
+            return state.filter(filters[0])
+        else:
+            return state.filter(filters[0], filters[1], *filters[2:])
 
     @tp.overload
-    def partition(self, first: partitioning.Filter, /) -> "PureModule[M]":
+    def partition(self) -> "Pure[State, M]":
+        ...
+
+    @tp.overload
+    def partition(self, first: partitioning.Filter, /) -> "Pure[State, M]":
         ...
 
     @tp.overload
@@ -208,23 +224,30 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         second: partitioning.Filter,
         /,
         *filters: partitioning.Filter,
-    ) -> tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]:
+    ) -> "Pure[tp.Tuple[State, ...], M]":
         ...
 
     def partition(
-        self,
-        *filters: partitioning.Filter,
-    ) -> tp.Union["PureModule[M]", tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]],]:
-        states = self.state.partition(*filters)
-        if isinstance(states, State):
-            return PureModule.new(states, self.moduledef)
+        self, *filters: partitioning.Filter
+    ) -> tp.Union["Pure[State, M]", "Pure[tp.Tuple[State, ...], M]"]:
+        state = self.get_state()
+
+        if len(filters) == 0:
+            states = state
+        elif len(filters) == 1:
+            states = state.partition(filters[0])
         else:
-            return states, self.moduledef
+            states = state.partition(filters[0], filters[1], *filters[2:])
+
+        if isinstance(states, State):
+            return Pure.new(states, self.moduledef)
+        else:
+            return Pure.new(states, self.moduledef)
 
     @tp.overload
     def pop_state(
         self, filter: partitioning.Filter, /
-    ) -> tp.Tuple[State, "PureModule[M]"]:
+    ) -> tp.Tuple[State, "Pure[State, M]"]:
         ...
 
     @tp.overload
@@ -234,32 +257,40 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
         filter2: partitioning.Filter,
         /,
         *filters: partitioning.Filter,
-    ) -> tp.Tuple[tp.Tuple[State, ...], "PureModule[M]"]:
+    ) -> tp.Tuple[tp.Tuple[State, ...], "Pure[State, M]"]:
         ...
 
     def pop_state(
-        self, *filters: partitioning.Filter
-    ) -> tp.Tuple[tp.Union[State, tp.Tuple[State, ...]], "PureModule[M]"]:
-        if len(filters) == 0:
-            raise ValueError("At least one filter must be provided")
-        else:
-            *states, rest = self.state.partition(*filters, ...)
+        self, filter: partitioning.Filter, *filters: partitioning.Filter
+    ) -> tp.Tuple[tp.Union[State, tp.Tuple[State, ...]], "Pure[State, M]"]:
+        filters = (filter, *filters)
+
+        state = self.get_state()
+        *states, rest = state.partition(*filters, ...)
 
         if len(states) == 1:
             states = states[0]
         else:
             states = tuple(states)
 
-        return states, PureModule.new(rest, self.moduledef)
+        return states, Pure.new(rest, self.moduledef)
 
     def update_state(
         self,
-        updates: tp.Union[M, "PureModule[M]", State, tp.Tuple[State, ...]],
-    ) -> "PureModule[M]":
+        updates: tp.Union[M, "Pure[S, M]", State, tp.Tuple[State, ...]],
+    ) -> "Pure[State, M]":
         if isinstance(updates, Module):
-            states = (updates.partition()[0],)
-        elif isinstance(updates, PureModule):
-            states = (updates.state,)
+            states = (updates.get_state(),)
+        elif isinstance(updates, Pure):
+            if isinstance(updates.states, tuple):
+                states = updates.states
+            elif isinstance(updates.states, State):
+                states = (updates.states,)
+            else:
+                raise TypeError(
+                    f"Expected Module, PureModule, State or tuple of State, "
+                    f"got {type(updates.states).__name__}"
+                )
         elif isinstance(updates, State):
             states = (updates,)
         elif isinstance(updates, tuple):
@@ -270,19 +301,26 @@ class PureModule(tp.Tuple[State, ModuleDef[M]]):
                 f"got {type(updates).__name__}"
             )
 
+        if isinstance(self.states, tuple):
+            states += self.states
+        else:
+            states += (self.states,)
+
         state = State.merge(*states)
-        return PureModule.new(state, self.moduledef)
+        return Pure.new(state, self.moduledef)
 
 
-def _pure_module_flatten(bounded: PureModule[M]):
+def _pure_module_flatten(bounded: Pure[S, M]):
     return tuple(bounded), None
 
 
-def _pure_module_unflatten(_, values: tp.Tuple[State, ModuleDef[M]]):
-    return PureModule(values)
+def _pure_module_unflatten(_, values: tp.Tuple[S, ModuleDef[M]]):
+    return Pure(values)
 
 
-jtu.register_pytree_node(PureModule, _pure_module_flatten, _pure_module_unflatten)
+jtu.register_pytree_node(Pure, _pure_module_flatten, _pure_module_unflatten)
+
+PureModule = Pure[tp.Union[State, tp.Tuple[State, ...]], M]
 
 
 class _ProxyContext(tp.Protocol):
@@ -419,11 +457,11 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         return self.partition().merge()
 
     @tp.overload
-    def partition(self: M) -> PureModule[M]:
+    def partition(self: M) -> Pure[State, M]:
         ...
 
     @tp.overload
-    def partition(self: M, first: partitioning.Filter, /) -> PureModule[M]:
+    def partition(self: M, first: partitioning.Filter, /) -> Pure[State, M]:
         ...
 
     @tp.overload
@@ -433,13 +471,12 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         second: partitioning.Filter,
         /,
         *filters: partitioning.Filter,
-    ) -> tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]:
+    ) -> Pure[tp.Tuple[State, ...], M]:
         ...
 
     def partition(
-        self: M,
-        *filters: partitioning.Filter,
-    ) -> tp.Union[PureModule[M], tp.Tuple[tp.Tuple[State, ...], ModuleDef[M]]]:
+        self: M, *filters: partitioning.Filter
+    ) -> tp.Union[Pure[State, M], Pure[tp.Tuple[State, ...], M]]:
         moduledef = _get_module_def(self)
         state = _get_module_state(self)
 
@@ -451,9 +488,9 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             states = state.partition(filters[0], filters[1], *filters[2:])
 
         if isinstance(states, tuple):
-            return states, moduledef
+            return Pure.new(states, moduledef)
         else:
-            return PureModule.new(states, moduledef)
+            return Pure.new(states, moduledef)
 
     def get_state(self) -> State:
         return _get_module_state(self)
@@ -532,12 +569,12 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     def update_state(
         self: M,
-        updates: tp.Union[M, PureModule[M], State, tp.Tuple[State, ...]],
+        updates: tp.Union[M, Pure[S, M], State, tp.Tuple[State, ...]],
     ) -> None:
         current_state = _get_module_state(self)
 
-        if isinstance(updates, PureModule):
-            updates = updates.state
+        if isinstance(updates, Pure):
+            updates = updates.states
         elif isinstance(updates, Module):
             assert type(self) == type(updates)
             updates = _get_module_state(updates)
@@ -809,4 +846,4 @@ def _update_module(
 
 # register nodes
 nodes.register_node_type(Module)
-nodes.register_node_type(PureModule)
+nodes.register_node_type(Pure)

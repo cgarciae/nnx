@@ -4,7 +4,7 @@ import optax
 
 from nnx import containers, pytreelib, utils
 from nnx.contextlib import Context
-from nnx.module import ApplyCaller, Module, PureModule
+from nnx.module import ApplyCaller, Module, Pure
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -87,7 +87,7 @@ class Sequence(Module, tp.Generic[A]):
 
 
 class ModuleDefApply(tp.Protocol, tp.Generic[M]):
-    def __call__(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
+    def __call__(self, state: State, *states: State) -> ApplyCaller["Pure[M]"]:
         ...
 
 

@@ -25,7 +25,7 @@ from .dataclasses import (
 )
 from .errors import TraceContextError
 from .helpers import Dict, Sequence, TrainState
-from .module import Module, ModuleDef, PureModule
+from .module import Module, ModuleDef, Pure, PureModule
 from .nn import initializers
 from .nn.activations import (
     celu,

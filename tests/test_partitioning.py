@@ -1,6 +1,7 @@
 import typing as tp
 
 import jax
+import pytest
 
 import nnx
 
@@ -14,7 +15,7 @@ def has_collection(collection):
 
 
 class TestPartitioning:
-    def test_partition_tree(self):
+    def test_partition(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 2)]),
             b=nnx.param(2),
@@ -40,6 +41,46 @@ class TestPartitioning:
         assert m2.b == m.b
         assert m2.c == 100
 
+    def test_complete_partitioning(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        # no error
+        m.partition("params", "batch_stats", nnx.Node)
+
+    def test_complete_partitioning_plus_ellipsis(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        # no error if additional ... is passed at the end
+        m.partition("params", "batch_stats", nnx.Node, ...)
+
+    def test_inclomplete_partition_error(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        with pytest.raises(
+            ValueError, match="Non-exhaustive filters, got a non-empty remainder"
+        ):
+            m.partition("params")
+
+    def test_ellipsis_not_last_error(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        with pytest.raises(
+            ValueError, match="Ellipsis `...` can only be used as the last filter,"
+        ):
+            m.partition(..., "params")
+
     def test_update_from(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 3)]),
@@ -64,10 +105,10 @@ class TestPartitioning:
             c=jax.numpy.array(100),
         )
 
-        pure_module: nnx.PureModule = m.partition()
+        pure_module: nnx.Pure = m.partition()
         pure_module = jax.tree_map(lambda x: x * 2, pure_module)
 
-        m.update_state(pure_module.state)
+        m.update_state(pure_module.states)
 
         assert m.a[0] == 2
         assert m.a[1] == 6

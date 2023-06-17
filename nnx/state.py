@@ -66,12 +66,10 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         ...
 
     def partition(
-        self,
-        first: partitioning.Filter,
-        /,
-        *filters: partitioning.Filter,
+        self, first: partitioning.Filter, /, *filters: partitioning.Filter
     ) -> tp.Union["State", tp.Tuple["State", ...]]:
-        *states, rest = _split_state(self, first, *filters)
+        filters = (first, *filters)
+        *states, rest = _split_state(self, *filters)
 
         if rest:
             raise ValueError(
@@ -109,7 +107,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         /,
         *filters: partitioning.Filter,
     ) -> tp.Union["State", tp.Tuple["State", ...]]:
-        (*states, _rest) = _split_state(self, first, *filters)
+        *states, _rest = _split_state(self, first, *filters)
 
         assert len(states) == len(filters) + 1
 
@@ -175,6 +173,12 @@ def _split_state(
     state: StateMapping,
     *filters: partitioning.Filter,
 ) -> tp.Tuple[StateDict, ...]:
+    for i, filter_ in enumerate(filters):
+        if filter_ is ... and i != len(filters) - 1:
+            raise ValueError(
+                f"Ellipsis `...` can only be used as the last filter, "
+                f"got it at index {i}."
+            )
     predicates = tuple(map(partitioning.to_predicate, filters))
 
     # we have n + 1 states, where n is the number of predicates

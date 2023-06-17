@@ -307,7 +307,7 @@ class TestModuleDef:
         foo = Foo(c=1.0, ctx=nnx.context(0))
 
         pure_module = foo.partition()
-        collections = pure_module.state.get_collections()
+        collections = pure_module.states.get_collections()
 
         assert "params" in collections
         assert None in collections
@@ -315,3 +315,153 @@ class TestModuleDef:
         y, states = pure_module.apply(x=2.0, ctx=nnx.context(e=1))
 
         assert isinstance(y, jax.Array)
+
+
+class TestPureModule:
+    def test_partition_merge(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = state, moduledef = m.partition()
+
+        m2 = pure_module.merge()
+
+        assert isinstance(state, nnx.State)
+        assert isinstance(moduledef, nnx.ModuleDef)
+        assert isinstance(m2, nnx.Dict)
+        assert isinstance(m2.a, nnx.Sequence)
+        assert isinstance(m2.b, nnx.Dict)
+        assert len(m.get_state()) == 5
+        assert len(m2.get_state()) == 5
+
+    def test_partition_merge_with_filters(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = (params, batch_stats, rest), moduledef = m.partition(
+            "params", "batch_stats", ...
+        )
+
+        m2 = pure_module.merge()
+
+        assert isinstance(params, nnx.State)
+        assert isinstance(batch_stats, nnx.State)
+        assert isinstance(rest, nnx.State)
+        assert isinstance(moduledef, nnx.ModuleDef)
+        assert isinstance(m2, nnx.Dict)
+        assert isinstance(m2.a, nnx.Sequence)
+        assert isinstance(m2.b, nnx.Dict)
+        assert len(m.get_state()) == 5
+        assert len(m2.get_state()) == 5
+
+    def test_filter(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = m.partition()
+
+        params = pure_module.filter("params")
+        batch_stats = pure_module.filter("batch_stats")
+        rest = pure_module.filter(nnx.Not(nnx.Variable))
+
+        assert len(params) == 3
+        assert len(batch_stats) == 1
+        assert len(rest) == 1
+
+    def test_filter_with_filters(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = m.partition("params", ...)
+
+        params = pure_module.filter("params")
+        batch_stats = pure_module.filter("batch_stats")
+        rest = pure_module.filter(nnx.Not(nnx.Variable))
+
+        assert len(params) == 3
+        assert len(batch_stats) == 1
+        assert len(rest) == 1
+
+    def test_partition_partition(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = m.partition()
+
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, nnx.State)
+
+        pure_module = pure_module.partition()
+
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, nnx.State)
+
+    def test_partition_with_filters_partition(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = m.partition("params", ...)
+
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, tuple)
+
+        pure_module = pure_module.partition()
+
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, nnx.State)
+
+    def test_partition_with_filters_partition_with_filters(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = m.partition("params", ...)
+
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, tuple)
+
+        pure_module = pure_module.partition("batch_stats", ...)
+
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, tuple)
+
+    def test_pop(self):
+        m = nnx.Dict(
+            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+        )
+
+        pure_module = m.partition()
+
+        params, pure_module2 = pure_module.pop_state("params")
+
+        assert isinstance(params, nnx.State)
+        assert isinstance(pure_module2, nnx.Pure)
+        assert isinstance(pure_module2.states, nnx.State)
+        assert len(params) == 3
+        assert len(pure_module2.states) == 2
+
+        (params, batch_stats), pure_module2 = pure_module.pop_state(
+            "params", "batch_stats"
+        )
+
+        assert isinstance(params, nnx.State)
+        assert isinstance(batch_stats, nnx.State)
+        assert isinstance(pure_module2, nnx.Pure)
+        assert isinstance(pure_module2.states, nnx.State)
+        assert len(params) == 3
+        assert len(batch_stats) == 1
+        assert len(pure_module2.states) == 1

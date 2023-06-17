@@ -61,7 +61,7 @@ def train_step(pure_model: nnx.PureModule[MLP], batch):
 
 
 @jax.jit
-def test_step(pure_model: nnx.PureModule[MLP], batch):
+def test_step(pure_model: nnx.Pure[MLP], batch):
     x, y = batch
     y_pred = pure_model.call(x)
     loss = jnp.mean((y - y_pred) ** 2)
