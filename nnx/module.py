@@ -5,7 +5,7 @@ from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import errors, nodes, partitioning, reprlib, tracers
+from nnx import errors, nodes, partitioning, reprlib, tracers, utils
 from nnx.containers import Container, Sharding, Variable
 from nnx.state import State
 
@@ -103,7 +103,7 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         return module
 
     def apply(self, state: State, *states: State) -> ApplyCaller["Pure[State, M]"]:
-        accessesor = DelayedAccessor()
+        accessesor = utils.DelayedAccessor()
 
         def _context(accessesor, *args, **kwargs) -> tp.Tuple[tp.Any, Pure[State, M]]:
             module = self.merge(state, *states)
@@ -111,7 +111,7 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
             out = fn(*args, **kwargs)
             return out, module.partition()
 
-        return CallableProxy(_context, accessesor)  # type: ignore
+        return utils.CallableProxy(_context, accessesor)  # type: ignore
 
 
 def _moddef_flatten(moduledef: ModuleDef[M]):
@@ -166,14 +166,14 @@ class Pure(tp.Tuple[S, ModuleDef[M]]):
 
     @property
     def call(self) -> M:
-        accessesor = DelayedAccessor()
+        accessesor = utils.DelayedAccessor()
 
         def _context(accessesor, *args, **kwargs):
             module = self.merge()
             fn = accessesor(module)
             return fn(*args, **kwargs)
 
-        return CallableProxy(_context, accessesor)  # type: ignore
+        return utils.CallableProxy(_context, accessesor)  # type: ignore
 
     def get_state(self) -> State:
         if isinstance(self.states, tuple):
@@ -321,44 +321,6 @@ def _pure_module_unflatten(_, values: tp.Tuple[S, ModuleDef[M]]):
 jtu.register_pytree_node(Pure, _pure_module_flatten, _pure_module_unflatten)
 
 PureModule = Pure[tp.Union[State, tp.Tuple[State, ...]], M]
-
-
-class _ProxyContext(tp.Protocol):
-    def __call__(self, __fn: tp.Callable[..., tp.Any], *args, **kwargs) -> tp.Any:
-        ...
-
-
-@dataclasses.dataclass
-class CallableProxy:
-    _proxy_context: _ProxyContext
-    _proxy_callable: tp.Callable[..., tp.Any]
-
-    def __call__(self, *args, **kwargs):
-        return self._proxy_context(self._proxy_callable, *args, **kwargs)
-
-    def __getattr__(self, name) -> "CallableProxy":
-        return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
-
-    def __getitem__(self, key) -> "CallableProxy":
-        return CallableProxy(self._proxy_context, self._proxy_callable[key])
-
-
-def _identity(x):
-    return x
-
-
-@dataclasses.dataclass
-class DelayedAccessor:
-    accessor: tp.Callable[[tp.Any], tp.Any] = _identity
-
-    def __call__(self, x):
-        return self.accessor(x)
-
-    def __getattr__(self, name):
-        return DelayedAccessor(lambda x: getattr(x, name))
-
-    def __getitem__(self, key):
-        return DelayedAccessor(lambda x: x[key])
 
 
 SEEN_MODULES_REPR: tp.Set[int] = set()
@@ -557,7 +519,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     @property
     def apply(self: M) -> ApplyCaller[M]:
-        accessesor = DelayedAccessor()
+        accessesor = utils.DelayedAccessor()
 
         def _context(accessesor, *args, **kwargs) -> tp.Tuple[tp.Any, M]:
             module = self.clone()
@@ -565,7 +527,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             out = fn(*args, **kwargs)
             return out, module
 
-        return CallableProxy(_context, accessesor)  # type: ignore
+        return utils.CallableProxy(_context, accessesor)  # type: ignore
 
     def update_state(
         self: M,

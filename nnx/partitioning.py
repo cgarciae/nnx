@@ -14,7 +14,7 @@ else:
 
 Path = tp.Tuple[str, ...]
 Predicate = tp.Callable[[Path, tp.Any], bool]
-FilterLiteral = tp.Union[str, type, Predicate, ellipsis]
+FilterLiteral = tp.Union[str, type, Predicate, ellipsis, None]
 Filter = tp.Union[FilterLiteral, tp.Tuple[FilterLiteral, ...]]
 
 
@@ -25,6 +25,8 @@ def to_predicate(filter: Filter) -> Predicate:
         return OfType(filter)
     elif filter is Ellipsis:
         return Everything()
+    elif filter is None:
+        return Nothing()
     elif callable(filter):
         return filter
     elif isinstance(filter, tp.Tuple):
@@ -82,6 +84,11 @@ class Not:
 class Everything:
     def __call__(self, path: Path, x: tp.Any):
         return True
+
+
+class Nothing:
+    def __call__(self, path: Path, x: tp.Any):
+        return False
 
 
 buffers = (jax.Array, np.ndarray)

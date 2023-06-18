@@ -1,16 +1,19 @@
 import functools
 import typing as tp
+from types import MappingProxyType
 
 import jax
+import jax.numpy as jnp
 import jax.stages
 
-from nnx import contextlib, partitioning, tracers
+from nnx import contextlib, partitioning, tracers, utils
 from nnx.module import Module, ModuleDef, PureModule
 from nnx.state import State
 
 A = tp.TypeVar("A")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 G = tp.TypeVar("G", bound=tp.Callable[..., tp.Any])
+M = tp.TypeVar("M", bound=Module)
 
 AxisName = tp.Hashable
 Leaf = tp.Any
@@ -236,3 +239,268 @@ def grad(
     ref_grad = functools.wraps(fun)(ref_grad)
     # _update_decorator_fields(ref_grad, fun)
     return ref_grad
+
+
+import flax.linen
+
+flax.linen.scan
+
+
+# NOTE: I don't understand why variable_broadcasts exists. Passing them as
+# captures to `scan_fn` makes it impossible to propagate state updates from
+# them. Maybe, there should only be `variable_carry` and `variable_axes`.
+class Scan(Module, tp.Generic[M]):
+    def __init__(
+        self,
+        module_type: tp.Type[M],
+        module_init_args: tp.Tuple[tp.Any, ...],
+        module_init_kwargs: tp.Dict[str, tp.Any],
+        *,
+        variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
+        variable_broadcast: partitioning.Filter = None,
+        variable_carry: partitioning.Filter = ...,
+        split_rngs: contextlib.RngFilter = None,
+        in_axes=0,
+        out_axes=0,
+        length: tp.Optional[int] = None,
+        reverse: bool = False,
+        unroll: int = 1,
+        data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
+        metadata_params: tp.Mapping[tp.Any, tp.Any] = {},
+    ):
+        self.module_type = module_type
+        self.variable_axes = variable_axes
+        self.variable_broadcast = variable_broadcast
+        self.variable_carry = variable_carry
+        self.split_rngs = split_rngs
+        self.in_axes = in_axes
+        self.out_axes = out_axes
+        self.length = length
+        self.reverse = reverse
+        self.unroll = unroll
+        self.data_transform = data_transform
+        self.metadata_params = metadata_params
+        self.module = self.create_module(*module_init_args, **module_init_kwargs)
+
+    def create_module(
+        self: "Scan[M]", *args, ctx: tp.Optional[contextlib.Context] = None, **kwargs
+    ) -> M:
+        key_values = []
+
+        if ctx is not None:
+            if not isinstance(ctx, contextlib.Context):
+                raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
+
+            keys, ctxdef = ctx.partition()
+            split_predicate = contextlib.to_rng_predicate(self.split_rngs)
+
+            in_axes = []
+            key_names = tuple(keys.keys())
+
+            for name, key in keys.items():
+                if split_predicate(name):
+                    if self.length is None:
+                        raise ValueError(
+                            "Cannot split RNGs without specifying a length"
+                        )
+                    key = jax.random.split(key, self.length)
+                    in_axes.append(0)
+                else:
+                    in_axes.append(None)
+                key_values.append(key)
+        else:
+            key_names = None
+            ctxdef = None
+            in_axes = None
+
+        out_axes = (*self.variable_axes.values(), None, None)
+        moduledef: tp.Optional[ModuleDef[M]] = None
+
+        def _init_state(*key_values):
+            nonlocal moduledef
+
+            if ctxdef is not None:
+                assert key_names is not None
+                keys = dict(zip(key_names, key_values))
+                ctx = ctxdef.merge(keys)
+                kwargs["ctx"] = ctx
+
+            module = self.module_type(*args, **kwargs)
+
+            # lift module
+            filters = (
+                *self.variable_axes.keys(),
+                self.variable_broadcast,
+                self.variable_carry,
+            )
+
+            states, moduledef = module.partition(*filters)
+
+            return states
+
+        if ctxdef is not None or self.variable_axes:
+            _init_state = jax.vmap(
+                _init_state, in_axes=in_axes, out_axes=out_axes, axis_size=self.length
+            )
+
+        module_states = _init_state(*key_values)
+        moduledef = tp.cast(ModuleDef[M], moduledef)
+
+        module = moduledef.merge(*module_states)
+
+        return module
+
+    @property
+    def call(self) -> M:
+        accessesor = utils.DelayedAccessor()
+
+        def _context(
+            accessesor,
+            carry_arg,
+            axes_arg,
+            *broadcast_args,
+            ctx: tp.Optional[contextlib.Context] = None,
+            **broadcast_kwargs,
+        ) -> tp.Any:
+            # split rng state
+            axes_keys: tp.Optional[tp.Dict[str, jax.Array]]
+            broadcast_keys: tp.Optional[tp.Dict[str, jax.Array]]
+
+            if ctx is not None:
+                if not isinstance(ctx, contextlib.Context):
+                    raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
+
+                axes_keys = {}
+                broadcast_keys = {}
+
+                keys, ctxdef = ctx.partition()
+                split_predicate = contextlib.to_rng_predicate(self.split_rngs)
+
+                for name, key in keys.items():
+                    if split_predicate(name):
+                        if self.length is None:
+                            raise ValueError(
+                                "Cannot split RNGs without specifying a length"
+                            )
+                        key = jax.random.split(key, self.length)
+                        axes_keys[name] = key
+                    else:
+                        broadcast_keys[name] = key
+            else:
+                ctxdef = None
+                axes_keys = None
+                broadcast_keys = None
+
+            # split module state
+            filters = (
+                *self.variable_axes.keys(),
+                self.variable_broadcast,
+                self.variable_carry,
+            )
+            (
+                *axes_states,
+                broadcast_state,
+                carry_state,
+            ), moduledef = self.module.partition(*filters)
+
+            # transpose axes state
+            axes_states = tuple(
+                jax.tree_map(lambda x: jnp.moveaxis(x, axis, 0), axes_state)
+                for axes_state, axis in zip(axes_states, self.variable_axes.values())
+            )
+
+            carry = (carry_state, carry_arg)
+            axes = (axes_keys, axes_states, axes_arg)
+
+            def scan_fn(
+                carry: tp.Tuple[State, tp.Any],
+                axes: tp.Tuple[
+                    tp.Optional[tp.Dict[str, jax.Array]], tp.Tuple[State, ...], tp.Any
+                ],
+            ):
+                carry_state, carry_arg = carry
+                axes_keys, axes_states, axes_arg = axes
+
+                # merge rng state
+                if ctxdef is not None:
+                    assert axes_keys is not None and broadcast_keys is not None
+                    ctx = ctxdef.merge({**axes_keys, **broadcast_keys})
+                    broadcast_kwargs["ctx"] = ctx
+
+                # merge module state
+                module = moduledef.merge(*axes_states, broadcast_state, carry_state)
+
+                fn = accessesor(module)
+                (carry_out, axes_out) = fn(
+                    carry_arg, axes_arg, *broadcast_args, **broadcast_kwargs
+                )
+
+                # split module state
+                (*axes_states, _broadcast_state, carry_state), _ = module.partition(
+                    *filters
+                )
+
+                carry = (carry_state, carry_out)
+                out = (axes_states, axes_out)
+
+                return carry, out
+
+            carry, out = jax.lax.scan(
+                scan_fn,
+                carry,
+                axes,
+                length=self.length,
+                reverse=self.reverse,
+                unroll=self.unroll,
+            )
+            carry_state, carry_out = carry
+            axes_states, axes_out = out
+
+            # transpose axes state
+            axes_states = tuple(
+                jax.tree_map(lambda x: jnp.moveaxis(x, 0, axis), axes_state)
+                for axes_state, axis in zip(axes_states, self.variable_axes.values())
+            )
+
+            self.module.update_state((*axes_states, carry_state))
+
+            return carry_out, axes_out
+
+        return utils.CallableProxy(_context, accessesor)  # type: ignore
+
+
+def scan(
+    module_type: tp.Type[M],
+    variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
+    variable_broadcast: partitioning.Filter = None,
+    variable_carry: partitioning.Filter = ...,
+    init_split_rngs: contextlib.RngFilter = None,
+    call_split_rngs: contextlib.RngFilter = None,
+    in_axes=0,
+    out_axes=0,
+    length: tp.Optional[int] = None,
+    reverse: bool = False,
+    unroll: int = 1,
+    data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
+    metadata_params: tp.Mapping[tp.Any, tp.Any] = {},
+) -> tp.Callable[..., Scan[M]]:
+    def _create_scan(*args, **kwargs) -> Scan[M]:
+        return Scan(
+            module_type,
+            args,
+            kwargs,
+            variable_axes=variable_axes,
+            variable_broadcast=variable_broadcast,
+            variable_carry=variable_carry,
+            split_rngs=init_split_rngs,
+            call_split_rngs=call_split_rngs,
+            in_axes=in_axes,
+            out_axes=out_axes,
+            length=length,
+            reverse=reverse,
+            unroll=unroll,
+            data_transform=data_transform,
+            metadata_params=metadata_params,
+        )
+
+    return _create_scan
