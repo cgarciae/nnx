@@ -223,7 +223,7 @@ def to_rng_predicate(filter: RngFilter) -> RngPredicate:
         return filter
     elif isinstance(filter, str):
         return lambda name: name == filter
-    elif isinstance(filter, tuple):
+    elif isinstance(filter, tp.Sequence):
         predicates = tuple(map(to_rng_predicate, filter))
         return lambda name: any(predicate(name) for predicate in predicates)
     else:

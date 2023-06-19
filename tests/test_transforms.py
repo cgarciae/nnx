@@ -163,3 +163,44 @@ class TestScan:
 
         assert y.shape == (1, 3)
         assert out is None
+
+    def test_complex(self):
+        class Block(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+                self.bn = nnx.BatchNorm(3, ctx=ctx)
+                self.dropout = nnx.Dropout(0.5)
+                self.node = jnp.ones((2,))
+
+            def __call__(
+                self, x: jax.Array, _, *, ctx: nnx.Context
+            ) -> tp.Tuple[jax.Array, None]:
+                jax.debug.print("x={x}", x=x)
+                x = self.linear(x)
+                x = self.bn(x, ctx=ctx)
+                x = self.dropout(x, ctx=ctx)
+                x = nnx.gelu(x)
+                return x, None
+
+        MLP = nnx.scan(
+            Block,
+            variable_axes={"params": 0},
+            # variable_carry="batch_stats",
+            split_rngs=["params", "dropout"],
+            length=5,
+        )
+
+        module = MLP(ctx=nnx.context(0))
+
+        assert module.module.linear.kernel.shape == (5, 3, 3)
+        assert module.module.linear.bias.shape == (5, 3)
+        assert module.module.node.shape == (2,)
+
+        x = jnp.ones((1, 3))
+        ctx = nnx.context(
+            dropout=1, flags=dict(deterministic=False, use_running_average=False)
+        )
+        y, out = module.call(x, None, ctx=ctx)
+
+        assert y.shape == (1, 3)
+        assert out is None

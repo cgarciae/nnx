@@ -25,9 +25,9 @@ class BatchNorm(nnx.Module):
         self.var = nnx.var("batch_stats", jax.numpy.ones((din,)))
         self.mu = mu
 
-    def __call__(self, x, *, use_running_averages: bool) -> jax.Array:
+    def __call__(self, x, *, use_running_average: bool) -> jax.Array:
         scale, bias = self.scale, self.bias
-        if use_running_averages:
+        if use_running_average:
             mean, var = self.mean, self.var
         else:
             axis = tuple(range(0, x.ndim - 1))
@@ -64,7 +64,7 @@ class MLP(nnx.Module):
 
     def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
         x = self.linear1(x)
-        x = self.bn1(x, use_running_averages=not train)
+        x = self.bn1(x, use_running_average=not train)
         x = self.dropout(x, deterministic=not train, ctx=ctx)
         x = jax.nn.relu(x)
         x = self.linear2(x)
