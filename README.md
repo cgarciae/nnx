@@ -117,8 +117,8 @@ assert model.count == 2
 
 ## Examples
 
-* [Using Lifted Transforms](https://github.com/cgarciae/nnx/blob/main/examples/01_jit_transform.py): Shows how to train a simple model using lifted transforms.
-* [Using the Functional API](https://github.com/cgarciae/nnx/blob/main/examples/02_functional_api.py): Shows how to train a simple model using the functional API.
+* [Using the Functional API](https://github.com/cgarciae/nnx/blob/main/examples/01_functional_api.py): Shows how to train a simple model using the functional API.
+* [Using Lifted Transforms](https://github.com/cgarciae/nnx/blob/main/examples/02_lifted_transforms.py): Shows how to train a simple model using lifted transforms.
 * [Using TrainState](https://github.com/cgarciae/nnx/blob/main/examples/03_train_state.py): Shows how to train a simple model using the functional API with the help of `TrainState`.
 * [Using PureModule](https://github.com/cgarciae/nnx/blob/main/examples/04_pure.py) (experimental): Shows how to train a simple model using the functional API and leveraging `PureModule` to simplify the code.
 * [Training a VAE](https://github.com/cgarciae/nnx/blob/main/examples/05_vae.py): Shows how to train a VAE on the binarized MNIST dataset, uses the functional API, `TrainState`, and shows how to use capture intermediate values to retrieve `kl_loss`.
