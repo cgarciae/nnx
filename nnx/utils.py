@@ -2,6 +2,9 @@ import dataclasses
 import inspect
 import typing as tp
 
+import jax
+import jax.tree_util as jtu
+
 A = tp.TypeVar("A")
 
 
@@ -58,3 +61,15 @@ class DelayedAccessor:
 
     def __getitem__(self, key):
         return DelayedAccessor(lambda x: x[key])
+
+
+def tree_map_upto_left(
+    f: tp.Callable[[tp.Any, tp.Any], tp.Any], left: tp.Any, right: tp.Any
+) -> tp.Any:
+    leaves_left, treedef = jtu.tree_flatten(left)
+    leaves_right = treedef.flatten_up_to(right)
+
+    return treedef.unflatten(
+        f(left_leaf, right_leaf)
+        for left_leaf, right_leaf in zip(leaves_left, leaves_right)
+    )

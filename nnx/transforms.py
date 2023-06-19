@@ -11,6 +11,7 @@ from nnx.module import Module, ModuleDef, PureModule
 from nnx.state import State
 
 A = tp.TypeVar("A")
+C = tp.TypeVar("C")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 G = tp.TypeVar("G", bound=tp.Callable[..., tp.Any])
 M = tp.TypeVar("M", bound=Module)
@@ -294,7 +295,7 @@ class Scan(Module, tp.Generic[M]):
             keys, ctxdef = ctx.partition()
             split_predicate = contextlib.to_rng_predicate(self.split_rngs)
 
-            in_axes = []
+            key_axes = []
             key_names = tuple(keys.keys())
 
             for name, key in keys.items():
@@ -304,16 +305,16 @@ class Scan(Module, tp.Generic[M]):
                             "Cannot split RNGs without specifying a length"
                         )
                     key = jax.random.split(key, self.length)
-                    in_axes.append(0)
+                    key_axes.append(0)
                 else:
-                    in_axes.append(None)
+                    key_axes.append(None)
                 key_values.append(key)
         else:
             key_names = None
             ctxdef = None
-            in_axes = None
+            key_axes = None
 
-        out_axes = (*self.variable_axes.values(), None, None)
+        init_out_axes = (*self.variable_axes.values(), None, None)
         moduledef: tp.Optional[ModuleDef[M]] = None
 
         def _init_state(*key_values):
@@ -340,7 +341,10 @@ class Scan(Module, tp.Generic[M]):
 
         if ctxdef is not None or self.variable_axes:
             _init_state = jax.vmap(
-                _init_state, in_axes=in_axes, out_axes=out_axes, axis_size=self.length
+                _init_state,
+                in_axes=key_axes,
+                out_axes=init_out_axes,
+                axis_size=self.length,
             )
 
         module_states = _init_state(*key_values)
@@ -350,18 +354,30 @@ class Scan(Module, tp.Generic[M]):
 
         return module
 
+    def __call__(
+        self,
+        carry_arg: C,
+        axes_arg,
+        *broadcast_args,
+        ctx: tp.Optional[contextlib.Context] = None,
+        **broadcast_kwargs,
+    ) -> tp.Tuple[C, tp.Any]:
+        return self.call(  # type: ignore
+            carry_arg, axes_arg, *broadcast_args, ctx=ctx, **broadcast_kwargs
+        )
+
     @property
     def call(self) -> M:
         accessesor = utils.DelayedAccessor()
 
         def _context(
             accessesor,
-            carry_arg,
+            carry_arg: C,
             axes_arg,
             *broadcast_args,
             ctx: tp.Optional[contextlib.Context] = None,
             **broadcast_kwargs,
-        ) -> tp.Any:
+        ) -> tp.Tuple[C, tp.Any]:
             # split rng state
             axes_keys: tp.Optional[tp.Dict[str, jax.Array]]
             broadcast_keys: tp.Optional[tp.Dict[str, jax.Array]]
@@ -382,8 +398,7 @@ class Scan(Module, tp.Generic[M]):
                             raise ValueError(
                                 "Cannot split RNGs without specifying a length"
                             )
-                        key = jax.random.split(key, self.length)
-                        axes_keys[name] = key
+                        axes_keys[name] = jax.random.split(key, self.length)
                     else:
                         broadcast_keys[name] = key
             else:
@@ -407,6 +422,14 @@ class Scan(Module, tp.Generic[M]):
             axes_states = tuple(
                 jax.tree_map(lambda x: jnp.moveaxis(x, axis, 0), axes_state)
                 for axes_state, axis in zip(axes_states, self.variable_axes.values())
+            )
+            # transpose axes arg
+            axes_arg = utils.tree_map_upto_left(
+                lambda axis, node: jax.tree_map(
+                    lambda x: jnp.moveaxis(x, axis, 0), node
+                ),
+                self.in_axes,
+                axes_arg,
             )
 
             carry = (carry_state, carry_arg)
@@ -445,7 +468,7 @@ class Scan(Module, tp.Generic[M]):
 
                 return carry, out
 
-            carry, out = jax.lax.scan(
+            carry, scan_out = jax.lax.scan(
                 scan_fn,
                 carry,
                 axes,
@@ -454,17 +477,25 @@ class Scan(Module, tp.Generic[M]):
                 unroll=self.unroll,
             )
             carry_state, carry_out = carry
-            axes_states, axes_out = out
+            axes_states, out = scan_out
 
             # transpose axes state
             axes_states = tuple(
                 jax.tree_map(lambda x: jnp.moveaxis(x, 0, axis), axes_state)
                 for axes_state, axis in zip(axes_states, self.variable_axes.values())
             )
+            # transpose axes arg
+            out = utils.tree_map_upto_left(
+                lambda axis, node: jax.tree_map(
+                    lambda x: jnp.moveaxis(x, 0, axis), node
+                ),
+                self.out_axes,
+                out,
+            )
 
             self.module.update_state((*axes_states, carry_state))
 
-            return carry_out, axes_out
+            return carry_out, out
 
         return utils.CallableProxy(_context, accessesor)  # type: ignore
 
