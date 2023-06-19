@@ -4,14 +4,14 @@ import optax
 
 from nnx import containers, pytreelib, utils
 from nnx.contextlib import Context
-from nnx.module import ApplyCaller, Module, PureModule
+from nnx.module import ApplyCaller, Module, Pure
 from nnx.state import State
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound=Module)
 
 
-class Map(Module, tp.Mapping[str, A]):
+class Dict(Module, tp.Mapping[str, A]):
     @tp.overload
     def __init__(self, __iterable: tp.Iterable[tp.Tuple[str, A]]):
         ...
@@ -87,7 +87,7 @@ class Sequence(Module, tp.Generic[A]):
 
 
 class ModuleDefApply(tp.Protocol, tp.Generic[M]):
-    def __call__(self, state: State, *states: State) -> ApplyCaller["PureModule[M]"]:
+    def __call__(self, state: State, *states: State) -> ApplyCaller["Pure[M]"]:
         ...
 
 

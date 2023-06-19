@@ -1,5 +1,9 @@
+import dataclasses
 import inspect
 import typing as tp
+
+import jax
+import jax.tree_util as jtu
 
 A = tp.TypeVar("A")
 
@@ -18,4 +22,54 @@ def has_keyword_arg(func: tp.Callable[..., tp.Any], name: str) -> bool:
         param.name == name
         and param.kind in (param.KEYWORD_ONLY, param.POSITIONAL_OR_KEYWORD)
         for param in inspect.signature(func).parameters.values()
+    )
+
+
+class _ProxyContext(tp.Protocol):
+    def __call__(self, __fn: tp.Callable[..., tp.Any], *args, **kwargs) -> tp.Any:
+        ...
+
+
+@dataclasses.dataclass
+class CallableProxy:
+    _proxy_context: _ProxyContext
+    _proxy_callable: tp.Callable[..., tp.Any]
+
+    def __call__(self, *args, **kwargs):
+        return self._proxy_context(self._proxy_callable, *args, **kwargs)
+
+    def __getattr__(self, name) -> "CallableProxy":
+        return CallableProxy(self._proxy_context, getattr(self._proxy_callable, name))
+
+    def __getitem__(self, key) -> "CallableProxy":
+        return CallableProxy(self._proxy_context, self._proxy_callable[key])
+
+
+def _identity(x):
+    return x
+
+
+@dataclasses.dataclass
+class DelayedAccessor:
+    accessor: tp.Callable[[tp.Any], tp.Any] = _identity
+
+    def __call__(self, x):
+        return self.accessor(x)
+
+    def __getattr__(self, name):
+        return DelayedAccessor(lambda x: getattr(x, name))
+
+    def __getitem__(self, key):
+        return DelayedAccessor(lambda x: x[key])
+
+
+def tree_map_upto_left(
+    f: tp.Callable[[tp.Any, tp.Any], tp.Any], left: tp.Any, right: tp.Any
+) -> tp.Any:
+    leaves_left, treedef = jtu.tree_flatten(left)
+    leaves_right = treedef.flatten_up_to(right)
+
+    return treedef.unflatten(
+        f(left_leaf, right_leaf)
+        for left_leaf, right_leaf in zip(leaves_left, leaves_right)
     )

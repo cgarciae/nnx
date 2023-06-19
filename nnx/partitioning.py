@@ -12,27 +12,27 @@ if tp.TYPE_CHECKING:
 else:
     ellipsis = tp.Any
 
-FilterLiteral = tp.Union[str, type]
 Path = tp.Tuple[str, ...]
 Predicate = tp.Callable[[Path, tp.Any], bool]
-CollectionFilter = tp.Union[
-    FilterLiteral, tp.Sequence[FilterLiteral], Predicate, ellipsis
-]
+FilterLiteral = tp.Union[str, type, Predicate, ellipsis, None]
+Filter = tp.Union[FilterLiteral, tp.Tuple[FilterLiteral, ...]]
 
 
-def to_predicate(collection_filter: CollectionFilter) -> Predicate:
-    if isinstance(collection_filter, str):
-        return FromCollection(collection_filter)
-    elif isinstance(collection_filter, type):
-        return OfType(collection_filter)
-    elif collection_filter is Ellipsis:
+def to_predicate(filter: Filter) -> Predicate:
+    if isinstance(filter, str):
+        return FromCollection(filter)
+    elif isinstance(filter, type):
+        return OfType(filter)
+    elif filter is Ellipsis:
         return Everything()
-    elif callable(collection_filter):
-        return collection_filter
-    elif isinstance(collection_filter, tp.Sequence):
-        return Any(collection_filter)
+    elif filter is None:
+        return Nothing()
+    elif callable(filter):
+        return filter
+    elif isinstance(filter, tp.Tuple):
+        return Any(*filter)
     else:
-        raise TypeError(f"Invalid collection filter: {collection_filter}")
+        raise TypeError(f"Invalid collection filter: {filter}")
 
 
 @dataclasses.dataclass
@@ -54,17 +54,27 @@ class OfType:
 
 
 class Any:
-    def __init__(self, collection_filters: tp.Sequence[CollectionFilter]):
+    def __init__(self, *filters: Filter):
         self.predicates = tuple(
-            to_predicate(collection_filter) for collection_filter in collection_filters
+            to_predicate(collection_filter) for collection_filter in filters
         )
 
     def __call__(self, path: Path, x: tp.Any):
         return any(predicate(path, x) for predicate in self.predicates)
 
 
+class All:
+    def __init__(self, *filters: Filter):
+        self.predicates = tuple(
+            to_predicate(collection_filter) for collection_filter in filters
+        )
+
+    def __call__(self, path: Path, x: tp.Any):
+        return all(predicate(path, x) for predicate in self.predicates)
+
+
 class Not:
-    def __init__(self, collection_filter: CollectionFilter):
+    def __init__(self, collection_filter: Filter):
         self.predicate = to_predicate(collection_filter)
 
     def __call__(self, path: Path, x: tp.Any):
@@ -76,14 +86,9 @@ class Everything:
         return True
 
 
-class NonVariable:
+class Nothing:
     def __call__(self, path: Path, x: tp.Any):
-        return not isinstance(x, nnx.Variable)
+        return False
 
 
-class Buffers:
-    def __call__(self, path: Path, x: tp.Any):
-        return isinstance(x, (jax.Array, np.ndarray))
-
-
-buffers = Buffers()
+buffers = (jax.Array, np.ndarray)

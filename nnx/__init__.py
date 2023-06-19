@@ -24,8 +24,8 @@ from .dataclasses import (
     var_field,
 )
 from .errors import TraceContextError
-from .helpers import Map, Sequence, TrainState
-from .module import Module, ModuleDef, PureModule
+from .helpers import Dict, Sequence, TrainState
+from .module import Module, ModuleDef, Pure, PureModule
 from .nn import initializers
 from .nn.activations import (
     celu,
@@ -58,7 +58,7 @@ from .nn.linear import Conv, Embed, Linear
 from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
-from .partitioning import buffers
+from .partitioning import All, Not, buffers
 from .pytreelib import Pytree
 from .state import State
-from .transforms import grad, jit
+from .transforms import grad, jit, scan

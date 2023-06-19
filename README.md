@@ -63,40 +63,9 @@ assert model.count == 1
 In this example `nnx.context(0)` create a `PRNGKey` for `params` with seed `0`, this is used by `make_rng`
 inside `__init__` to generate a random key to initialize the parameters.
 
-### Training
+#### Training with the Functional API
 
-Here we show case two different approaches to training the model defined in the previous secition. The first one uses lifted transforms and the second one uses the functional API. Both approaches are equivalent and produce the same results.
-
-<details><summary>Lifted Transforms</summary>
-
-In this example, we uset the `nnx.jit` and `nnx.grad` lifted transforms to define the training step. The model is trained using Stochastic Gradient Descent (SGD) and `train_step` doesn't require a return statement in this case as the model's state is automatically updated.
-
-```python
-@nnx.jit
-def train_step(model, x, y):
-    def loss_fn(model):
-        y_pred = model(x)
-        return jax.numpy.mean((y_pred - y) ** 2)
-    
-    # compute gradient
-    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
-    # SGD update
-    model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
-    )
-
-# execute the training step
-train_step(model, x, y)
-assert model.count == 2
-```
-
-**Note**: Using `nnx.jit` can introduce some overhead when compared to using `jax.jit` directly. Use `nnx.jit` for simple prototypes and getting started quickly. For more advanced use cases, use the functional API.
-
-</details>
-
-<details><summary>Functional API </summary>
-
-In this example, we utilize the functional API for training. This approach provides more control over the state and allows you to use regular JAX transformations. The model is also trained using Stochastic Gradient Descent (SGD).
+The [Functional API](#functional-api) converts an NNX Module python semantics into pure pytree object with functional semantics. It is the recommended way to use NNX as it provides tight control over the state, allows you to use regular JAX transformations, and it minimizes overhead. In this example the model will be trained using Stochastic Gradient Descent (SGD).
 
 ```python
 (params, counts), moduledef = model.partition("params", "counts")
@@ -121,7 +90,30 @@ model = moduledef.merge(params, counts)
 assert model.count == 2
 ```
 
-</details>
+#### Training with Lifted Transforms
+
+[Lifted Transforms](#lifted-transforms) provide a convenient way interact with NNX Modules. In this example, we use the `nnx.jit` and `nnx.grad` lifted transforms to define the training step. The model is trained using Stochastic Gradient Descent (SGD). Because lifted transforms automatically update the Module's state, `train_step` doesn't require a return statement.
+
+```python
+@nnx.jit
+def train_step(model, x, y):
+    def loss_fn(model):
+        y_pred = model(x)
+        return jax.numpy.mean((y_pred - y) ** 2)
+    
+    # compute gradient
+    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+    # SGD update
+    model.update_state(
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+    )
+
+# execute the training step
+train_step(model, x, y)
+assert model.count == 2
+```
+
+**Note**: Using `nnx.jit` introduces some overhead when compared to using `jax.jit` directly. Use `nnx.jit` for simple prototypes, but for production code use `jax.jit` directly.
 
 ## Examples
 
@@ -177,7 +169,7 @@ class Foo(nnx.Module):
 
 model = Foo(din=12, dout=2, ctx=nnx.context(0))
 ```
-As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Map` Modules.
+As shown above, python container types such as `list`, `tuple`, and `dict` are treated as static attributes, if similar functionality is needed, NNX provides the `Sequence` and `Dict` Modules.
 
 ### Functional API
 
@@ -265,6 +257,28 @@ params = state.filter("params")
 params, batch_stats = state.filter("params", "batch_stats")
 ```
 
+### Filters
+
+Filters let you select subsets of nodes based on some criteria. These are use throughout the API in method like `partition`, `filter`, and `pop_state`. There are 4 types of filters:
+
+* `str`: matches all `Variable` nodes (e.g. `nnx.param` or `nnx.var`) with the given `collection` name.
+* `type`: matches all node instances of the given type.
+* `...`: matches all nodes.
+* `(path, any) -> bool`: a predicate function that takes a node path and value and returns a boolean.
+* `Tuple[Filter, ...]`: a tuple of filters, matches all nodes that match any of the filters.
+
+NNX also provides the following custom filters:
+
+* `nnx.Not(filter)`: matches all nodes that do not match the given filter
+* `nnx.buffers`: matches all `numpy.ndarray` and `jax.Array` nodes
+
+Here is an example of how to use `Not` and `buffers`:
+```python
+rest = module.filter(nnx.Not("params"))
+buffers = module.filter(nnx.buffers)
+```
+
+
 ### Capturing Intermediate Values
 In NNX you can easily propagate intemediate values by simply assigning them to an attribute at runtime. For convenience, you should assign them to a `Variable` attribute with a `collection` name by using `nnx.var` so you can easily retrieve them later.
 
@@ -314,7 +328,7 @@ Alternatively, you can use `State.filter` to retrieve the `intermediates` nodes 
 
 
 
-### Stateful Transforms
+### Lifted Transforms
 
 Stateful transforms take a Module as their first argument, track changes in the state that occur within the transformation, and automatically propagate those changes to the input Module outside the transformation. In general, they behave as stateful functions with respect to the first argument.
 

@@ -1,3 +1,4 @@
+import builtins
 import hashlib
 import typing as tp
 from types import MappingProxyType
@@ -201,3 +202,29 @@ def context(
     }
 
     return Context(rngs=_rngs, flags=_flags)
+
+
+if tp.TYPE_CHECKING:
+    ellipsis = builtins.ellipsis
+else:
+    ellipsis = tp.Any
+
+RngPredicate = tp.Callable[[str], bool]
+RngFilterLiteral = tp.Union[str, RngPredicate, ellipsis, None]
+RngFilter = tp.Union[RngFilterLiteral, tp.Sequence[RngFilterLiteral]]
+
+
+def to_rng_predicate(filter: RngFilter) -> RngPredicate:
+    if filter is None:
+        return lambda _: False
+    elif filter is ...:
+        return lambda _: True
+    elif callable(filter):
+        return filter
+    elif isinstance(filter, str):
+        return lambda name: name == filter
+    elif isinstance(filter, tuple):
+        predicates = tuple(map(to_rng_predicate, filter))
+        return lambda name: any(predicate(name) for predicate in predicates)
+    else:
+        raise TypeError(f"Invalid rng filter: {filter}")
