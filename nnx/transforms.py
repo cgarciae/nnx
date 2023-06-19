@@ -378,34 +378,6 @@ class Scan(Module, tp.Generic[M]):
             ctx: tp.Optional[contextlib.Context] = None,
             **broadcast_kwargs,
         ) -> tp.Tuple[C, tp.Any]:
-            # split rng state
-            axes_keys: tp.Optional[tp.Dict[str, jax.Array]]
-            broadcast_keys: tp.Optional[tp.Dict[str, jax.Array]]
-
-            if ctx is not None:
-                if not isinstance(ctx, contextlib.Context):
-                    raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
-
-                axes_keys = {}
-                broadcast_keys = {}
-
-                keys, ctxdef = ctx.partition()
-                split_predicate = contextlib.to_rng_predicate(self.split_rngs)
-
-                for name, key in keys.items():
-                    if split_predicate(name):
-                        if self.length is None:
-                            raise ValueError(
-                                "Cannot split RNGs without specifying a length"
-                            )
-                        axes_keys[name] = jax.random.split(key, self.length)
-                    else:
-                        broadcast_keys[name] = key
-            else:
-                ctxdef = None
-                axes_keys = None
-                broadcast_keys = None
-
             # split module state
             filters = (
                 *self.variable_axes.keys(),
@@ -431,6 +403,55 @@ class Scan(Module, tp.Generic[M]):
                 self.in_axes,
                 axes_arg,
             )
+
+            # infer length
+            lengths: tp.Set[int] = set(
+                x.shape[0] for x in jax.tree_util.tree_leaves((axes_states, axes_arg))
+            )
+
+            if len(lengths) > 1:
+                raise ValueError(
+                    f"Inconsistent lengths between variable_axes states and "
+                    f"axes_arg: {lengths}"
+                )
+            elif len(lengths) == 0:
+                if self.length is None:
+                    raise ValueError(
+                        "Cannot infer length from variable_axes states or axes_arg, "
+                        "please specify `length`"
+                    )
+                length = self.length
+            else:
+                length = lengths.pop()
+                if self.length is not None and self.length != length:
+                    raise ValueError(
+                        f"Specified length {self.length} is the same as the inferred "
+                        f"length {length}"
+                    )
+
+            # split rng state
+            axes_keys: tp.Optional[tp.Dict[str, jax.Array]]
+            broadcast_keys: tp.Optional[tp.Dict[str, jax.Array]]
+
+            if ctx is not None:
+                if not isinstance(ctx, contextlib.Context):
+                    raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
+
+                axes_keys = {}
+                broadcast_keys = {}
+
+                keys, ctxdef = ctx.partition()
+                split_predicate = contextlib.to_rng_predicate(self.split_rngs)
+
+                for name, key in keys.items():
+                    if split_predicate(name):
+                        axes_keys[name] = jax.random.split(key, length)
+                    else:
+                        broadcast_keys[name] = key
+            else:
+                ctxdef = None
+                axes_keys = None
+                broadcast_keys = None
 
             carry = (carry_state, carry_arg)
             axes = (axes_keys, axes_states, axes_arg)
@@ -472,7 +493,7 @@ class Scan(Module, tp.Generic[M]):
                 scan_fn,
                 carry,
                 axes,
-                length=self.length,
+                length=length,
                 reverse=self.reverse,
                 unroll=self.unroll,
             )
