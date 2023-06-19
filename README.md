@@ -63,7 +63,7 @@ assert model.count == 1
 In this example `nnx.context(0)` create a `PRNGKey` for `params` with seed `0`, this is used by `make_rng`
 inside `__init__` to generate a random key to initialize the parameters.
 
-#### Training with the Functional API
+### Training with the Functional API
 
 The [Functional API](#functional-api) converts an NNX Module python semantics into pure pytree object with functional semantics. It is the recommended way to use NNX as it provides tight control over the state, allows you to use regular JAX transformations, and it minimizes overhead. In this example the model will be trained using Stochastic Gradient Descent (SGD).
 
@@ -90,7 +90,7 @@ model = moduledef.merge(params, counts)
 assert model.count == 2
 ```
 
-#### Training with Lifted Transforms
+### Training with Lifted Transforms
 
 [Lifted Transforms](#lifted-transforms) provide a convenient way interact with NNX Modules. In this example, we use the `nnx.jit` and `nnx.grad` lifted transforms to define the training step. The model is trained using Stochastic Gradient Descent (SGD). Because lifted transforms automatically update the Module's state, `train_step` doesn't require a return statement.
 
