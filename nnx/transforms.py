@@ -242,11 +242,6 @@ def grad(
     return ref_grad
 
 
-import flax.linen
-
-flax.linen.scan
-
-
 # NOTE: I don't understand why variable_broadcasts exists. Passing them as
 # captures to `scan_fn` makes it impossible to propagate state updates from
 # them. Maybe, there should only be `variable_carry` and `variable_axes`.
