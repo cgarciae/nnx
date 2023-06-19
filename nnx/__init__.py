@@ -61,4 +61,4 @@ from .nodes import is_node, register_node_type
 from .partitioning import All, Not, buffers
 from .pytreelib import Pytree
 from .state import State
-from .transforms import grad, jit
+from .transforms import grad, jit, scan

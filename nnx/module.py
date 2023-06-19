@@ -345,9 +345,9 @@ class ModuleMeta(ABCMeta):
     if not tp.TYPE_CHECKING:
 
         def __call__(self, *args: Any, **kwargs: Any) -> Any:
-            return self.call(*args, **kwargs)
+            return self._meta_call(*args, **kwargs)
 
-    def call(self: tp.Type[M], *args, **kwargs) -> M:
+    def _meta_call(self: tp.Type[M], *args, **kwargs) -> M:
         module = self.__new__(self, *args, **kwargs)
         vars(module)["_module__state"] = ModuleState(tracers.TraceState())
         module.__init__(*args, **kwargs)

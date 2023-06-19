@@ -2,6 +2,7 @@ import typing as tp
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 import pytest
 
 import nnx
@@ -132,3 +133,33 @@ class TestGrad:
         assert m.b == 10.0
         assert m.c == 7
         assert m.d == 5.0
+
+
+class TestScan:
+    def test_basic(self):
+        class Block(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+                self.node = jnp.ones((2,))
+
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                jax.debug.print("x={x}", x=x)
+                x = self.linear(x)
+                x = nnx.gelu(x)
+                return x, None
+
+        MLP = nnx.scan(
+            Block, variable_axes={"params": 0}, split_rngs="params", length=5
+        )
+
+        module = MLP(ctx=nnx.context(0))
+
+        assert module.module.linear.kernel.shape == (5, 3, 3)
+        assert module.module.linear.bias.shape == (5, 3)
+        assert module.module.node.shape == (2,)
+
+        x = jnp.ones((1, 3))
+        y, out = module.call(x, None)
+
+        assert y.shape == (1, 3)
+        assert out is None

@@ -286,6 +286,9 @@ class Scan(Module, tp.Generic[M]):
     def create_module(
         self: "Scan[M]", *args, ctx: tp.Optional[contextlib.Context] = None, **kwargs
     ) -> M:
+        if self.variable_axes and self.length is None:
+            raise ValueError("Cannot use variable_axes without specifying a length")
+
         key_values = []
 
         if ctx is not None:
@@ -526,8 +529,7 @@ def scan(
     variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
     variable_broadcast: partitioning.Filter = None,
     variable_carry: partitioning.Filter = ...,
-    init_split_rngs: contextlib.RngFilter = None,
-    call_split_rngs: contextlib.RngFilter = None,
+    split_rngs: contextlib.RngFilter = None,
     in_axes=0,
     out_axes=0,
     length: tp.Optional[int] = None,
@@ -544,8 +546,7 @@ def scan(
             variable_axes=variable_axes,
             variable_broadcast=variable_broadcast,
             variable_carry=variable_carry,
-            split_rngs=init_split_rngs,
-            call_split_rngs=call_split_rngs,
+            split_rngs=split_rngs,
             in_axes=in_axes,
             out_axes=out_axes,
             length=length,
