@@ -123,7 +123,7 @@ assert model.count == 2
 * [Using PureModule](https://github.com/cgarciae/nnx/blob/main/examples/04_pure.py) (experimental): Shows how to train a simple model using the functional API and leveraging `PureModule` to simplify the code.
 * [Training a VAE](https://github.com/cgarciae/nnx/blob/main/examples/05_vae.py): Shows how to train a VAE on the binarized MNIST dataset, uses the functional API, `TrainState`, and shows how to use capture intermediate values to retrieve `kl_loss`.
 * [Scan over layers](https://github.com/cgarciae/nnx/blob/main/examples/06_scan_over_layers.py): An contrived example that implements scan over layers with dropout and a share BatcNorm layer to showcase how lifted transforms can be implemented. It uses the functional API along with `jax.vmap` and `jax.lax.scan`.
-* [Creating a Transformer](https://github.com/cgarciae/nnx/blob/main/examples/07_tranformer.py): Shows how to create a Transformer with an auto-regressive decoder that uses scan over layers and a kv-cache for fast inference. Credits to @levskaya.
+* [Creating a Transformer](https://github.com/cgarciae/nnx/blob/main/examples/07_transformer.py): Shows how to create a Transformer with an auto-regressive decoder that uses scan over layers and a kv-cache for fast inference. Credits to @levskaya.
 
 ## FAQs
 
@@ -330,37 +330,82 @@ Alternatively, you can use `State.filter` to retrieve the `intermediates` nodes 
 
 ### Lifted Transforms
 
-Stateful transforms take a Module as their first argument, track changes in the state that occur within the transformation, and automatically propagate those changes to the input Module outside the transformation. In general, they behave as stateful functions with respect to the first argument.
+NNX lifted transforms analogous versions of JAX transforms but they know how to work with Modules. They usually perform the following tasks:
 
-Here's a diagram illustrating how stateful transformations work:
+* Handle the Module's substates and Context's RNG streams according to the transform's semantics.
+* Properly propagating state in and out of the transform, including updating the input Module's state with updates that happen inside the transform.
 
-![stateful-transforms](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/stateful-transforms.png)
+Here's a diagram illustrating how lifted transformations work:
 
-Currently, `nnx.jit` and `nnx.grad` are the only stateful transformations.
+![lifted-transforms](https://raw.githubusercontent.com/cgarciae/nnx/main/docs/images/stateful-transforms.png)
 
-The following example demonstrates how a `train_step` function can be implemented using `nnx.jit` and `nnx.grad`:
+Currently NNX provides the `jit`, `grad`, and `scan` lifted transforms.
+
+#### Manual Lifting
+
+In case you want to use JAX transforms directly you can always use the functional API
+to manually lift your Modules. 
+
+Here we will create an example of how to implement an MLP that uses "scan over layers" to efficiently process a sequence of inputs assuming that each layer has the same parameters and input/output dimensions. The first thing we need to do is create a `Block` module that represents a single layer, this block with just contain a `Linear` layer, a `Dropout` layer, and a `GELU` activation function:
 
 ```python
-@nnx.jit
-def train_step(model, x, y):
+class Block(nnx.Module):
+    def __init__(self, dim: int, *, ctx: nnx.Context):
+        self.linear = nnx.Linear(dim, dim, ctx=ctx)
+        self.dropout = nnx.Dropout(0.5)
 
-    def loss_fn(model):
-        y_pred = model(x)
-        return jax.numpy.mean((y_pred - y) ** 2)
-    
-    # compute gradient
-    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
-    # SGD update
-    model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
-    )
-
-# stateful update
-train_step(model, x, y)
+    def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
+        x = self.linear(x)
+        x = self.dropout(x, deterministic=not train, ctx=ctx)
+        x = jax.nn.gelu(x)
+        return x
 ```
 
-The most interesting aspect of this design is that the code appears very imperative, as the state is automatically propagated in and out of the transformations.
+Now we will define `ScanMLP`. During `__init__`, instead of creating a list of `Block`s, we will use `jax.vmap` to create a single `Block` whose parameters have an addtional `layer` axis. This will allow us to pass the parameters as inputs to scan so it will apply a layer at each step.
 
+```python
+class ScanMLP(nnx.Module):
+    def __init__(self, dim: int, *, n_layers: int, ctx: nnx.Context):
+        params_key = jax.random.split(ctx.make_rng("params"), n_layers)
+        self.n_layers = n_layers
+        self.layers = jax.vmap(
+            lambda key: Block(dim, ctx=nnx.context(params=key)).partition()
+        )(params_key).merge()
+
+```
+Note that we split the `params` key into `n_layers` keys so each layer has different parameters.
+
+Now we will define `__call__`. Here we need to split the `dropout` key into `n_layers` keys so each layer has a different dropout mask, and `partition` the layers to get their `params`. Both `params` and `dropout_key` will be passed as inputs, `x` will be the carry value. Inside the `scan_fn` we will merge the `params` back into a `Block` module and
+apply it to the input `x`, passing the sliced `dropout_key` as part of the `Context`.
+
+
+```python
+    def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
+        dropout_key = jax.random.split(ctx.make_rng("dropout"), self.n_layers)
+        params, moduledef = self.layers.partition("params")
+
+        def scan_fn(x: inputs):
+            params, dropout_key = inputs
+            module = moduledef.merge(params)
+            x = module(x, train=train, ctx=nnx.context(dropout=dropout_key))
+            return x, module.filter("params")
+
+        x, params = jax.lax.scan(scan_fn, x, (params, dropout_key))
+        self.layers.update_state(params)
+        return x
+```
+Finally we apply `jax.lax.scan`, update the `layers` state with the new `params`, and return the final `x` value.
+
+Here is a simple way to test our `ScanMLP`:
+
+```python
+model = ScanMLP(10, n_layers=5, ctx=nnx.context(0))
+
+x = jnp.ones((3, 10))
+y = model(x, train=True, ctx=nnx.context(dropout=1))
+```
+
+For a more robust implementation with comments take a look at the [Scan over layers](https://github.com/cgarciae/nnx/blob/main/examples/06_scan_over_layers.py) example.
 
 ### Case Studies
 #### Shared State
