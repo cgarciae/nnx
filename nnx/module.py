@@ -564,6 +564,25 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         return state
 
+    def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
+        visited: tp.Set[int] = set()
+        self._on_all(module_type, fn, visited)
+
+    def _on_all(
+        self, module_type: tp.Type[M], fn: tp.Callable[[M], None], visited: tp.Set[int]
+    ) -> None:
+        if id(self) in visited:
+            return
+
+        visited.add(id(self))
+
+        if isinstance(self, module_type):
+            fn(self)
+
+        for value in vars(self).values():
+            if isinstance(value, Module):
+                value._on_all(module_type, fn, visited)
+
     # Pytree Definition
     # def __init_subclass__(cls) -> None:
     #     super().__init_subclass__()

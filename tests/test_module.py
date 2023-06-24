@@ -465,3 +465,31 @@ class TestPureModule:
         assert len(params) == 3
         assert len(batch_stats) == 1
         assert len(pure_module2.states) == 1
+
+    def test_on_all(self):
+        class Bar(nnx.Module):
+            def __init__(self):
+                self.a = nnx.param(1)
+
+        class Foo(nnx.Module):
+            def __init__(self, bar):
+                self.bar1 = bar
+                self.bar2 = bar
+                self.b = nnx.param(2)
+
+        foo = Foo(Bar())
+
+        def f(bar: Bar):
+            bar.a += 1
+
+        foo.for_each(Bar, f)
+
+        assert foo.bar1.a == 2
+        assert foo.bar2.a == 2
+
+        def g(foo: Foo):
+            foo.b += 1
+
+        foo.for_each(Foo, g)
+
+        assert foo.b == 3
