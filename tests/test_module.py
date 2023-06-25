@@ -296,6 +296,7 @@ class TestModule:
         with pytest.raises(ValueError, match="to be a tuple,"):
             m(2)
 
+
 class TestModuleDataclass:
     def test_basic(self):
         @nnx.dataclass
