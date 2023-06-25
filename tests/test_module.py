@@ -228,6 +228,108 @@ class TestModule:
         assert m.b.c == m2.b.c
         assert m.b.d == m2.b.d
 
+    def test_sow_basic(self):
+        class Foo(nnx.Module):
+            def __call__(self, x):
+                y = x + 1
+                self.sow("intermediates", "y", y)
+                return y
+
+        m = Foo()
+        y1 = m(2)
+        y2 = m(10)
+
+        assert y1 == 3
+        assert y2 == 11
+        assert m.y == (3, 11)
+
+        intermediates = m.pop_state("intermediates")
+
+        assert isinstance(intermediates["y"], nnx.Variable)
+        assert intermediates["y"].collection == "intermediates"
+        assert intermediates["y"].value == (3, 11)
+
+        assert not hasattr(m, "y")
+
+    def test_sow_existing_non_variable_field(self):
+        class Foo(nnx.Module):
+            def __init__(self) -> None:
+                self.y = 10
+
+            def __call__(self, x):
+                y = x + 1
+                self.sow("intermediates", "y", y)
+                return y
+
+        m = Foo()
+
+        with pytest.raises(ValueError, match="to be a Variable, got"):
+            m(2)
+
+    def test_sow_wrong_collection(self):
+        class Foo(nnx.Module):
+            def __init__(self) -> None:
+                self.y = nnx.param(10)
+
+            def __call__(self, x):
+                y = x + 1
+                self.sow("intermediates", "y", y)
+                return y
+
+        m = Foo()
+
+        with pytest.raises(ValueError, match="to be in collection"):
+            m(2)
+
+    def test_sow_non_tuple(self):
+        class Foo(nnx.Module):
+            def __init__(self) -> None:
+                self.y = nnx.var("intermediates", 10)
+
+            def __call__(self, x):
+                y = x + 1
+                self.sow("intermediates", "y", y)
+                return y
+
+        m = Foo()
+
+        with pytest.raises(ValueError, match="to be a tuple,"):
+            m(2)
+
+    def test_capture_intermediates(self):
+        class Foo(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context) -> None:
+                self.linear1 = nnx.Linear(4, 8, ctx=ctx)
+                self.dropout = nnx.Dropout(0.5)
+                self.linear2 = nnx.Linear(8, 1, ctx=ctx)
+
+            def __call__(self, x, *, ctx: nnx.Context):
+                x = self.linear1(x)
+                x = self.dropout(x, ctx=ctx)
+                x = self.linear2(x)
+                return x
+
+        ctx = nnx.context(0)
+
+        shared = nnx.Linear(4, 4, ctx=ctx)
+
+        m = nnx.Sequence(
+            [
+                nnx.Linear(2, 4, ctx=ctx),
+                shared,
+                shared,
+                Foo(ctx=ctx),
+                nnx.Linear(1, 2, ctx=ctx),
+            ]
+        )
+
+        ctx = nnx.context(dropout=1, flags=dict(deterministic=False))
+        y = m.capture_intermediates(jnp.ones((1, 2)), ctx=ctx)
+
+        intermediates = m.pop_state("intermediates")
+
+        intermediates
+
 
 class TestModuleDataclass:
     def test_basic(self):

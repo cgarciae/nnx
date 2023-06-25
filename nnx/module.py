@@ -1,22 +1,50 @@
+import contextlib
 import dataclasses
+import functools
+import threading
 import typing as tp
 from abc import ABCMeta
 from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import errors, nodes, partitioning, reprlib, tracers
+from nnx import containers, errors, nodes, partitioning, reprlib, tracers
 from nnx.containers import Container, Sharding, Variable
 from nnx.state import State
 
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
 S = tp.TypeVar("S", bound=tp.Union[State, tp.Tuple[State, ...]])
+F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 
 Path = str
 PathParts = tp.Tuple[str, ...]
 StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
+
+
+@dataclasses.dataclass
+class ModuleContext(threading.local):
+    capture_intermediates_stack: tp.List[bool] = dataclasses.field(
+        default_factory=lambda: [False]
+    )
+
+
+MODULE_CONTEXT = ModuleContext()
+
+
+def capturing_intermediates() -> bool:
+    return MODULE_CONTEXT.capture_intermediates_stack[-1]
+
+
+@contextlib.contextmanager
+def module_context(*, capture_intermediates: bool):
+    MODULE_CONTEXT.capture_intermediates_stack.append(capture_intermediates)
+
+    try:
+        yield
+    finally:
+        MODULE_CONTEXT.capture_intermediates_stack.pop()
 
 
 class _ProxyContext(tp.Protocol):
@@ -405,6 +433,23 @@ class ModuleMeta(ABCMeta):
         return module
 
 
+def _wrap_method(method_name: str, method: F) -> F:
+    @functools.wraps(method)
+    def method_wrapper(module: "Module", *args: Any, **kwargs: Any) -> Any:
+        out = method(module, *args, **kwargs)
+
+        if capturing_intermediates():
+            if method_name == "__call__":
+                name = "output"
+            else:
+                name = f"{method_name}_output"
+            module.sow("intermediates", name, out)
+
+        return out
+
+    return method_wrapper  # type: ignore
+
+
 class Module(reprlib.Representable, metaclass=ModuleMeta):
     if tp.TYPE_CHECKING:
         _module__state: ModuleState
@@ -436,6 +481,22 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     def __hash__(self) -> int:
         return id(self)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+
+        for name, method in vars(cls).items():
+            if name == "__call__":
+                pass
+            elif (
+                name.startswith("__")
+                or not callable(method)
+                or not hasattr(method, "__get__")
+                or isinstance(method, (staticmethod, classmethod))
+            ):
+                continue
+
+            setattr(cls, name, _wrap_method(name, method))
 
     def __nnx_repr__(self):
         if id(self) in SEEN_MODULES_REPR:
@@ -584,6 +645,41 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     def mutable_state_dict(self) -> tp.Dict[Path, "MutableLeaf"]:
         return {path: MutableLeaf(self, path) for path, _ in _iter_state(self)}
+
+    def sow(self, collection: str, name: str, value: tp.Any) -> None:
+        if hasattr(self, name):
+            variable = vars(self)[name]
+            if not isinstance(variable, containers.Variable):
+                raise ValueError(
+                    f"Expected '{name}' to be a Variable, got {type(variable).__name__}"
+                )
+            elif variable.collection != collection:
+                raise ValueError(
+                    f"Expected '{name}' to be in collection '{collection}', "
+                    f"got '{variable.collection}'"
+                )
+            current_value = variable.value
+            if not isinstance(current_value, tuple):
+                raise ValueError(
+                    f"Expected '{name}' to be a tuple, "
+                    f"got {type(current_value).__name__}"
+                )
+            value = current_value + (value,)
+            setattr(self, name, value)
+        else:
+            setattr(self, name, containers.var(collection, (value,)))
+
+    @property
+    def capture_intermediates(self: M) -> M:
+        accessesor = DelayedAccessor()
+
+        def _capture_intermediates(accessesor, *args, **kwargs) -> tp.Any:
+            fn = accessesor(self)
+            with module_context(capture_intermediates=True):
+                out = fn(*args, **kwargs)
+            return out
+
+        return CallableProxy(_capture_intermediates, accessesor)  # type: ignore
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
         visited: tp.Set[int] = set()
