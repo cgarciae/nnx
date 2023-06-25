@@ -5,7 +5,7 @@ from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import errors, nodes, partitioning, reprlib, tracers
+from nnx import errors, ids, nodes, partitioning, reprlib, tracers
 from nnx.containers import Container, Sharding, Variable
 from nnx.state import State
 
