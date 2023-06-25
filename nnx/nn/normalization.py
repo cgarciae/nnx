@@ -5,8 +5,8 @@ import jax.numpy as jnp
 from jax import lax
 
 import nnx
-from nnx import contextlib, utils
-from nnx.module import Module
+from nnx import contextlib
+from nnx.module import Module, first_from
 from nnx.nn import dtypes, initializers
 
 PRNGKey = jax.Array
@@ -241,7 +241,7 @@ class BatchNorm(Module):
           Normalized inputs (the same shape as inputs).
         """
 
-        use_running_average = utils.first_from(
+        use_running_average = first_from(
             use_running_average,
             self.use_running_average,
             ctx and ctx.get_flag("use_running_average"),

@@ -1,8 +1,9 @@
+import inspect
 import typing as tp
 
 import optax
 
-from nnx import containers, pytreelib, utils
+from nnx import containers, pytreelib
 from nnx.contextlib import Context
 from nnx.module import ApplyCaller, Module, Pure
 from nnx.state import State
@@ -78,7 +79,7 @@ class Sequence(Module, tp.Generic[A]):
                 else:
                     args = (output,)
                     kwargs = {}
-            if ctx is not None and utils.has_keyword_arg(f, "ctx"):
+            if ctx is not None and has_keyword_arg(f, "ctx"):
                 kwargs["ctx"] = ctx
 
             output = f(*args, **kwargs)
@@ -124,3 +125,12 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
             step=step,
             **kwargs,
         )
+
+
+def has_keyword_arg(func: tp.Callable[..., tp.Any], name: str) -> bool:
+    """Return True if func has keyword-only arguments with the given name."""
+    return any(
+        param.name == name
+        and param.kind in (param.KEYWORD_ONLY, param.POSITIONAL_OR_KEYWORD)
+        for param in inspect.signature(func).parameters.values()
+    )
