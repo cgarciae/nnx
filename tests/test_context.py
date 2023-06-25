@@ -8,7 +8,7 @@ import nnx
 from nnx.contextlib import _stable_hash
 
 
-class TestRngStream:
+class TestContext:
     def test_hash(self):
         _hash = _stable_hash("hi")
         assert isinstance(_hash, int)
@@ -80,8 +80,6 @@ class TestRngStream:
         ):
             ctx1.make_rng("params")
 
-
-class TestContext:
     def test_partition_merge(self):
         ctx = nnx.context(dropout=0)
 
