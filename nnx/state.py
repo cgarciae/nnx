@@ -9,19 +9,19 @@ from nnx.containers import Variable
 A = tp.TypeVar("A")
 
 Leaf = tp.Any
-Path = tp.Tuple[str, ...]
+Path = str
 StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
 
 
-class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
+class State(tp.Mapping[Path, Leaf], reprlib.Representable):
     __slots__ = ("_mapping",)
 
     def __init__(
         self,
         __input: tp.Union[
-            tp.Mapping[tp.Tuple[str, ...], Leaf],
-            tp.Iterator[tp.Tuple[tp.Tuple[str, ...], Leaf]],
+            tp.Mapping[Path, Leaf],
+            tp.Iterator[tp.Tuple[Path, Leaf]],
         ],
         /,
     ):
@@ -36,10 +36,10 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
             for value in self._mapping.values()
         }
 
-    def __getitem__(self, __key: tp.Tuple[str, ...]) -> Leaf:
+    def __getitem__(self, __key: Path) -> Leaf:
         return self._mapping[__key]
 
-    def __iter__(self) -> tp.Iterator[tp.Tuple[str, ...]]:
+    def __iter__(self) -> tp.Iterator[Path]:
         return iter(self._mapping)
 
     def __len__(self) -> int:
@@ -49,7 +49,7 @@ class State(tp.Mapping[tp.Tuple[str, ...], Leaf], reprlib.Representable):
         yield reprlib.Object(type(self), value_sep=": ", start="({", end="})")
 
         for k, v in self._mapping.items():
-            yield reprlib.Attr(str(k), v)
+            yield reprlib.Attr(repr(k), v)
 
     @tp.overload
     def partition(self, first: partitioning.Filter, /) -> "State":

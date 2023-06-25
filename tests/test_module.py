@@ -275,10 +275,10 @@ class TestModuleDataclass:
         state, moduledef = m.partition()
 
         assert len(state) == 4
-        assert state[("b",)] == nnx.node(2)
-        assert state[("c",)] == nnx.param(3)
-        assert state[("d",)] == nnx.var("batch_stats", 4)
-        assert state[("f",)] == nnx.node(6)
+        assert state["b"] == nnx.node(2)
+        assert state["c"] == nnx.param(3)
+        assert state["d"] == nnx.var("batch_stats", 4)
+        assert state["f"] == nnx.node(6)
 
     def test_no_override(self):
         @nnx.dataclass

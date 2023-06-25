@@ -12,7 +12,7 @@ if tp.TYPE_CHECKING:
 else:
     ellipsis = tp.Any
 
-Path = tp.Tuple[str, ...]
+Path = str
 Predicate = tp.Callable[[Path, tp.Any], bool]
 FilterLiteral = tp.Union[str, type, Predicate, ellipsis, None]
 Filter = tp.Union[FilterLiteral, tp.Tuple[FilterLiteral, ...]]

@@ -60,12 +60,18 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        assert grads[("a", "0")].value == 1.0
-        assert isinstance(grads[("a", "0")], nnx.Variable)
-        assert grads[("a", "1")].value == 1.0
-        assert isinstance(grads[("a", "1")], nnx.Variable)
-        assert grads[("b",)].value == 1.0
-        assert isinstance(grads[("b",)], nnx.Variable)
+        # assert grads[("a", "0")].value == 1.0
+        assert grads["a/0"].value == 1.0
+        # assert isinstance(grads[("a", "0")], nnx.Variable)
+        assert isinstance(grads["a/0"], nnx.Variable)
+        # assert grads[("a", "1")].value == 1.0
+        assert grads["a/1"].value == 1.0
+        # assert isinstance(grads[("a", "1")], nnx.Variable)
+        assert isinstance(grads["a/1"], nnx.Variable)
+        # assert grads[("b",)].value == 1.0
+        assert grads["b"].value == 1.0
+        # assert isinstance(grads[("b",)], nnx.Variable)
+        assert isinstance(grads["b"], nnx.Variable)
         assert len(grads) == 3
 
         m.update_state(grads)
@@ -92,9 +98,12 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        assert grads[("a", "0")].value == 1.0
-        assert isinstance(grads[("a", "0")], nnx.Variable)
-        assert grads[("a", "0")].collection == "params"
+        # assert grads[("a", "0")].value == 1.0
+        assert grads["a/0"].value == 1.0
+        # assert isinstance(grads[("a", "0")], nnx.Variable)
+        assert isinstance(grads["a/0"], nnx.Variable)
+        # assert grads[("a", "0")].collection == "params"
+        assert grads["a/0"].collection == "params"
         assert len(grads) == 2
 
         m.update_state(grads)
@@ -121,9 +130,12 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        assert grads[("a", "1")].value == 1.0
-        assert isinstance(grads[("a", "1")], nnx.Variable)
-        assert grads[("a", "1")].collection == "batch_stats"
+        # assert grads[("a", "1")].value == 1.0
+        assert grads["a/1"].value == 1.0
+        # assert isinstance(grads[("a", "1")], nnx.Variable)
+        assert isinstance(grads["a/1"], nnx.Variable)
+        # assert grads[("a", "1")].collection == "batch_stats"
+        assert grads["a/1"].collection == "batch_stats"
         assert len(grads) == 1
 
         m.update_state(grads)
