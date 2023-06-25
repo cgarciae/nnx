@@ -5,9 +5,10 @@ from types import MappingProxyType
 import jax
 import jax.numpy as jnp
 import jax.stages
+import jax.tree_util as jtu
 
-from nnx import contextlib, partitioning, tracers, utils
-from nnx.module import Module, ModuleDef, PureModule
+from nnx import contextlib, partitioning, tracers
+from nnx.module import CallableProxy, DelayedAccessor, Module, ModuleDef, PureModule
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -366,7 +367,7 @@ class Scan(Module, tp.Generic[M]):
 
     @property
     def call(self) -> M:
-        accessesor = utils.DelayedAccessor()
+        accessesor = DelayedAccessor()
 
         def _context(
             accessesor,
@@ -394,7 +395,7 @@ class Scan(Module, tp.Generic[M]):
                 for axes_state, axis in zip(axes_states, self.variable_axes.values())
             )
             # transpose axes arg
-            axes_arg = utils.tree_map_upto_left(
+            axes_arg = tree_map_upto_left(
                 lambda axis, node: jax.tree_map(
                     lambda x: jnp.moveaxis(x, axis, 0), node
                 ),
@@ -504,7 +505,7 @@ class Scan(Module, tp.Generic[M]):
                 for axes_state, axis in zip(axes_states, self.variable_axes.values())
             )
             # transpose axes arg
-            out = utils.tree_map_upto_left(
+            out = tree_map_upto_left(
                 lambda axis, node: jax.tree_map(
                     lambda x: jnp.moveaxis(x, 0, axis), node
                 ),
@@ -516,7 +517,7 @@ class Scan(Module, tp.Generic[M]):
 
             return carry_out, out
 
-        return utils.CallableProxy(_context, accessesor)  # type: ignore
+        return CallableProxy(_context, accessesor)  # type: ignore
 
 
 def scan(
@@ -552,3 +553,15 @@ def scan(
         )
 
     return _create_scan
+
+
+def tree_map_upto_left(
+    f: tp.Callable[[tp.Any, tp.Any], tp.Any], left: tp.Any, right: tp.Any
+) -> tp.Any:
+    leaves_left, treedef = jtu.tree_flatten(left)
+    leaves_right = treedef.flatten_up_to(right)
+
+    return treedef.unflatten(
+        f(left_leaf, right_leaf)
+        for left_leaf, right_leaf in zip(leaves_left, leaves_right)
+    )
