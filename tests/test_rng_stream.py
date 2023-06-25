@@ -15,52 +15,42 @@ class TestRngStream:
 
     def test_rng_stream(self):
         key0 = jax.random.PRNGKey(0)
-        rng = nnx.RngStream(key0)
-        assert rng.count == 0
+        ctx = nnx.context(key0)
+        assert ctx._rngs["params"].count == 0
 
-        key1 = rng.make_rng()
-        assert rng.count == 1
-        assert rng._key is key0
+        key1 = ctx.make_rng("params")
+        assert ctx._rngs["params"].count == 1
+        assert ctx._rngs["params"].key is key0
         assert not np.equal(key0, key1).all()
 
-        key2 = rng.make_rng()
-        assert rng.count == 2
-        assert rng._key is key0
+        key2 = ctx.make_rng("params")
+        assert ctx._rngs["params"].count == 2
+        assert ctx._rngs["params"].key is key0
         assert not np.equal(key1, key2).all()
 
     def test_rng_fork(self):
         key0 = jax.random.PRNGKey(0)
-        rng = nnx.RngStream(key0)
+        ctx1 = nnx.context(key0)
+        ctx2 = ctx1.partition().merge()
 
-        rng1 = rng.fork()
-        assert rng1.count == 0
-        assert rng1.count_path == (0,)
+        assert ctx2._rngs["params"].count == 0
+        assert ctx2._rngs["params"].count_path == (0,)
 
-        key1 = rng1.make_rng()
-        key2 = rng.make_rng()
+        key1 = ctx1.make_rng("params")
+        key2 = ctx2.make_rng("params")
 
         assert not np.equal(key1, key2).all()
 
-    def test_rng_is_pytree(self):
-        key0 = jax.random.PRNGKey(0)
-        rng = nnx.RngStream(key0).fork()
-
-        rng1 = jax.tree_util.tree_map(lambda x: x, rng)
-
-        assert rng1.count == 0
-        assert rng1.count_path == (0,)
-        assert rng1._key is rng._key
-
     def test_rng_trace_level_constraints(self):
-        rng = nnx.RngStream(jax.random.PRNGKey(0))
+        ctx = nnx.context(0)
 
         @jax.jit
         def f():
             with pytest.raises(
                 nnx.TraceContextError,
-                match="Cannot use RngStream from a different trace level",
+                match="Cannot use Context from a different trace level",
             ):
-                rng.make_rng()
+                ctx.make_rng("params")
 
         f()
 
@@ -68,27 +58,27 @@ class TestRngStream:
         def f():
             with pytest.raises(
                 nnx.TraceContextError,
-                match="Cannot use RngStream from a different trace level",
+                match="Cannot use Context from a different trace level",
             ):
-                rng.fork()
+                ctx.partition()
 
         f()
 
-        rng1: Any = None
+        ctx1: Any = None
 
         @jax.jit
         def g():
-            nonlocal rng1
-            rng1 = nnx.RngStream(jax.random.PRNGKey(1))
+            nonlocal ctx1
+            ctx1 = nnx.context(1)
 
         g()
 
-        assert isinstance(rng1, nnx.RngStream)
+        assert isinstance(ctx1, nnx.Context)
         with pytest.raises(
             nnx.TraceContextError,
-            match="Cannot use RngStream from a different trace level",
+            match="Cannot use Context from a different trace level",
         ):
-            rng1.make_rng()
+            ctx1.make_rng("params")
 
 
 class TestContext:
