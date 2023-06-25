@@ -5,7 +5,7 @@ from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import errors, nodes, partitioning, reprlib, tracers
+from nnx import containers, errors, nodes, partitioning, reprlib, tracers
 from nnx.containers import Container, Sharding, Variable
 from nnx.state import State
 
@@ -601,6 +601,29 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             state = {path: leaf for path, leaf in mutable_leaves}
 
         return state
+
+    def sow(self, collection: str, name: str, value: tp.Any) -> None:
+        if hasattr(self, name):
+            variable = vars(self)[name]
+            if not isinstance(variable, containers.Variable):
+                raise ValueError(
+                    f"Expected '{name}' to be a Variable, got {type(variable).__name__}"
+                )
+            elif variable.collection != collection:
+                raise ValueError(
+                    f"Expected '{name}' to be in collection '{collection}', "
+                    f"got '{variable.collection}'"
+                )
+            current_value = variable.value
+            if not isinstance(current_value, tuple):
+                raise ValueError(
+                    f"Expected '{name}' to be a tuple, "
+                    f"got {type(current_value).__name__}"
+                )
+            value = current_value + (value,)
+            setattr(self, name, value)
+        else:
+            setattr(self, name, containers.var(collection, (value,)))
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
         visited: tp.Set[int] = set()

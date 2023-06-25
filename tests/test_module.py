@@ -228,6 +228,29 @@ class TestModule:
         assert m.b.c == m2.b.c
         assert m.b.d == m2.b.d
 
+    def test_sow_basic(self):
+        class Foo(nnx.Module):
+            def __call__(self, x):
+                y = x + 1
+                self.sow("intermediates", "y", y)
+                return y
+
+        m = Foo()
+        y1 = m(2)
+        y2 = m(10)
+
+        assert y1 == 3
+        assert y2 == 11
+        assert m.y == (3, 11)
+
+        intermediates = m.pop_state("intermediates")
+
+        assert isinstance(intermediates["y"], nnx.Variable)
+        assert intermediates["y"].collection == "intermediates"
+        assert intermediates["y"].value == (3, 11)
+
+        assert not hasattr(m, "y")
+
 
 class TestModuleDataclass:
     def test_basic(self):
