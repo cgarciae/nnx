@@ -13,7 +13,8 @@ A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
 S = tp.TypeVar("S", bound=tp.Union[State, tp.Tuple[State, ...]])
 
-Path = tp.Tuple[str, ...]
+Path = str
+PathParts = tp.Tuple[str, ...]
 StateDict = tp.Dict[Path, tp.Any]
 StateMapping = tp.Mapping[Path, tp.Any]
 
@@ -595,26 +596,8 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         _update_module(self, current_state, updates)
 
-    @tp.overload
     def mutable_state_dict(self) -> tp.Dict[Path, "MutableLeaf"]:
-        ...
-
-    @tp.overload
-    def mutable_state_dict(self, sep: str) -> tp.Dict[str, "MutableLeaf"]:
-        ...
-
-    def mutable_state_dict(
-        self, sep: tp.Optional[str] = None
-    ) -> tp.Union[tp.Dict[Path, "MutableLeaf"], tp.Dict[str, "MutableLeaf"]]:
-        mutable_leaves = (
-            (path, MutableLeaf(self, path)) for path, _ in _iter_state(self)
-        )
-        if sep is not None:
-            state = {sep.join(path): leaf for path, leaf in mutable_leaves}
-        else:
-            state = {path: leaf for path, leaf in mutable_leaves}
-
-        return state
+        return {path: MutableLeaf(self, path) for path, _ in _iter_state(self)}
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
         visited: tp.Set[ids.UUID] = set()
@@ -674,11 +657,12 @@ class MutableLeaf(reprlib.Representable):
     __slots__ = ("_module", "_name")
 
     def __init__(self, root: Module, path: Path):
-        *module_path, name = path
+        path_parts = path.split("/")
+        *module_path, name = path_parts
         module = _get_value_path(root, module_path)
         if not isinstance(module, Module):
             raise ValueError(
-                f"Expected a module at path {path[:-1]}, ",
+                f"Expected a module at path {path_parts[:-1]}, ",
                 f" got {type(module).__name__}",
             )
         self._module = module
@@ -756,13 +740,13 @@ def _make_module_def_recursive(
 
 def _iter_state(module: Module) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     seen_modules: tp.Set[ids.UUID] = set()
-    path: Path = ()
+    path_parts: PathParts = ()
 
-    yield from _iter_state_recursive(module, seen_modules, path)
+    yield from _iter_state_recursive(module, seen_modules, path_parts)
 
 
 def _iter_state_recursive(
-    module: Module, seen_modules: tp.Set[ids.UUID], path: Path
+    module: Module, seen_modules: tp.Set[ids.UUID], path_parts: PathParts
 ) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
     if module._module__state.id in seen_modules:
         return
@@ -770,18 +754,21 @@ def _iter_state_recursive(
     seen_modules.add(module._module__state.id)
 
     for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
-        value_path = (*path, name)
+        new_path_parts = (*path_parts, name)
         if isinstance(value, Module):
-            yield from _iter_state_recursive(value, seen_modules, value_path)
+            yield from _iter_state_recursive(value, seen_modules, new_path_parts)
         elif nodes.is_node(value):
-            yield value_path, value
+            path = "/".join(new_path_parts)
+            yield path, value
 
 
-def _set_value_at_path(module: tp.Any, path: tp.Sequence[str], value: tp.Any):
-    if len(path) == 1:
-        setattr(module, path[0], value)
+def _set_value_at_path(
+    module: tp.Any, path_parts: tp.Union[PathParts, tp.List[str]], value: tp.Any
+):
+    if len(path_parts) == 1:
+        setattr(module, path_parts[0], value)
     else:
-        _set_value_at_path(vars(module)[path[0]], path[1:], value)
+        _set_value_at_path(vars(module)[path_parts[0]], path_parts[1:], value)
 
 
 def _get_value_path(module: tp.Any, path: tp.Sequence[str]) -> tp.Any:
@@ -827,10 +814,10 @@ def _pop(
     filters: tp.Tuple[partitioning.Filter, ...],
 ) -> tp.Tuple[State, ...]:
     module_index: tp.Dict[ids.UUID, int] = {}
-    path: Path = ()
+    path_parts: PathParts = ()
     predicates = tuple(partitioning.to_predicate(filter) for filter in filters)
     states = tuple({} for _ in predicates)
-    _pop_recursive(module, module_index, path, states, predicates)
+    _pop_recursive(module, module_index, path_parts, states, predicates)
 
     return tuple(State(x) for x in states)
 
@@ -838,7 +825,7 @@ def _pop(
 def _pop_recursive(
     module: Module,
     module_index: tp.Dict[ids.UUID, int],
-    path: Path,
+    path_parts: PathParts,
     states: tp.Tuple[tp.Dict[Path, tp.Any]],
     predicates: tp.Tuple[partitioning.Predicate, ...],
 ) -> None:
@@ -846,16 +833,16 @@ def _pop_recursive(
         return
 
     for name, value in list(vars(module).items()):
-        value_path = (*path, name)
         if isinstance(value, Module):
-            _pop_recursive(value, module_index, value_path, states, predicates)
+            _pop_recursive(value, module_index, (*path_parts, name), states, predicates)
             continue
         elif not nodes.is_node(value):
             continue
 
+        path = "/".join((*path_parts, name))
         for state, predicate in zip(states, predicates):
-            if predicate(value_path, value):
-                state[value_path] = value
+            if predicate(path, value):
+                state[path] = value
                 delattr(module, name)
                 break
 
@@ -877,7 +864,8 @@ def _update_module(
         state.update(new_state)
 
     for path, value in state.items():
-        _set_value_at_path(module, path, value)
+        path_parts = path.split("/")
+        _set_value_at_path(module, path_parts, value)
 
 
 def first_from(*args: tp.Optional[A]) -> A:

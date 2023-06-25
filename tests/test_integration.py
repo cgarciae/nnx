@@ -200,7 +200,7 @@ class TestIntegration:
 
         intermediates = model.pop_state("intermediate")
 
-        assert ("y",) in intermediates
+        assert "y" in intermediates
 
     def test_intermediates_example_functional(self):
         class Linear(nnx.Module):
@@ -222,4 +222,4 @@ class TestIntegration:
 
         intermediates, state = state.partition("intermediate", ...)
 
-        assert ("y",) in intermediates
+        assert "y" in intermediates
