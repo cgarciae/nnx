@@ -4,8 +4,8 @@ from typing import Optional, Sequence
 import jax.numpy as jnp
 from jax import lax, random
 
-from nnx import contextlib, utils
-from nnx.module import Module
+from nnx import contextlib
+from nnx.module import Module, first_from
 
 
 @dataclasses.dataclass
@@ -44,7 +44,7 @@ class Dropout(Module):
         Returns:
           The masked inputs reweighted to preserve mean.
         """
-        deterministic = utils.first_from(
+        deterministic = first_from(
             deterministic,
             self.deterministic,
             ctx and ctx.get_flag("deterministic"),
