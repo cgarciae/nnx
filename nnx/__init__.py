@@ -14,7 +14,7 @@ from .containers import (
     var_metadata,
     with_partitioning,
 )
-from .contextlib import Context, RngStream, context
+from .contextlib import Context, context
 from .dataclasses import (
     dataclass,
     field,
