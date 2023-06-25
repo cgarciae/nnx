@@ -296,6 +296,41 @@ class TestModule:
         with pytest.raises(ValueError, match="to be a tuple,"):
             m(2)
 
+    def test_capture_intermediates(self):
+        class Foo(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context) -> None:
+                self.linear1 = nnx.Linear(4, 8, ctx=ctx)
+                self.dropout = nnx.Dropout(0.5)
+                self.linear2 = nnx.Linear(8, 1, ctx=ctx)
+
+            def __call__(self, x, *, ctx: nnx.Context):
+                x = self.linear1(x)
+                x = self.dropout(x, ctx=ctx)
+                x = self.linear2(x)
+                return x
+
+        ctx = nnx.context(0)
+
+        shared = nnx.Linear(4, 4, ctx=ctx)
+
+        m = nnx.Sequence(
+            [
+                nnx.Linear(2, 4, ctx=ctx),
+                shared,
+                shared,
+                Foo(ctx=ctx),
+                nnx.Linear(1, 2, ctx=ctx),
+            ]
+        )
+
+        ctx = nnx.context(dropout=1, flags=dict(deterministic=False))
+        y = m.capture_intermediates(jnp.ones((1, 2)), ctx=ctx)
+
+        intermediates = m.pop_state("intermediates")
+
+        intermediates
+
+
 class TestModuleDataclass:
     def test_basic(self):
         @nnx.dataclass
