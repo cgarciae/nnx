@@ -116,7 +116,7 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
             ...
 
     def apply(
-        self, state: State | str, *states: State | str
+        self, state: tp.Union[State, str], *states: tp.Union[State, str]
     ) -> ApplyCaller[Pure[State, M]]:
         states = (state, *states)
 
