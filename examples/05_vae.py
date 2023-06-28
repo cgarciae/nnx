@@ -105,7 +105,7 @@ params, moduledef = VAE(
 ).partition("params")
 
 state = nnx.TrainState(
-    apply_fn=moduledef.apply,
+    moduledef,
     params=params,
     tx=optax.adam(1e-3),
 )
@@ -116,7 +116,7 @@ state = nnx.TrainState(
 def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
     def loss_fn(params: nnx.State):
         ctx = nnx.context(noise=jax.random.fold_in(key, state.step))
-        logits, (updates, _) = state.apply_fn(params)(x, ctx=ctx)
+        logits, (updates, _) = state.apply(params)(x, ctx=ctx)
 
         losses = updates.filter("losses")
         kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
@@ -135,13 +135,13 @@ def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
 @partial(jax.jit, donate_argnums=(0,))
 def forward(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array) -> jax.Array:
     ctx = nnx.context(noise=key)
-    y_pred = state.apply_fn(state.params)(x, ctx=ctx)[0]
+    y_pred = state.apply("params")(x, ctx=ctx)[0]
     return jax.nn.sigmoid(y_pred)
 
 
 @jax.jit
 def sample(state: nnx.TrainState[VAE], z: jax.Array) -> jax.Array:
-    return state.apply_fn(state.params).generate(z)[0]
+    return state.apply("params").generate(z)[0]
 
 
 # %%

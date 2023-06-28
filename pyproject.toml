@@ -6,7 +6,7 @@ authors = ["Cristian Garcia <cgarcia.e88@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.9,<3.12"
 jax = "*"
 jaxlib = "*"
 optax = "*"
