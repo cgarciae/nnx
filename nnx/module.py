@@ -359,7 +359,7 @@ def _pure_module_unflatten(_, values: tp.Tuple[S, ModuleDef[M]]):
 
 jtu.register_pytree_node(Pure, _pure_module_flatten, _pure_module_unflatten)
 
-PureModule = Pure[tp.Union[State, tp.Tuple[State, ...]], M]
+PureModule = Pure[tp.Any, M]
 
 
 SEEN_MODULES_REPR: tp.Set[int] = set()

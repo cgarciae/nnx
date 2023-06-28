@@ -125,6 +125,7 @@ def jit(
 class GradTransform:
     def __init__(
         self,
+        *,
         fun: tp.Callable[..., tp.Any],
         stateful: bool,
         predicate: partitioning.Predicate,
@@ -132,9 +133,12 @@ class GradTransform:
         holomorphic: bool,
         allow_int: bool,
         reduce_axes: tp.Sequence[AxisName],
+        return_value: bool,
     ):
+        transform = jax.value_and_grad if return_value else jax.grad
+
         @functools.partial(
-            jax.grad,
+            transform,
             argnums=0,  # we'll handle this ourselves
             has_aux=has_aux or stateful,
             holomorphic=holomorphic,
@@ -165,6 +169,7 @@ class GradTransform:
         self.predicate = predicate
         self.has_aux = has_aux
         self.stateful = stateful
+        self.return_value = return_value
 
     def __call__(self, module: Module, *args: tp.Any):
         if not isinstance(module, Module):
@@ -172,18 +177,24 @@ class GradTransform:
 
         (diff, nondiff), moduledef = module.partition(self.predicate, ...)
 
-        grads = self.grad_fn(diff, nondiff, moduledef, *args)
+        out = self.grad_fn(diff, nondiff, moduledef, *args)
 
         if self.stateful:
             updates: State
-            if self.has_aux:
-                grads, (updates, aux) = grads
-                out = grads, aux
+            if self.return_value:
+                if self.has_aux:
+                    (loss, (updates, aux)), grads = out
+                    out = (loss, aux), grads
+                else:
+                    (loss, updates), grads = out
+                    out = loss, grads
             else:
-                out, updates = grads
+                if self.has_aux:
+                    grads, (updates, aux) = out
+                    out = grads, aux
+                else:
+                    out, updates = out
             module.update_state(updates)
-        else:
-            out = grads
 
         return out
 
@@ -230,13 +241,70 @@ def grad(
 ) -> tp.Callable[..., tp.Union[tp.Tuple[State, tp.Any], State]]:
     predicate = partitioning.to_predicate(wrt)
     ref_grad = GradTransform(
-        fun,
+        fun=fun,
         stateful=stateful,
         predicate=predicate,
         has_aux=has_aux,
         holomorphic=holomorphic,
         allow_int=allow_int,
         reduce_axes=reduce_axes,
+        return_value=False,
+    )
+    ref_grad = functools.wraps(fun)(ref_grad)
+    # _update_decorator_fields(ref_grad, fun)
+    return ref_grad
+
+
+@tp.overload
+def value_and_grad(
+    fun: tp.Callable[..., tp.Any],
+    wrt: partitioning.Filter = "params",
+    *,
+    stateful: bool = True,
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., tp.Tuple[jax.Array, State]]:
+    ...
+
+
+@tp.overload
+def value_and_grad(
+    fun: tp.Callable[..., tp.Any],
+    wrt: partitioning.Filter = "params",
+    *,
+    stateful: bool = True,
+    has_aux: tp.Literal[True],
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[..., tp.Tuple[tp.Tuple[jax.Array, tp.Any], State]]:
+    ...
+
+
+def value_and_grad(
+    fun: tp.Callable[..., tp.Any],
+    wrt: partitioning.Filter = "params",
+    *,
+    stateful: bool = True,
+    has_aux: bool = False,
+    holomorphic: bool = False,
+    allow_int: bool = False,
+    reduce_axes: tp.Sequence[AxisName] = (),
+) -> tp.Callable[
+    ...,
+    tp.Union[tp.Tuple[tp.Tuple[jax.Array, tp.Any], State], tp.Tuple[jax.Array, State]],
+]:
+    predicate = partitioning.to_predicate(wrt)
+    ref_grad = GradTransform(
+        fun=fun,
+        stateful=stateful,
+        predicate=predicate,
+        has_aux=has_aux,
+        holomorphic=holomorphic,
+        allow_int=allow_int,
+        reduce_axes=reduce_axes,
+        return_value=True,
     )
     ref_grad = functools.wraps(fun)(ref_grad)
     # _update_decorator_fields(ref_grad, fun)
