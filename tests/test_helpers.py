@@ -11,7 +11,7 @@ class TestHelpers:
         (params, batch_stats), moduledef = m.partition("params", "batch_stats")
 
         state = nnx.TrainState(
-            apply_fn=moduledef.apply,
+            moduledef,
             params=params,
             tx=optax.sgd(1.0),
             batch_stats=batch_stats,
