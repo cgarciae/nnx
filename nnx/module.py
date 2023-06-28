@@ -5,7 +5,7 @@ from typing import Any
 
 import jax.tree_util as jtu
 
-from nnx import containers, errors, nodes, partitioning, reprlib, tracers
+from nnx import containers, errors, ids, nodes, partitioning, reprlib, tracers
 from nnx.containers import Container, Sharding, Variable
 from nnx.state import State
 
@@ -362,18 +362,23 @@ jtu.register_pytree_node(Pure, _pure_module_flatten, _pure_module_unflatten)
 PureModule = Pure[tp.Union[State, tp.Tuple[State, ...]], M]
 
 
-SEEN_MODULES_REPR: tp.Set[int] = set()
+SEEN_MODULES_REPR: tp.Optional[tp.Set[ids.UUID]] = None
 
 
 class ModuleState(reprlib.Representable):
-    __slots__ = ("_trace_state",)
+    __slots__ = ("_trace_state", "_id")
 
     def __init__(self, trace_state: tracers.TraceState):
         self._trace_state = trace_state
+        self._id = ids.uuid()
 
     @property
     def trace_state(self) -> tracers.TraceState:
         return self._trace_state
+
+    @property
+    def id(self) -> ids.UUID:
+        return self._id
 
     def __nnx_repr__(self):
         yield reprlib.Object(type(self))
@@ -435,15 +440,23 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             vars_dict[name] = value
 
     def __hash__(self) -> int:
-        return id(self)
+        return hash(self._module__state.id)
 
     def __nnx_repr__(self):
-        if id(self) in SEEN_MODULES_REPR:
+        global SEEN_MODULES_REPR
+
+        if SEEN_MODULES_REPR is None:
+            SEEN_MODULES_REPR = set()
+            clear_seen = True
+        else:
+            clear_seen = False
+
+        if self._module__state.id in SEEN_MODULES_REPR:
             yield reprlib.Object(type=type(self), empty_repr="...")
             return
 
         yield reprlib.Object(type=type(self))
-        SEEN_MODULES_REPR.add(id(self))
+        SEEN_MODULES_REPR.add(self._module__state.id)
 
         try:
             for name, value in vars(self).items():
@@ -452,7 +465,8 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
                 ):
                     yield reprlib.Attr(name, value)
         finally:
-            SEEN_MODULES_REPR.remove(id(self))
+            if clear_seen:
+                SEEN_MODULES_REPR = None
 
     def clone(self: M) -> M:
         return self.partition().merge()
@@ -609,16 +623,19 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             setattr(self, name, containers.var(collection, (value,)))
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
-        visited: tp.Set[int] = set()
+        visited: tp.Set[ids.UUID] = set()
         self._on_all(module_type, fn, visited)
 
     def _on_all(
-        self, module_type: tp.Type[M], fn: tp.Callable[[M], None], visited: tp.Set[int]
+        self,
+        module_type: tp.Type[M],
+        fn: tp.Callable[[M], None],
+        visited: tp.Set[ids.UUID],
     ) -> None:
-        if id(self) in visited:
+        if self._module__state.id in visited:
             return
 
-        visited.add(id(self))
+        visited.add(self._module__state.id)
 
         if isinstance(self, module_type):
             fn(self)
@@ -704,7 +721,7 @@ def _get_module_state(module: Module) -> State:
 
 
 def _get_module_def(module: M) -> ModuleDef[M]:
-    module_index: tp.Dict[int, int] = {}
+    module_index: tp.Dict[ids.UUID, int] = {}
     path: Path = ()
 
     moduledef = _make_module_def_recursive(module, module_index, path)
@@ -715,14 +732,14 @@ def _get_module_def(module: M) -> ModuleDef[M]:
 
 def _make_module_def_recursive(
     module: M,
-    module_index: tp.Dict[int, int],
+    module_index: tp.Dict[ids.UUID, int],
     path: Path,
 ) -> tp.Union[ModuleDef[M], int]:
-    if id(module) in module_index:
-        return module_index[id(module)]
+    if module._module__state.id in module_index:
+        return module_index[module._module__state.id]
 
     index = len(module_index)
-    module_index[id(module)] = index
+    module_index[module._module__state.id] = index
 
     submodules = []
     static_fields = []
@@ -745,19 +762,19 @@ def _make_module_def_recursive(
 
 
 def _iter_state(module: Module) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
-    seen_modules: tp.Set[int] = set()
+    seen_modules: tp.Set[ids.UUID] = set()
     path_parts: PathParts = ()
 
     yield from _iter_state_recursive(module, seen_modules, path_parts)
 
 
 def _iter_state_recursive(
-    module: Module, seen_modules: tp.Set[int], path_parts: PathParts
+    module: Module, seen_modules: tp.Set[ids.UUID], path_parts: PathParts
 ) -> tp.Iterator[tp.Tuple[Path, tp.Any]]:
-    if id(module) in seen_modules:
+    if module._module__state.id in seen_modules:
         return
 
-    seen_modules.add(id(module))
+    seen_modules.add(module._module__state.id)
 
     for name, value in sorted(vars(module).items(), key=lambda x: x[0]):
         new_path_parts = (*path_parts, name)
@@ -819,7 +836,7 @@ def _pop(
     module: Module,
     filters: tp.Tuple[partitioning.Filter, ...],
 ) -> tp.Tuple[State, ...]:
-    module_index: tp.Dict[int, int] = {}
+    module_index: tp.Dict[ids.UUID, int] = {}
     path_parts: PathParts = ()
     predicates = tuple(partitioning.to_predicate(filter) for filter in filters)
     states = tuple({} for _ in predicates)
@@ -830,12 +847,12 @@ def _pop(
 
 def _pop_recursive(
     module: Module,
-    module_index: tp.Dict[int, int],
+    module_index: tp.Dict[ids.UUID, int],
     path_parts: PathParts,
     states: tp.Tuple[tp.Dict[Path, tp.Any]],
     predicates: tp.Tuple[partitioning.Predicate, ...],
 ) -> None:
-    if id(module) in module_index:
+    if module._module__state.id in module_index:
         return
 
     for name, value in list(vars(module).items()):
@@ -852,7 +869,7 @@ def _pop_recursive(
                 delattr(module, name)
                 break
 
-    module_index[id(module)] = len(module_index)
+    module_index[module._module__state.id] = len(module_index)
 
 
 def _update_module(
