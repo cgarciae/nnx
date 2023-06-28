@@ -5,7 +5,7 @@ import optax
 
 from nnx import containers, pytreelib
 from nnx.contextlib import Context
-from nnx.module import ApplyCaller, Module, Pure
+from nnx.module import ApplyCaller, Module, ModuleDef, Pure
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -95,14 +95,14 @@ class ModuleDefApply(tp.Protocol, tp.Generic[M]):
 class TrainState(pytreelib.Pytree, tp.Generic[M]):
     def __init__(
         self,
+        moduledef: ModuleDef[M],
         *,
-        apply_fn: ModuleDefApply[M],
         params: State,
         tx: optax.GradientTransformation,
         step: int = 0,
         **kwargs,
     ):
-        self.apply_fn = apply_fn
+        self.moduledef = moduledef
         self.params: State = containers.node(params)
         self.tx = tx
         self.opt_state = containers.node(tx.init(self.params))
@@ -114,6 +114,18 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
 
         def __getattr__(self, key: str) -> tp.Any:
             ...
+
+    def apply(
+        self, state: State | str, *states: State | str
+    ) -> ApplyCaller[Pure[State, M]]:
+        states = (state, *states)
+
+        _states = (
+            getattr(self, state) if isinstance(state, str) else state
+            for state in states
+        )
+
+        return self.moduledef.apply(*_states)
 
     def apply_gradients(self, grads: State, **kwargs) -> "TrainState[M]":
         updates, opt_state = self.tx.update(grads, self.opt_state, self.params)
