@@ -11,7 +11,7 @@ from .containers import (
     param,
     static,
     variable,
-    with_partitioning,
+    with_metadata,
 )
 from .contextlib import Context, context
 from .dataclasses import (

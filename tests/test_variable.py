@@ -10,8 +10,9 @@ A = tp.TypeVar("A")
 
 class TestVariable:
     def test_slots(self):
-        var = nnx.Node(1)
-        assert not hasattr(var, "__dict__")
+        node = nnx.Node(1)
+        assert node._value == 1
+        assert "_value" not in vars(node)
 
     def test_value(self):
         r1 = nnx.Node(1)

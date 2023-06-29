@@ -223,7 +223,7 @@ class TestScan:
 
         class Foo(nnx.Module):
             def __init__(self, *, ctx: nnx.Context):
-                kernel_init = nnx.with_partitioning(
+                kernel_init = nnx.with_metadata(
                     nnx.initializers.lecun_normal(), ("foo", "bar")
                 )
                 self.linear = nnx.Linear(
