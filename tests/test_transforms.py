@@ -166,9 +166,9 @@ class TestScan:
 
         module = MLP(ctx=nnx.context(0))
 
-        assert module.module.linear.kernel.shape == (5, 3, 3)
-        assert module.module.linear.bias.shape == (5, 3)
-        assert module.module.node.shape == (2,)
+        assert module.scan_module.linear.kernel.shape == (5, 3, 3)
+        assert module.scan_module.linear.bias.shape == (5, 3)
+        assert module.scan_module.node.shape == (2,)
 
         x = jnp.ones((1, 3))
         y, out = module.call(x, None)
@@ -204,9 +204,9 @@ class TestScan:
 
         module = MLP(ctx=nnx.context(0))
 
-        assert module.module.linear.kernel.shape == (5, 3, 3)
-        assert module.module.linear.bias.shape == (5, 3)
-        assert module.module.node.shape == (2,)
+        assert module.scan_module.linear.kernel.shape == (5, 3, 3)
+        assert module.scan_module.linear.bias.shape == (5, 3)
+        assert module.scan_module.node.shape == (2,)
 
         x = jnp.ones((1, 3))
         ctx = nnx.context(
@@ -216,3 +216,40 @@ class TestScan:
 
         assert y.shape == (1, 3)
         assert out is None
+
+
+class TestRemat:
+    def test_basic_remat(self):
+        RematLinear = nnx.remat(nnx.Linear)
+
+        module = RematLinear(2, 3, ctx=nnx.context(0))
+
+        y = module.call(jnp.ones((1, 2)))
+
+        assert y.shape == (1, 3)
+
+    def test_remat_with_scan(self):
+        class LinearBlock(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                x = self.linear(x)
+                return x, None
+
+        RematLinear = nnx.remat(LinearBlock)
+
+        ScanRematLinear = nnx.scan(
+            RematLinear, variable_axes={"params": 0}, split_rngs="params", length=5
+        )
+
+        m = ScanRematLinear(ctx=nnx.context(0))
+
+        assert m.scan_module.remat_module.linear.kernel.shape == (5, 3, 3)
+        assert m.scan_module.remat_module.linear.bias.shape == (5, 3)
+
+        y, _ = m.call.call(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)
+
+        y, _ = m(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)
