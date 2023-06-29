@@ -3,6 +3,7 @@ import functools
 import typing as tp
 from abc import ABC, abstractmethod
 from functools import partial
+from types import MappingProxyType
 
 import jax.tree_util as jtu
 
@@ -16,11 +17,26 @@ F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 Sharding = tp.Tuple[str, ...]
 
 
-class Container(ABC, tp.Generic[A]):
-    __slots__ = ("_value",)
+@dataclasses.dataclass
+class ContainerMetadata(tp.Generic[A]):
+    value: A
+    metadata: tp.Mapping[str, tp.Hashable]
 
-    def __init__(self, value: A):
+
+class Container(tp.Generic[A], reprlib.Representable):
+    __slots__ = ("_value", "_metadata")
+
+    def __init__(
+        self,
+        value: tp.Union[A, ContainerMetadata[A]],
+        metadata: tp.Mapping[str, tp.Hashable],
+    ):
+        if isinstance(value, ContainerMetadata):
+            metadata = {**value.metadata, **metadata}
+            value = tp.cast(A, value.value)
+
         self._value = value
+        self._metadata = MappingProxyType(metadata)
 
     @property
     def value(self) -> A:
@@ -37,46 +53,25 @@ class Container(ABC, tp.Generic[A]):
 
         return self._replace_value(value)
 
-    @abstractmethod
-    def _replace_value(self: C, value: tp.Any) -> C:
-        ...
+    def _replace_value(self: "Container[A]", value: B) -> "Container[B]":
+        return Container(value, self._metadata)
 
-    @abstractmethod
     def is_equivalent(self, other: tp.Any) -> bool:
-        ...
+        return type(other) is Container and self._metadata == other._metadata
 
-    @abstractmethod
-    def copy(self: C) -> C:
-        ...
-
-
-class Node(Container[A], reprlib.Representable):
-    __slots__ = ()
+    def copy(self: "Container[A]") -> "Container[A]":
+        return Container(self._value, self._metadata)
 
     def __nnx_repr__(self):
         yield reprlib.Object(type=type(self))
         yield reprlib.Attr(
             "value", repr(self._value) if isinstance(self._value, str) else self._value
         )
-
-    def __eq__(self, other: object) -> bool:
-        return type(other) is Node and self._value == other._value
-
-    def copy(self) -> "Node[A]":
-        return Node(self._value)
-
-    def _replace_value(
-        self,
-        value: B,
-    ) -> "Node[B]":
-        return Node(value)
-
-    def is_equivalent(self, other: tp.Any) -> bool:
-        return type(other) is Node
+        yield reprlib.Attr("metadata", self._metadata)
 
 
-def _node_flatten(
-    x: Node[tp.Any],
+def _container_flatten(
+    x: Container[tp.Any],
     *,
     with_keys: bool,
 ):
@@ -85,25 +80,21 @@ def _node_flatten(
     else:
         node = x._value
 
-    return (node,), None
+    return (node,), x._metadata
 
 
-def _node_unflatten(metadata: None, children: tp.Tuple[A]) -> Node[A]:
-    return Node(children[0])
+def _container_unflatten(
+    metadata: tp.Mapping[str, tp.Hashable], children: tp.Tuple[A]
+) -> Container[A]:
+    return Container(children[0], metadata)
 
 
 jtu.register_pytree_with_keys(
-    Node,
-    partial(_node_flatten, with_keys=True),
-    _node_unflatten,
-    flatten_func=partial(_node_flatten, with_keys=False),
+    Container,
+    partial(_container_flatten, with_keys=True),
+    _container_unflatten,
+    flatten_func=partial(_container_flatten, with_keys=False),
 )
-
-
-@dataclasses.dataclass
-class VarMetadata(tp.Generic[A]):
-    value: A
-    sharding: Sharding
 
 
 def with_partitioning(
@@ -112,13 +103,9 @@ def with_partitioning(
 ) -> initializers.Initializer:
     @functools.wraps(initializer)
     def wrapper(*args):
-        return VarMetadata(initializer(*args), sharding)
+        return ContainerMetadata(initializer(*args), metadata={"sharding": sharding})
 
     return wrapper  # type: ignore
-
-
-def var_metadata(value: A, sharding: Sharding) -> VarMetadata[A]:
-    return VarMetadata(value, sharding)
 
 
 class Variable(Container[A], reprlib.Representable):
@@ -130,7 +117,7 @@ class Variable(Container[A], reprlib.Representable):
         collection: str,
         sharding: tp.Optional[Sharding],
     ):
-        if isinstance(value, VarMetadata):
+        if isinstance(value, ContainerMetadata):
             sharding = value.sharding if sharding is None else sharding
             value = tp.cast(A, value.value)
 

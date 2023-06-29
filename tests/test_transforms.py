@@ -217,6 +217,71 @@ class TestScan:
         assert y.shape == (1, 3)
         assert out is None
 
+    def test_add_metadata_axis(self):
+        state_copy = None
+
+        class Foo(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                kernel_init = nnx.with_partitioning(
+                    nnx.initializers.lecun_normal(), ("foo", "bar")
+                )
+                self.linear = nnx.Linear(
+                    4, 4, kernel_init=kernel_init, use_bias=False, ctx=ctx
+                )
+
+            @nn.compact
+            def __call__(self, x):
+                nonlocal state_copy
+                state_copy = self.get_state()
+                return self.linear(x)
+
+        class Test(nnx.Module):
+            @partial(
+                nn.add_metadata_axis,
+                variable_axes={"params": 0},
+                metadata_params={nn.PARTITION_NAME: "baz"},
+            )
+            @nn.compact
+            def __call__(self, x):
+                return Foo(name="foo")(x)
+
+        k = random.PRNGKey(0)
+        x = jnp.ones((4, 4), dtype=jnp.float32)
+        vs = Test().init(k, x)
+        y = Test().apply(vs, x)
+        outer_expect = jax.tree_map(
+            jnp.shape,
+            freeze(
+                {
+                    "params": {
+                        "foo": {
+                            "dense": {
+                                "kernel": nn.Partitioned(
+                                    jnp.ones((4, 4)), names=("baz", "foo", "bar")
+                                )
+                            }
+                        }
+                    }
+                }
+            ),
+        )
+        inner_expect = jax.tree_map(
+            jnp.shape,
+            freeze(
+                {
+                    "params": {
+                        "dense": {
+                            "kernel": nn.Partitioned(
+                                jnp.ones((4, 4)), names=("foo", "bar")
+                            )
+                        }
+                    }
+                }
+            ),
+        )
+        self.assertEqual(jax.tree_map(jnp.shape, vs), outer_expect)
+        self.assertEqual(jax.tree_map(jnp.shape, state_copy), inner_expect)
+
 
 class TestRemat:
     def test_basic_remat(self):

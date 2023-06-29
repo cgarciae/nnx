@@ -249,21 +249,21 @@ def grad(
 class Scan(Module, tp.Generic[M]):
     def __init__(
         self,
+        *,
         module_constructor: tp.Callable[..., M],
         module_init_args: tp.Tuple[tp.Any, ...],
         module_init_kwargs: tp.Dict[str, tp.Any],
-        *,
-        variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
-        variable_broadcast: partitioning.Filter = None,
-        variable_carry: partitioning.Filter = ...,
-        split_rngs: contextlib.RngFilter = None,
-        in_axes=0,
-        out_axes=0,
-        length: tp.Optional[int] = None,
-        reverse: bool = False,
-        unroll: int = 1,
-        data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
-        metadata_params: tp.Mapping[tp.Any, tp.Any] = {},
+        variable_axes: tp.Mapping[partitioning.Filter, int],
+        variable_broadcast: partitioning.Filter,
+        variable_carry: partitioning.Filter,
+        split_rngs: contextlib.RngFilter,
+        in_axes: tp.Any,
+        out_axes: tp.Any,
+        length: tp.Optional[int],
+        reverse: bool,
+        unroll: int,
+        data_transform: tp.Optional[tp.Callable[..., tp.Any]],
+        metadata_params: tp.Mapping[tp.Any, tp.Any],
     ):
         self.module_constructor = module_constructor
         self.variable_axes = variable_axes
@@ -526,8 +526,8 @@ def scan(
     variable_broadcast: partitioning.Filter = None,
     variable_carry: partitioning.Filter = ...,
     split_rngs: contextlib.RngFilter = None,
-    in_axes=0,
-    out_axes=0,
+    in_axes: tp.Any = 0,
+    out_axes: tp.Any = 0,
     length: tp.Optional[int] = None,
     reverse: bool = False,
     unroll: int = 1,
@@ -558,14 +558,15 @@ def scan(
 class Remat(Module, tp.Generic[M]):
     def __init__(
         self,
+        *,
         module_constructor: tp.Callable[..., M],
         module_init_args: tp.Tuple[tp.Any, ...],
         module_init_kwargs: tp.Dict[str, tp.Any],
-        # variables: lift.CollectionFilter = True,
-        # rngs: lift.PRNGSequenceFilter = True,
-        prevent_cse: bool = True,
-        static_argnums: tp.Union[int, tuple[int, ...]] = (),
-        policy: tp.Optional[tp.Callable[..., bool]] = None,
+        # variables: lift.CollectionFilter,
+        # rngs: lift.PRNGSequenceFilter,
+        prevent_cse: bool,
+        static_argnums: tp.Union[int, tuple[int, ...]],
+        policy: tp.Optional[tp.Callable[..., bool]],
     ):
         if isinstance(static_argnums, int):
             static_argnums = (static_argnums,)
@@ -645,9 +646,9 @@ def remat(
 ) -> tp.Callable[..., Remat[M]]:
     def create_remat(*args, **kwargs) -> Remat[M]:
         return Remat(
-            module_constructor,
-            args,
-            kwargs,
+            module_constructor=module_constructor,
+            module_init_args=args,
+            module_init_kwargs=kwargs,
             prevent_cse=prevent_cse,
             static_argnums=static_argnums,
             policy=policy,

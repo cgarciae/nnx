@@ -3,15 +3,14 @@ __version__ = "0.0.0"
 
 from .containers import (
     Container,
+    ContainerMetadata,
     Node,
     Static,
     Variable,
-    VarMetadata,
     node,
     param,
     static,
     var,
-    var_metadata,
     with_partitioning,
 )
 from .contextlib import Context, context
