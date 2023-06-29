@@ -114,7 +114,7 @@ class TestIntegration:
                 key = ctx.make_rng("params")
                 self.w = nnx.param(jax.random.uniform(key, (din, dout)))
                 self.b = nnx.param(jnp.zeros((dout,)))
-                self.count = nnx.var("state", 0)
+                self.count = nnx.variable("state", 0)
 
             def __call__(self, x):
                 self.count += 1
@@ -149,7 +149,7 @@ class TestIntegration:
                 key = ctx.make_rng("params")
                 self.w = nnx.param(jax.random.uniform(key, (din, dout)))
                 self.b = nnx.param(jnp.zeros((dout,)))
-                self.count = nnx.var("counts", 0)
+                self.count = nnx.variable("counts", 0)
 
             def __call__(self, x):
                 self.count += 1
@@ -191,7 +191,7 @@ class TestIntegration:
 
             def __call__(self, x):
                 y = x @ self.w + self.b
-                self.y = nnx.var("intermediate", y)
+                self.y = nnx.variable("intermediate", y)
                 return y
 
         model = Linear(12, 2, ctx=nnx.context(0))
@@ -211,7 +211,7 @@ class TestIntegration:
 
             def __call__(self, x):
                 y = x @ self.w + self.b
-                self.y = nnx.var("intermediate", y)
+                self.y = nnx.variable("intermediate", y)
                 return y
 
         model = Linear(12, 2, ctx=nnx.context(0))

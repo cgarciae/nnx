@@ -17,26 +17,11 @@ F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 Sharding = tp.Tuple[str, ...]
 
 
-@dataclasses.dataclass
-class ContainerMetadata(tp.Generic[A]):
-    value: A
-    metadata: tp.Mapping[str, tp.Hashable]
+class Container(ABC, tp.Generic[A]):
+    __slots__ = ("_value",)
 
-
-class Container(tp.Generic[A], reprlib.Representable):
-    __slots__ = ("_value", "_metadata")
-
-    def __init__(
-        self,
-        value: tp.Union[A, ContainerMetadata[A]],
-        metadata: tp.Mapping[str, tp.Hashable],
-    ):
-        if isinstance(value, ContainerMetadata):
-            metadata = {**value.metadata, **metadata}
-            value = tp.cast(A, value.value)
-
+    def __init__(self, value: A):
         self._value = value
-        self._metadata = MappingProxyType(metadata)
 
     @property
     def value(self) -> A:
@@ -53,25 +38,84 @@ class Container(tp.Generic[A], reprlib.Representable):
 
         return self._replace_value(value)
 
+    @abstractmethod
     def _replace_value(self: "Container[A]", value: B) -> "Container[B]":
-        return Container(value, self._metadata)
+        ...
+
+    @abstractmethod
+    def is_equivalent(self, other: tp.Any) -> bool:
+        ...
+
+    @abstractmethod
+    def copy(self: "Container[A]") -> "Container[A]":
+        ...
+
+
+@dataclasses.dataclass
+class VariableMetadata(tp.Generic[A]):
+    value: A
+    metadata: tp.Mapping[str, tp.Hashable]
+
+
+@dataclasses.dataclass(repr=False)
+class MetadataRepr(reprlib.Representable):
+    metadata: tp.Mapping[str, tp.Hashable]
+
+    def __nnx_repr__(self):
+        yield reprlib.Object(type="", start="{", end="}", value_sep=": ")
+        for name, value in self.metadata.items():
+            yield reprlib.Attr(repr(name), repr(value))
+
+
+class Node(Container[A], reprlib.Representable):
+    __slots__ = ("_value", "_metadata")
+
+    def __init__(
+        self,
+        value: tp.Union[A, VariableMetadata[A]],
+        metadata: tp.Mapping[str, tp.Hashable],
+    ):
+        if isinstance(value, VariableMetadata):
+            metadata = {**value.metadata, **metadata}
+            value = tp.cast(A, value.value)
+
+        self._value = value
+        self._metadata = MappingProxyType(metadata)
+
+    def __getattr__(self, name: str) -> tp.Hashable:
+        if name in self._metadata:
+            return self._metadata[name]
+        raise AttributeError(
+            f"Variable has no attribute '{name}' in metadata: {self._metadata}"
+        )
+
+    @property
+    def metadata(self) -> tp.Mapping[str, tp.Hashable]:
+        return self._metadata
+
+    def _replace_value(self: "Node[A]", value: B) -> "Node[B]":
+        return Node(value, self._metadata)
 
     def is_equivalent(self, other: tp.Any) -> bool:
-        return type(other) is Container and self._metadata == other._metadata
+        return type(other) is Node and self._metadata == other._metadata
 
-    def copy(self: "Container[A]") -> "Container[A]":
-        return Container(self._value, self._metadata)
+    def copy(self: "Node[A]") -> "Node[A]":
+        return Node(self._value, self._metadata)
+
+    def __eq__(self, other: object) -> bool:
+        return type(other) is Node and self._metadata == other._metadata
 
     def __nnx_repr__(self):
         yield reprlib.Object(type=type(self))
         yield reprlib.Attr(
             "value", repr(self._value) if isinstance(self._value, str) else self._value
         )
-        yield reprlib.Attr("metadata", self._metadata)
+        if self._metadata:
+            yield reprlib.Attr("metadata", MetadataRepr(self._metadata))
 
 
-def _container_flatten(
-    x: Container[tp.Any],
+def _variable_flatten(
+    x: Node[tp.Any],
     *,
     with_keys: bool,
 ):
@@ -83,17 +127,17 @@ def _container_flatten(
     return (node,), x._metadata
 
 
-def _container_unflatten(
+def _variable_unflatten(
     metadata: tp.Mapping[str, tp.Hashable], children: tp.Tuple[A]
-) -> Container[A]:
-    return Container(children[0], metadata)
+) -> Node[A]:
+    return Node(children[0], metadata)
 
 
 jtu.register_pytree_with_keys(
-    Container,
-    partial(_container_flatten, with_keys=True),
-    _container_unflatten,
-    flatten_func=partial(_container_flatten, with_keys=False),
+    Node,
+    partial(_variable_flatten, with_keys=True),
+    _variable_unflatten,
+    flatten_func=partial(_variable_flatten, with_keys=False),
 )
 
 
@@ -103,99 +147,9 @@ def with_partitioning(
 ) -> initializers.Initializer:
     @functools.wraps(initializer)
     def wrapper(*args):
-        return ContainerMetadata(initializer(*args), metadata={"sharding": sharding})
+        return VariableMetadata(initializer(*args), metadata={"sharding": sharding})
 
     return wrapper  # type: ignore
-
-
-class Variable(Container[A], reprlib.Representable):
-    __slots__ = ("_collection", "_sharding")
-
-    def __init__(
-        self,
-        value: A,
-        collection: str,
-        sharding: tp.Optional[Sharding],
-    ):
-        if isinstance(value, ContainerMetadata):
-            sharding = value.sharding if sharding is None else sharding
-            value = tp.cast(A, value.value)
-
-        self._value = value
-        self._collection = collection
-        self._sharding = sharding
-
-    def __eq__(self, other: object) -> bool:
-        return (
-            type(other) is Variable
-            and self._value == other._value
-            and self._collection == other._collection
-            and self._sharding == other._sharding
-        )
-
-    @property
-    def collection(self) -> str:
-        return self._collection
-
-    @property
-    def sharding(self) -> tp.Optional[Sharding]:
-        return self._sharding
-
-    def __nnx_repr__(self):
-        yield reprlib.Object(type=type(self))
-        yield reprlib.Attr("collection", repr(self._collection))
-        yield reprlib.Attr(
-            "value", repr(self._value) if isinstance(self._value, str) else self._value
-        )
-        if self._sharding is not None:
-            yield reprlib.Attr("sharding", self._sharding)
-
-    def copy(self) -> "Variable[A]":
-        return Variable(self._value, self._collection, self._sharding)
-
-    def _replace_value(
-        self,
-        value: B,
-    ) -> "Variable[B]":
-        return Variable(
-            value,
-            self._collection,
-            self._sharding,
-        )
-
-    def is_equivalent(self, other: tp.Any) -> bool:
-        return (
-            type(other) is Variable
-            and self._collection == other._collection
-            and self._sharding == other._sharding
-        )
-
-
-def _variable_flatten(
-    x: Variable[tp.Any],
-    *,
-    with_keys: bool,
-):
-    if with_keys:
-        node = (jtu.GetAttrKey("value"), x._value)
-    else:
-        node = x._value
-
-    return (node,), (x._collection, x._sharding)
-
-
-def _variable_unflatten(
-    metadata: tp.Tuple[str, tp.Optional[Sharding]], children: tp.Tuple[A]
-) -> Variable[A]:
-    return Variable(children[0], *metadata)
-
-
-jtu.register_pytree_with_keys(
-    Variable,
-    partial(_variable_flatten, with_keys=True),
-    _variable_unflatten,
-    flatten_func=partial(_variable_flatten, with_keys=False),
-)
 
 
 class Static(Container[A], reprlib.Representable):
@@ -264,28 +218,27 @@ def check_container(f: F, *, num_arg: int) -> F:
 
 
 @partial(check_container, num_arg=1)
-def var(
+def variable(
     collection: str,
     value: A,
     sharding: tp.Optional[Sharding] = None,
 ) -> A:
-    return Variable(  # type: ignore
-        value,
-        collection=collection,
-        sharding=sharding,
-    )
+    metadata: tp.Dict[str, tp.Hashable] = dict(collection=collection)
+    if sharding is not None:
+        metadata["sharding"] = sharding
+    return Node(value, metadata)  # type: ignore
 
 
 def param(
     value: A,
     sharding: tp.Optional[Sharding] = None,
 ) -> A:
-    return var("params", value, sharding=sharding)
+    return variable("params", value, sharding=sharding)
 
 
 @partial(check_container, num_arg=0)
 def node(value: A) -> A:
-    return Node(value)  # type: ignore
+    return Node(value, {})  # type: ignore
 
 
 @partial(check_container, num_arg=0)
@@ -295,4 +248,3 @@ def static(value: A) -> A:
 
 # register nodes
 nodes.register_node_type(Node)
-nodes.register_node_type(Variable)

@@ -13,20 +13,20 @@ class TestContainers:
         assert isinstance(x, nnx.Node)
 
     def test_variable_idenpotence(self):
-        x = nnx.var("x", 1)
-        x = nnx.var("x", x)
+        x = nnx.variable("x", 1)
+        x = nnx.variable("x", x)
 
-        assert isinstance(x, nnx.Variable)
+        assert isinstance(x, nnx.Node)
         assert x.collection == "x"
 
     def test_variable_cannot_change_collection(self):
-        x = nnx.var("x", 1)
+        x = nnx.variable("x", 1)
 
         with pytest.raises(ValueError, match="is not equivalent to"):
-            x = nnx.var("y", x)
+            x = nnx.variable("y", x)
 
     def test_container_cannot_change_type(self):
-        x = nnx.var("x", 1)
+        x = nnx.variable("x", 1)
 
         with pytest.raises(ValueError, match="is not equivalent to"):
             x = nnx.node(x)
@@ -34,7 +34,7 @@ class TestContainers:
         x = nnx.node(2)
 
         with pytest.raises(ValueError, match="is not equivalent to"):
-            x = nnx.var("x", x)
+            x = nnx.variable("x", x)
 
     def test_static_is_empty(self):
         leaves = jax.tree_util.tree_leaves(nnx.Static(1))

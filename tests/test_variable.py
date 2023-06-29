@@ -10,11 +10,11 @@ A = tp.TypeVar("A")
 
 class TestVariable:
     def test_slots(self):
-        var = nnx.Variable(1, "", None)
+        var = nnx.Node(1, {})
         assert not hasattr(var, "__dict__")
 
     def test_value(self):
-        r1 = nnx.Variable(1, "", None)
+        r1 = nnx.Node(1, {})
         assert r1.value == 1
 
         r2 = jax.tree_map(lambda x: x + 1, r1)

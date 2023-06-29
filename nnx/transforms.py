@@ -536,9 +536,9 @@ def scan(
 ) -> tp.Callable[..., Scan[M]]:
     def _create_scan(*args, **kwargs) -> Scan[M]:
         return Scan(
-            module_constructor,
-            args,
-            kwargs,
+            module_constructor=module_constructor,
+            module_init_args=args,
+            module_init_kwargs=kwargs,
             variable_axes=variable_axes,
             variable_broadcast=variable_broadcast,
             variable_carry=variable_carry,

@@ -6,7 +6,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import containers, errors, ids, nodes, partitioning, reprlib, tracers
-from nnx.containers import Container, Sharding, Variable
+from nnx.containers import Container, Node, Sharding
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -602,7 +602,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     def sow(self, collection: str, name: str, value: tp.Any) -> None:
         if hasattr(self, name):
             variable = vars(self)[name]
-            if not isinstance(variable, containers.Variable):
+            if not isinstance(variable, containers.Node):
                 raise ValueError(
                     f"Expected '{name}' to be a Variable, got {type(variable).__name__}"
                 )
@@ -620,7 +620,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             value = current_value + (value,)
             setattr(self, name, value)
         else:
-            setattr(self, name, containers.var(collection, (value,)))
+            setattr(self, name, containers.variable(collection, (value,)))
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
         visited: tp.Set[ids.UUID] = set()
@@ -702,7 +702,7 @@ class MutableLeaf(reprlib.Representable):
     @property
     def collection(self) -> tp.Optional[str]:
         module = vars(self._module)[self._name]
-        if not isinstance(module, Variable):
+        if not isinstance(module, Node):
             return None
 
         return module.collection
@@ -710,7 +710,7 @@ class MutableLeaf(reprlib.Representable):
     @property
     def sharding(self) -> tp.Optional[Sharding]:
         module = vars(self._module)[self._name]
-        if not isinstance(module, Variable):
+        if not isinstance(module, Node):
             return None
 
         return module.sharding

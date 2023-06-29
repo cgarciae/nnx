@@ -21,8 +21,8 @@ class BatchNorm(nnx.Module):
     def __init__(self, din: int, mu: float = 0.95, *, ctx: nnx.Context):
         self.scale = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din,)))
         self.bias = nnx.param(jax.numpy.zeros((din,)))
-        self.mean = nnx.var("batch_stats", jax.numpy.zeros((din,)))
-        self.var = nnx.var("batch_stats", jax.numpy.ones((din,)))
+        self.mean = nnx.variable("batch_stats", jax.numpy.zeros((din,)))
+        self.var = nnx.variable("batch_stats", jax.numpy.ones((din,)))
         self.mu = mu
 
     def __call__(self, x, *, use_running_averages: bool) -> jax.Array:

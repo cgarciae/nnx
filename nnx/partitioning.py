@@ -40,8 +40,8 @@ class FromCollection:
     collection: str
 
     def __call__(self, path: Path, x: tp.Any):
-        if isinstance(x, nnx.Variable):
-            return x.collection == self.collection
+        if isinstance(x, nnx.Node) and "collection" in x.metadata:
+            return x.metadata["collection"] == self.collection
         return False
 
 
