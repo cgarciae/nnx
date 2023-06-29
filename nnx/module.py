@@ -602,7 +602,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     def sow(self, collection: str, name: str, value: tp.Any) -> None:
         if hasattr(self, name):
             variable = vars(self)[name]
-            if not isinstance(variable, containers.Node):
+            if not isinstance(variable, containers.Variable):
                 raise ValueError(
                     f"Expected '{name}' to be a Variable, got {type(variable).__name__}"
                 )
@@ -701,19 +701,19 @@ class MutableLeaf(reprlib.Representable):
 
     @property
     def collection(self) -> tp.Optional[str]:
-        module = vars(self._module)[self._name]
-        if not isinstance(module, Node):
+        attr = vars(self._module)[self._name]
+        if not isinstance(attr, containers.Variable):
             return None
 
-        return module.collection
+        return attr.collection
 
     @property
     def sharding(self) -> tp.Optional[Sharding]:
-        module = vars(self._module)[self._name]
-        if not isinstance(module, Node):
+        attr = vars(self._module)[self._name]
+        if not isinstance(attr, Node):
             return None
 
-        return module.sharding
+        return attr.metadata.get("sharding", None)
 
 
 def _get_module_state(module: Module) -> State:

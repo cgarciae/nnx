@@ -112,8 +112,8 @@ class TestModule:
         assert m2 is m2.sub
 
     def test_deref_through_jit(self):
-        r1 = nnx.Node(1, {})
-        r2 = nnx.Node(2, {})
+        r1 = nnx.Node(1)
+        r2 = nnx.Node(2)
 
         m = m0 = nnx.Dict({"a": nnx.Sequence([r1, r2]), "b": r1})
 
@@ -181,8 +181,8 @@ class TestModule:
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = nnx.Node(1, {})
-        r2 = nnx.Node(2, {})
+        r1 = nnx.Node(1)
+        r2 = nnx.Node(2)
         v1 = 3
         m = nnx.Dict(
             {
@@ -197,8 +197,8 @@ class TestModule:
 
     def test_deref_arrays_are_nodes(self):
         # test arrays are nodes
-        r1 = nnx.Node(1, {})
-        r2 = nnx.Node(2, {})
+        r1 = nnx.Node(1)
+        r2 = nnx.Node(2)
         v1 = jax.numpy.array(3)
         m = nnx.Dict(
             {
@@ -436,9 +436,7 @@ class TestPureModule:
 
         params = pure_module.filter("params")
         batch_stats = pure_module.filter("batch_stats")
-        rest = pure_module.filter(
-            lambda p, x: isinstance(x, nnx.Node) and not x.metadata
-        )
+        rest = pure_module.filter(nnx.Not(nnx.Variable))
 
         assert len(params) == 3
         assert len(batch_stats) == 1
@@ -454,9 +452,7 @@ class TestPureModule:
 
         params = pure_module.filter("params")
         batch_stats = pure_module.filter("batch_stats")
-        rest = pure_module.filter(
-            lambda p, x: isinstance(x, nnx.Node) and not x.metadata
-        )
+        rest = pure_module.filter(nnx.Not(nnx.Variable))
 
         assert len(params) == 3
         assert len(batch_stats) == 1
