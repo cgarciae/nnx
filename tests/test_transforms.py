@@ -60,17 +60,11 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        # assert grads[("a", "0")].value == 1.0
         assert grads["a/0"].value == 1.0
-        # assert isinstance(grads[("a", "0")], nnx.Variable)
         assert isinstance(grads["a/0"], nnx.Node)
-        # assert grads[("a", "1")].value == 1.0
         assert grads["a/1"].value == 1.0
-        # assert isinstance(grads[("a", "1")], nnx.Variable)
         assert isinstance(grads["a/1"], nnx.Node)
-        # assert grads[("b",)].value == 1.0
         assert grads["b"].value == 1.0
-        # assert isinstance(grads[("b",)], nnx.Variable)
         assert isinstance(grads["b"], nnx.Node)
         assert len(grads) == 3
 
@@ -98,11 +92,8 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        # assert grads[("a", "0")].value == 1.0
         assert grads["a/0"].value == 1.0
-        # assert isinstance(grads[("a", "0")], nnx.Variable)
         assert isinstance(grads["a/0"], nnx.Node)
-        # assert grads[("a", "0")].collection == "params"
         assert grads["a/0"].collection == "params"
         assert len(grads) == 2
 
@@ -130,11 +121,8 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        # assert grads[("a", "1")].value == 1.0
         assert grads["a/1"].value == 1.0
-        # assert isinstance(grads[("a", "1")], nnx.Variable)
         assert isinstance(grads["a/1"], nnx.Node)
-        # assert grads[("a", "1")].collection == "batch_stats"
         assert grads["a/1"].collection == "batch_stats"
         assert len(grads) == 1
 
@@ -272,72 +260,6 @@ class TestScan:
         assert state["scan_module/linear/kernel"].sharding == ("layers", "din", "dout")
         assert state["scan_module/linear/bias"].value.shape == (5, 3)
         assert state["scan_module/linear/bias"].sharding == ("layers", "dout")
-
-    def test_add_metadata_axis(self):
-        return
-        state_copy = None
-
-        class Foo(nnx.Module):
-            def __init__(self, *, ctx: nnx.Context):
-                kernel_init = nnx.with_metadata(
-                    nnx.initializers.lecun_normal(), ("foo", "bar")
-                )
-                self.linear = nnx.Linear(
-                    4, 4, kernel_init=kernel_init, use_bias=False, ctx=ctx
-                )
-
-            @nn.compact
-            def __call__(self, x):
-                nonlocal state_copy
-                state_copy = self.get_state()
-                return self.linear(x)
-
-        class Test(nnx.Module):
-            @partial(
-                nn.add_metadata_axis,
-                variable_axes={"params": 0},
-                metadata_params={nn.PARTITION_NAME: "baz"},
-            )
-            @nn.compact
-            def __call__(self, x):
-                return Foo(name="foo")(x)
-
-        k = random.PRNGKey(0)
-        x = jnp.ones((4, 4), dtype=jnp.float32)
-        vs = Test().init(k, x)
-        y = Test().apply(vs, x)
-        outer_expect = jax.tree_map(
-            jnp.shape,
-            freeze(
-                {
-                    "params": {
-                        "foo": {
-                            "dense": {
-                                "kernel": nn.Partitioned(
-                                    jnp.ones((4, 4)), names=("baz", "foo", "bar")
-                                )
-                            }
-                        }
-                    }
-                }
-            ),
-        )
-        inner_expect = jax.tree_map(
-            jnp.shape,
-            freeze(
-                {
-                    "params": {
-                        "dense": {
-                            "kernel": nn.Partitioned(
-                                jnp.ones((4, 4)), names=("foo", "bar")
-                            )
-                        }
-                    }
-                }
-            ),
-        )
-        self.assertEqual(jax.tree_map(jnp.shape, vs), outer_expect)
-        self.assertEqual(jax.tree_map(jnp.shape, state_copy), inner_expect)
 
 
 class TestRemat:
