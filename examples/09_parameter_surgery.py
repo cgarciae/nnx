@@ -32,10 +32,10 @@ model = Classifier(backbone, ctx=nnx.context(42))
 
 # create a filter to select all the parameters that are not part of the
 # backbone, i.e. the classifier parameters
-is_trainable = nnx.All("params", lambda path, node: path[0] != "backbone")
+is_trainable = nnx.All("params", lambda path, node: path.startswith("backbone"))
 
 # partition the parameters into trainable and non-trainable parameters
-(trainable_params, rest), moduledef = model.partition(is_trainable, ...)
+(trainable_params, non_trainable), moduledef = model.partition(is_trainable, ...)
 
 print("trainable_params =", jax.tree_map(jax.numpy.shape, trainable_params))
-print("rest = ", jax.tree_map(jax.numpy.shape, rest))
+print("non_trainable = ", jax.tree_map(jax.numpy.shape, non_trainable))

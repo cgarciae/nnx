@@ -92,6 +92,10 @@ class NodeBase(Container[A], reprlib.Representable):
 
     def replace_metadata(self: TNodeBase, **kwargs) -> TNodeBase:
         metadata = vars(self).copy()
+        # validate keys
+        for key in kwargs:
+            if key not in metadata:
+                raise ValueError(f"Unknown metadata key {key!r}")
         metadata.update(**kwargs)
         node_type = type(self)
         return node_type(self.value, **metadata)
