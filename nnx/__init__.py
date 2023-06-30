@@ -61,4 +61,4 @@ from .partitioning import All, Not, buffers
 from .pytreelib import Pytree
 from .spmd import PARTITION_NAME
 from .state import State
-from .transforms import grad, jit, remat, scan
+from .transforms import Remat, Scan, grad, jit, remat, scan
