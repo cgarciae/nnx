@@ -217,6 +217,62 @@ class TestScan:
         assert y.shape == (1, 3)
         assert out is None
 
+    def test_scan_with_sharding(self):
+        class Block(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(
+                    3,
+                    3,
+                    kernel_init=nnx.with_metadata(
+                        nnx.initializers.lecun_normal(),
+                        sharding=("din", "dout"),
+                    ),
+                    bias_init=nnx.with_metadata(
+                        nnx.initializers.zeros(),
+                        sharding=("dout",),
+                    ),
+                    ctx=ctx,
+                )
+
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                x = self.linear(x)
+
+                # test sharding layer axes is not present inside scan
+                state = self.linear.get_state()
+                assert state["kernel"].value.shape == (3, 3)
+                assert state["kernel"].sharding == ("din", "dout")
+                assert state["bias"].value.shape == (3,)
+                assert state["bias"].sharding == ("dout",)
+
+                return x, None
+
+        MLP = nnx.scan(
+            Block,
+            variable_axes={"params": 0},
+            split_rngs=["params"],
+            length=5,
+            metadata_params={nnx.PARTITION_NAME: "layers"},
+        )
+
+        m = MLP(ctx=nnx.context(0))
+
+        # test sharding layers axes is set
+        state = m.get_state()
+        assert state["scan_module/linear/kernel"].value.shape == (5, 3, 3)
+        assert state["scan_module/linear/kernel"].sharding == ("layers", "din", "dout")
+        assert state["scan_module/linear/bias"].value.shape == (5, 3)
+        assert state["scan_module/linear/bias"].sharding == ("layers", "dout")
+
+        x = jnp.ones((1, 3))
+        y, out = m.call(x, None)
+
+        # test sharding axes is preserved
+        state = m.get_state()
+        assert state["scan_module/linear/kernel"].value.shape == (5, 3, 3)
+        assert state["scan_module/linear/kernel"].sharding == ("layers", "din", "dout")
+        assert state["scan_module/linear/bias"].value.shape == (5, 3)
+        assert state["scan_module/linear/bias"].sharding == ("layers", "dout")
+
     def test_add_metadata_axis(self):
         return
         state_copy = None

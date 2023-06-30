@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.stages
 import jax.tree_util as jtu
 
-from nnx import contextlib, partitioning, tracers
+from nnx import contextlib, partitioning, spmd, tracers
 from nnx.module import CallableProxy, DelayedAccessor, Module, ModuleDef, PureModule
 from nnx.state import State
 
@@ -346,10 +346,17 @@ class Scan(Module, tp.Generic[M]):
                 axis_size=self.length,
             )
 
-        module_states = _init_state(*key_values)
+        *axes_states, broadcast_state, carry_state = _init_state(*key_values)
         moduledef = tp.cast(ModuleDef[M], moduledef)
 
-        module = moduledef.merge(*module_states)
+        # add additional axis name to Variable.sharding
+        if spmd.PARTITION_NAME in self.metadata_params:
+            axes_states = [
+                spmd.add_axis(state, index, self.metadata_params)
+                for state, index in zip(axes_states, self.variable_axes.values())
+            ]
+
+        module = moduledef.merge(*axes_states, broadcast_state, carry_state)
 
         return module
 
@@ -470,6 +477,15 @@ class Scan(Module, tp.Generic[M]):
                     ctx = ctxdef.merge({**axes_keys, **broadcast_keys})
                     broadcast_kwargs["ctx"] = ctx
 
+                # remove metadata axis name from Variable.sharding
+                if spmd.PARTITION_NAME in self.metadata_params:
+                    axes_states = [
+                        spmd.remove_axis(state, index, self.metadata_params)
+                        for state, index in zip(
+                            axes_states, self.variable_axes.values()
+                        )
+                    ]
+
                 # merge module state
                 module = moduledef.merge(*axes_states, broadcast_state, carry_state)
 
@@ -482,6 +498,15 @@ class Scan(Module, tp.Generic[M]):
                 (*axes_states, _broadcast_state, carry_state), _ = module.partition(
                     *filters
                 )
+
+                # add metadata axis name to Variable.sharding
+                if spmd.PARTITION_NAME in self.metadata_params:
+                    axes_states = [
+                        spmd.add_axis(state, index, self.metadata_params)
+                        for state, index in zip(
+                            axes_states, self.variable_axes.values()
+                        )
+                    ]
 
                 carry = (carry_state, carry_out)
                 out = (axes_states, axes_out)
