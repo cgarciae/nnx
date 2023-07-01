@@ -433,7 +433,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         vars_dict = vars(self)
         if name in vars_dict and isinstance(vars_dict[name], Container):
-            vars_dict[name] = vars_dict[name].replace_value(value)
+            vars_dict[name] = vars_dict[name].replace(value=value)
         else:
             if isinstance(value, Container):
                 value = value.copy()
@@ -722,7 +722,7 @@ def _get_module_state(module: Module) -> State:
 
 def _get_module_def(module: M) -> ModuleDef[M]:
     module_index: tp.Dict[ids.UUID, int] = {}
-    path: Path = ()
+    path: PathParts = ()
 
     moduledef = _make_module_def_recursive(module, module_index, path)
     assert isinstance(moduledef, ModuleDef)
@@ -733,7 +733,7 @@ def _get_module_def(module: M) -> ModuleDef[M]:
 def _make_module_def_recursive(
     module: M,
     module_index: tp.Dict[ids.UUID, int],
-    path: Path,
+    path: PathParts,
 ) -> tp.Union[ModuleDef[M], int]:
     if module._module__state.id in module_index:
         return module_index[module._module__state.id]

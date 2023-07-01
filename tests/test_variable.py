@@ -9,11 +9,6 @@ A = tp.TypeVar("A")
 
 
 class TestVariable:
-    def test_slots(self):
-        node = nnx.Node(1)
-        assert node._value == 1
-        assert "_value" not in vars(node)
-
     def test_value(self):
         r1 = nnx.Node(1)
         assert r1.value == 1

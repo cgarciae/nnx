@@ -3,8 +3,8 @@ __version__ = "0.0.0"
 
 from .containers import (
     Container,
+    ContainerMetadata,
     Node,
-    NodeMetadata,
     Static,
     Variable,
     node,

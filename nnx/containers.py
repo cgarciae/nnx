@@ -18,112 +18,78 @@ TNodeBase = tp.TypeVar("TNodeBase", bound="NodeBase[tp.Any]")
 Sharding = tp.Tuple[tp.Optional[str], ...]
 
 
-class Container(ABC, tp.Generic[A]):
-    __slots__ = ("_value",)
-
-    def __init__(self, value: A):
-        self._value = value
-
-    @property
-    def value(self) -> A:
-        return self._value
-
-    def replace_value(self: C, value: tp.Any) -> C:
-        if isinstance(value, Container):
-            if not self.is_equivalent(value):
-                raise ValueError(
-                    "Cannot replace value from incompatible container, "
-                    f"expected {self}, got {value}"
-                )
-            value = value.value
-
-        return self._replace_value(value)
-
-    @abstractmethod
-    def _replace_value(self: "Container[A]", value: B) -> "Container[B]":
-        ...
-
-    @abstractmethod
-    def is_equivalent(self, other: tp.Any) -> bool:
-        ...
-
-    @abstractmethod
-    def copy(self: "Container[A]") -> "Container[A]":
-        ...
-
-
 @dataclasses.dataclass
-class NodeMetadata(tp.Generic[A]):
+class ContainerMetadata(tp.Generic[A]):
     value: A
     metadata: tp.Mapping[str, tp.Any]
 
 
-@dataclasses.dataclass(repr=False)
-class MetadataRepr(reprlib.Representable):
-    metadata: tp.Mapping[str, tp.Any]
+class Container(tp.Generic[A], reprlib.Representable):
+    value: A
 
-    def __nnx_repr__(self):
-        yield reprlib.Object(type="", start="{", end="}", value_sep=": ")
-        for name, value in self.metadata.items():
-            yield reprlib.Attr(repr(name), repr(value))
-
-
-class NodeBase(Container[A], reprlib.Representable):
-    def __init__(
-        self,
-        value: tp.Union[A, NodeMetadata[A]],
-        **metadata: tp.Any,
-    ):
-        if isinstance(value, NodeMetadata):
+    def __init__(self, value: tp.Union[A, ContainerMetadata[A]], **metadata: tp.Any):
+        if isinstance(value, ContainerMetadata):
             metadata.update(value.metadata)
             value = tp.cast(A, value.value)
 
-        self._value = value
-        vars(self).update(metadata)
+        vars(self).update(metadata, value=value)
 
     if tp.TYPE_CHECKING:
 
         def __getattr__(self, name: str) -> tp.Any:
             ...
 
-    def _replace_value(self: TNodeBase, value: B) -> TNodeBase:
-        node_type = type(self)
-        return node_type(value, **vars(self))
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Container):
+            return False
+        return type(self) is type(other) and vars(other) == vars(self)
 
-    def replace_metadata(self: TNodeBase, **kwargs) -> TNodeBase:
-        metadata = vars(self).copy()
+    @tp.overload
+    def replace(self, *, value: B, **kwargs) -> "Container[B]":
+        ...
+
+    @tp.overload
+    def replace(self, **kwargs) -> "Container[A]":
+        ...
+
+    def replace(self, **kwargs) -> "Container[tp.Any]":
+        if "value" in kwargs:
+            value = kwargs["value"]
+            if isinstance(value, Container):
+                if not self.is_equivalent(value):
+                    raise ValueError(
+                        "Cannot replace value from incompatible container, "
+                        f"expected {self}, got {value}"
+                    )
+                kwargs["value"] = value.value
+
+        attributes = vars(self).copy()
         # validate keys
         for key in kwargs:
-            if key not in metadata:
+            if key not in attributes:
                 raise ValueError(f"Unknown metadata key {key!r}")
-        metadata.update(**kwargs)
+        attributes.update(**kwargs)
         node_type = type(self)
-        return node_type(self.value, **metadata)
+        return node_type(**attributes)
 
     def is_equivalent(self, other: tp.Any) -> bool:
-        return type(other) is type(self) and vars(other) == vars(self)
+        def metadata_fields(container: Container[tp.Any]) -> tp.Dict[str, tp.Any]:
+            return {k: v for k, v in vars(container).items() if k != "value"}
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, NodeBase):
-            return False
-        return (
-            type(self) is type(other)
-            and self.value == other.value
-            and vars(other) == vars(self)
+        return type(self) is type(other) and metadata_fields(self) == metadata_fields(
+            other
         )
 
-    def copy(self: TNodeBase) -> TNodeBase:
-        node_type = type(self)
-        return node_type(self._value, **vars(self))
+    def copy(self: "Container[A]") -> "Container[A]":
+        return type(self)(**vars(self))
 
     def __nnx_repr__(self):
         yield reprlib.Object(type=type(self))
-        yield reprlib.Attr(
-            "value", repr(self._value) if isinstance(self._value, str) else self._value
-        )
         for name, value in vars(self).items():
             yield reprlib.Attr(name, repr(value))
 
+
+class NodeBase(Container[A]):
     def __init_subclass__(cls):
         super().__init_subclass__()
 
@@ -132,12 +98,14 @@ class NodeBase(Container[A], reprlib.Representable):
             *,
             with_keys: bool,
         ):
+            attributes = vars(x).copy()
+            value = attributes.pop("value")
             if with_keys:
-                node = (jtu.GetAttrKey("value"), x._value)
+                node = (jtu.GetAttrKey("value"), value)
             else:
-                node = x._value
+                node = value
 
-            return (node,), vars(x).copy()
+            return (node,), attributes
 
         def _node_unflatten(
             metadata: tp.Mapping[str, tp.Any], children: tp.Tuple[A]
@@ -162,7 +130,7 @@ def with_metadata(
 ) -> initializers.Initializer:
     @functools.wraps(initializer)
     def wrapper(*args):
-        return NodeMetadata(initializer(*args), metadata=metadata)
+        return ContainerMetadata(initializer(*args), metadata=metadata)
 
     return wrapper  # type: ignore
 
@@ -173,7 +141,7 @@ class Variable(Node[A]):
 
     def __init__(
         self,
-        value: tp.Union[A, NodeMetadata[A]],
+        value: tp.Union[A, ContainerMetadata[A]],
         collection: str,
         sharding: tp.Optional[Sharding] = None,
         **metadata: Any,
@@ -182,33 +150,15 @@ class Variable(Node[A]):
 
 
 class Static(Container[A], reprlib.Representable):
+    def __init__(self, value: A):
+        super().__init__(value)
+
     def __hash__(self) -> int:
-        return hash(self._value)
-
-    def __eq__(self, other: tp.Any) -> bool:
-        return type(other) is Static and self._value == other._value
-
-    def copy(self) -> "Static[A]":
-        return Static(self._value)
-
-    def _replace_value(
-        self,
-        value: B,
-    ) -> "Static[B]":
-        return Static(value)
-
-    def is_equivalent(self, other: tp.Any) -> bool:
-        return type(other) is Static
-
-    def __nnx_repr__(self):
-        yield reprlib.Object(type=type(self))
-        yield reprlib.Attr(
-            "value", repr(self._value) if isinstance(self._value, str) else self._value
-        )
+        return hash(self.value)
 
 
 def _static_flatten(x: Static[tp.Any]):
-    return (), x._value
+    return (), x.value
 
 
 def _static_unflatten(metadata: A, _) -> Static[A]:

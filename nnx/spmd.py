@@ -27,7 +27,7 @@ def add_axis(state: State, index: int, params: tp.Mapping[tp.Any, tp.Any]) -> St
             while len(sharding) < index:
                 sharding.append(None)
             sharding.insert(index, axis_name)
-            return x.replace_metadata(sharding=tuple(sharding))
+            return x.replace(sharding=tuple(sharding))
         return x
 
     return jax.tree_map(
@@ -46,7 +46,7 @@ def remove_axis(state: State, index: int, params: tp.Mapping[tp.Any, tp.Any]) ->
         ):
             sharding = list(x.sharding)
             assert sharding.pop(index) == axis_name
-            return x.replace_metadata(sharding=tuple(sharding))
+            return x.replace(sharding=tuple(sharding))
         return x
 
     return jax.tree_map(
