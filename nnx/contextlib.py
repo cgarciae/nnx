@@ -161,7 +161,9 @@ else:
 
 RngPredicate = tp.Callable[[str], bool]
 RngFilterLiteral = tp.Union[str, RngPredicate, ellipsis, None]
-RngFilter = tp.Union[RngFilterLiteral, tp.Sequence[RngFilterLiteral]]
+RngFilter = tp.Union[
+    RngFilterLiteral, tp.Sequence[RngFilterLiteral], tp.Mapping[RngFilterLiteral, bool]
+]
 
 
 def to_rng_predicate(filter: RngFilter) -> RngPredicate:
@@ -173,6 +175,11 @@ def to_rng_predicate(filter: RngFilter) -> RngPredicate:
         return filter
     elif isinstance(filter, str):
         return lambda name: name == filter
+    elif isinstance(filter, tp.Mapping):
+        predicates = tuple(
+            to_rng_predicate(filter) for filter, include in filter.items() if include
+        )
+        return lambda name: any(predicate(name) for predicate in predicates)
     elif isinstance(filter, tp.Sequence):
         predicates = tuple(map(to_rng_predicate, filter))
         return lambda name: any(predicate(name) for predicate in predicates)

@@ -95,7 +95,7 @@ class Pytree(metaclass=PytreeMeta):
             )
 
         if name in vars_dict and isinstance(vars_dict[name], Container):
-            vars_dict[name] = vars_dict[name].replace_value(value)
+            vars_dict[name] = vars_dict[name].replace(value=value)
         else:
             if isinstance(value, Container):
                 value = value.copy()

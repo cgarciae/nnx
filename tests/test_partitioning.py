@@ -7,17 +7,17 @@ import nnx
 
 
 def any_ref(path, x):
-    return isinstance(x, nnx.Variable)
+    return isinstance(x, nnx.Node)
 
 
 def has_collection(collection):
-    return lambda path, x: isinstance(x, nnx.Variable) and x.collection == collection
+    return lambda path, x: isinstance(x, nnx.Node) and x.collection == collection
 
 
 class TestPartitioning:
     def test_partition(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 2)]),
+            a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 2)]),
             b=nnx.param(2),
             c=100,
         )
@@ -44,7 +44,7 @@ class TestPartitioning:
     def test_complete_partitioning(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         # no error
@@ -53,7 +53,7 @@ class TestPartitioning:
     def test_complete_partitioning_plus_ellipsis(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         # no error if additional ... is passed at the end
@@ -62,7 +62,7 @@ class TestPartitioning:
     def test_inclomplete_partition_error(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         with pytest.raises(
@@ -73,7 +73,7 @@ class TestPartitioning:
     def test_ellipsis_not_last_error(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         with pytest.raises(
@@ -83,7 +83,7 @@ class TestPartitioning:
 
     def test_update_from(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 3)]),
+            a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 3)]),
             b=nnx.param(2),
             c=100,
         )
@@ -100,7 +100,7 @@ class TestPartitioning:
 
     def test_update_from_with_array_leaf(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.var("batch_stats", 3)]),
+            a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 3)]),
             b=nnx.param(2),
             c=jax.numpy.array(100),
         )
@@ -117,7 +117,7 @@ class TestPartitioning:
 
     def test_grad_example(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1.0), nnx.var("batch_stats", -10)]),
+            a=nnx.Sequence([nnx.param(1.0), nnx.variable("batch_stats", -10)]),
             b=nnx.param(2.0),
             c=100,
         )

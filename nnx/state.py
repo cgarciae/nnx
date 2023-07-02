@@ -4,7 +4,7 @@ import jax
 import jax.tree_util as jtu
 
 from nnx import nodes, partitioning, reprlib
-from nnx.containers import Variable
+from nnx.containers import Node
 
 A = tp.TypeVar("A")
 
@@ -32,7 +32,7 @@ class State(tp.Mapping[Path, Leaf], reprlib.Representable):
 
     def get_collections(self) -> tp.Set[tp.Union[str, None]]:
         return {
-            value.collection if isinstance(value, Variable) else None
+            value.collection if isinstance(value, Node) else None
             for value in self._mapping.values()
         }
 

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.stages
 import jax.tree_util as jtu
 
-from nnx import contextlib, partitioning, tracers
+from nnx import contextlib, partitioning, spmd, tracers
 from nnx.module import CallableProxy, DelayedAccessor, Module, ModuleDef, PureModule
 from nnx.state import State
 
@@ -249,23 +249,23 @@ def grad(
 class Scan(Module, tp.Generic[M]):
     def __init__(
         self,
-        module_type: tp.Type[M],
+        *,
+        module_constructor: tp.Callable[..., M],
         module_init_args: tp.Tuple[tp.Any, ...],
         module_init_kwargs: tp.Dict[str, tp.Any],
-        *,
-        variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
-        variable_broadcast: partitioning.Filter = None,
-        variable_carry: partitioning.Filter = ...,
-        split_rngs: contextlib.RngFilter = None,
-        in_axes=0,
-        out_axes=0,
-        length: tp.Optional[int] = None,
-        reverse: bool = False,
-        unroll: int = 1,
-        data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
-        metadata_params: tp.Mapping[tp.Any, tp.Any] = {},
+        variable_axes: tp.Mapping[partitioning.Filter, int],
+        variable_broadcast: partitioning.Filter,
+        variable_carry: partitioning.Filter,
+        split_rngs: contextlib.RngFilter,
+        in_axes: tp.Any,
+        out_axes: tp.Any,
+        length: tp.Optional[int],
+        reverse: bool,
+        unroll: int,
+        data_transform: tp.Optional[tp.Callable[..., tp.Any]],
+        metadata_params: tp.Mapping[tp.Any, tp.Any],
     ):
-        self.module_type = module_type
+        self.module_constructor = module_constructor
         self.variable_axes = variable_axes
         self.variable_broadcast = variable_broadcast
         self.variable_carry = variable_carry
@@ -277,7 +277,7 @@ class Scan(Module, tp.Generic[M]):
         self.unroll = unroll
         self.data_transform = data_transform
         self.metadata_params = metadata_params
-        self.module = self.create_module(*module_init_args, **module_init_kwargs)
+        self.scan_module = self.create_module(*module_init_args, **module_init_kwargs)
 
     def create_module(
         self: "Scan[M]", *args, ctx: tp.Optional[contextlib.Context] = None, **kwargs
@@ -325,7 +325,7 @@ class Scan(Module, tp.Generic[M]):
                 ctx = ctxdef.merge(keys)
                 kwargs["ctx"] = ctx
 
-            module = self.module_type(*args, **kwargs)
+            module = self.module_constructor(*args, **kwargs)
 
             # lift module
             filters = (
@@ -346,10 +346,17 @@ class Scan(Module, tp.Generic[M]):
                 axis_size=self.length,
             )
 
-        module_states = _init_state(*key_values)
+        *axes_states, broadcast_state, carry_state = _init_state(*key_values)
         moduledef = tp.cast(ModuleDef[M], moduledef)
 
-        module = moduledef.merge(*module_states)
+        # add additional axis name to Variable.sharding
+        if spmd.PARTITION_NAME in self.metadata_params:
+            axes_states = [
+                spmd.add_axis(state, index, self.metadata_params)
+                for state, index in zip(axes_states, self.variable_axes.values())
+            ]
+
+        module = moduledef.merge(*axes_states, broadcast_state, carry_state)
 
         return module
 
@@ -387,7 +394,7 @@ class Scan(Module, tp.Generic[M]):
                 *axes_states,
                 broadcast_state,
                 carry_state,
-            ), moduledef = self.module.partition(*filters)
+            ), moduledef = self.scan_module.partition(*filters)
 
             # transpose axes state
             axes_states = tuple(
@@ -470,6 +477,15 @@ class Scan(Module, tp.Generic[M]):
                     ctx = ctxdef.merge({**axes_keys, **broadcast_keys})
                     broadcast_kwargs["ctx"] = ctx
 
+                # remove metadata axis name from Variable.sharding
+                if spmd.PARTITION_NAME in self.metadata_params:
+                    axes_states = [
+                        spmd.remove_axis(state, index, self.metadata_params)
+                        for state, index in zip(
+                            axes_states, self.variable_axes.values()
+                        )
+                    ]
+
                 # merge module state
                 module = moduledef.merge(*axes_states, broadcast_state, carry_state)
 
@@ -482,6 +498,15 @@ class Scan(Module, tp.Generic[M]):
                 (*axes_states, _broadcast_state, carry_state), _ = module.partition(
                     *filters
                 )
+
+                # add metadata axis name to Variable.sharding
+                if spmd.PARTITION_NAME in self.metadata_params:
+                    axes_states = [
+                        spmd.add_axis(state, index, self.metadata_params)
+                        for state, index in zip(
+                            axes_states, self.variable_axes.values()
+                        )
+                    ]
 
                 carry = (carry_state, carry_out)
                 out = (axes_states, axes_out)
@@ -513,7 +538,7 @@ class Scan(Module, tp.Generic[M]):
                 out,
             )
 
-            self.module.update_state((*axes_states, carry_state))
+            self.scan_module.update_state((*axes_states, carry_state))
 
             return carry_out, out
 
@@ -521,13 +546,13 @@ class Scan(Module, tp.Generic[M]):
 
 
 def scan(
-    module_type: tp.Type[M],
+    module_constructor: tp.Callable[..., M],
     variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
     variable_broadcast: partitioning.Filter = None,
     variable_carry: partitioning.Filter = ...,
     split_rngs: contextlib.RngFilter = None,
-    in_axes=0,
-    out_axes=0,
+    in_axes: tp.Any = 0,
+    out_axes: tp.Any = 0,
     length: tp.Optional[int] = None,
     reverse: bool = False,
     unroll: int = 1,
@@ -536,9 +561,9 @@ def scan(
 ) -> tp.Callable[..., Scan[M]]:
     def _create_scan(*args, **kwargs) -> Scan[M]:
         return Scan(
-            module_type,
-            args,
-            kwargs,
+            module_constructor=module_constructor,
+            module_init_args=args,
+            module_init_kwargs=kwargs,
             variable_axes=variable_axes,
             variable_broadcast=variable_broadcast,
             variable_carry=variable_carry,
@@ -553,6 +578,108 @@ def scan(
         )
 
     return _create_scan
+
+
+class Remat(Module, tp.Generic[M]):
+    def __init__(
+        self,
+        *,
+        module_constructor: tp.Callable[..., M],
+        module_init_args: tp.Tuple[tp.Any, ...],
+        module_init_kwargs: tp.Dict[str, tp.Any],
+        # variables: lift.CollectionFilter,
+        # rngs: lift.PRNGSequenceFilter,
+        prevent_cse: bool,
+        static_argnums: tp.Union[int, tuple[int, ...]],
+        policy: tp.Optional[tp.Callable[..., bool]],
+    ):
+        if isinstance(static_argnums, int):
+            static_argnums = (static_argnums,)
+
+        # add 2 as an offset to account for state and keys
+        static_argnums = tuple(x + 2 for x in static_argnums)
+
+        self.module_constructor = module_constructor
+        self.prevent_cse = prevent_cse
+        self.static_argnums = static_argnums
+        self.policy = policy
+        self.remat_module = self.module_constructor(
+            *module_init_args, **module_init_kwargs
+        )
+
+    def __call__(
+        self,
+        *args,
+        ctx: tp.Optional[contextlib.Context] = None,
+    ):
+        return self.call(*args, ctx=ctx)  # type: ignore
+
+    @property
+    def call(self) -> M:
+        accessesor = DelayedAccessor()
+
+        def _call(
+            accessesor, *args, ctx: tp.Optional[contextlib.Context] = None
+        ) -> tp.Tuple[tp.Any]:
+            state, moduledef = self.remat_module.partition()
+
+            if ctx is not None:
+                keys, ctxdef = ctx.partition()
+            else:
+                keys = None
+                ctxdef = None
+
+            def _remat_fn(
+                state: State,
+                keys: tp.Optional[tp.Dict[str, jax.Array]],
+                *args,
+            ) -> tp.Tuple[State, tp.Any]:
+                kwargs = {}
+                if keys is not None:
+                    assert ctxdef is not None
+                    kwargs["ctx"] = ctxdef.merge(keys)
+
+                module = moduledef.merge(state)
+                fn = accessesor(module)
+                out = fn(*args, **kwargs)
+
+                state, _ = module.partition()
+
+                return state, out
+
+            state, out = jax.checkpoint(
+                _remat_fn,
+                prevent_cse=self.prevent_cse,
+                static_argnums=self.static_argnums,
+                policy=self.policy,
+            )(state, keys, *args)
+
+            self.remat_module.update_state(state)
+
+            return out
+
+        return CallableProxy(_call, accessesor)  # type: ignore
+
+
+def remat(
+    module_constructor: tp.Callable[..., M],
+    # variables: lift.CollectionFilter = True,
+    # rngs: lift.PRNGSequenceFilter = True,
+    prevent_cse: bool = True,
+    static_argnums: tp.Union[int, tuple[int, ...]] = (),
+    policy: tp.Optional[tp.Callable[..., bool]] = None,
+) -> tp.Callable[..., Remat[M]]:
+    def create_remat(*args, **kwargs) -> Remat[M]:
+        return Remat(
+            module_constructor=module_constructor,
+            module_init_args=args,
+            module_init_kwargs=kwargs,
+            prevent_cse=prevent_cse,
+            static_argnums=static_argnums,
+            policy=policy,
+        )
+
+    return create_remat
 
 
 def tree_map_upto_left(

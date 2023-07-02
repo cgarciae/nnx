@@ -112,8 +112,8 @@ class TestModule:
         assert m2 is m2.sub
 
     def test_deref_through_jit(self):
-        r1 = nnx.Variable(1, "", None)
-        r2 = nnx.Variable(2, "", None)
+        r1 = nnx.Node(1)
+        r2 = nnx.Node(2)
 
         m = m0 = nnx.Dict({"a": nnx.Sequence([r1, r2]), "b": r1})
 
@@ -181,8 +181,8 @@ class TestModule:
         assert n == 2
 
     def test_deref_number_of_fields(self):
-        r1 = nnx.Variable(1, "", None)
-        r2 = nnx.Variable(2, "", None)
+        r1 = nnx.Node(1)
+        r2 = nnx.Node(2)
         v1 = 3
         m = nnx.Dict(
             {
@@ -197,8 +197,8 @@ class TestModule:
 
     def test_deref_arrays_are_nodes(self):
         # test arrays are nodes
-        r1 = nnx.Variable(1, "", None)
-        r2 = nnx.Variable(2, "", None)
+        r1 = nnx.Node(1)
+        r2 = nnx.Node(2)
         v1 = jax.numpy.array(3)
         m = nnx.Dict(
             {
@@ -245,7 +245,7 @@ class TestModule:
 
         intermediates = m.pop_state("intermediates")
 
-        assert isinstance(intermediates["y"], nnx.Variable)
+        assert isinstance(intermediates["y"], nnx.Node)
         assert intermediates["y"].collection == "intermediates"
         assert intermediates["y"].value == (3, 11)
 
@@ -284,7 +284,7 @@ class TestModule:
     def test_sow_non_tuple(self):
         class Foo(nnx.Module):
             def __init__(self) -> None:
-                self.y = nnx.var("intermediates", 10)
+                self.y = nnx.variable("intermediates", 10)
 
             def __call__(self, x):
                 y = x + 1
@@ -322,7 +322,7 @@ class TestModuleDataclass:
         assert len(state) == 4
         assert state["b"] == nnx.node(2)
         assert state["c"] == nnx.param(3)
-        assert state["d"] == nnx.var("batch_stats", 4)
+        assert state["d"] == nnx.variable("batch_stats", 4)
         assert state["f"] == nnx.node(6)
 
     def test_no_override(self):
@@ -389,7 +389,7 @@ class TestPureModule:
     def test_partition_merge(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = state, moduledef = m.partition()
@@ -407,7 +407,7 @@ class TestPureModule:
     def test_partition_merge_with_filters(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = (params, batch_stats, rest), moduledef = m.partition(
@@ -429,7 +429,7 @@ class TestPureModule:
     def test_filter(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = m.partition()
@@ -445,7 +445,7 @@ class TestPureModule:
     def test_filter_with_filters(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = m.partition("params", ...)
@@ -461,7 +461,7 @@ class TestPureModule:
     def test_partition_partition(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = m.partition()
@@ -477,7 +477,7 @@ class TestPureModule:
     def test_partition_with_filters_partition(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = m.partition("params", ...)
@@ -493,7 +493,7 @@ class TestPureModule:
     def test_partition_with_filters_partition_with_filters(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = m.partition("params", ...)
@@ -509,7 +509,7 @@ class TestPureModule:
     def test_pop(self):
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.var("batch_stats", 2)),
+            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
         )
 
         pure_module = m.partition()

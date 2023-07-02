@@ -3,16 +3,15 @@ __version__ = "0.0.0"
 
 from .containers import (
     Container,
+    ContainerMetadata,
     Node,
     Static,
     Variable,
-    VarMetadata,
     node,
     param,
     static,
-    var,
-    var_metadata,
-    with_partitioning,
+    variable,
+    with_metadata,
 )
 from .contextlib import Context, context
 from .dataclasses import (
@@ -60,5 +59,6 @@ from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
 from .partitioning import All, Not, buffers
 from .pytreelib import Pytree
+from .spmd import PARTITION_NAME
 from .state import State
-from .transforms import grad, jit, scan
+from .transforms import Remat, Scan, grad, jit, remat, scan

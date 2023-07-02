@@ -9,7 +9,7 @@ import nnx
 
 
 def collection(collection: str):
-    return lambda x: isinstance(x, nnx.Variable) and x.collection == collection
+    return lambda x: isinstance(x, nnx.Node) and x.collection == collection
 
 
 class TestJIT:
@@ -60,18 +60,12 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        # assert grads[("a", "0")].value == 1.0
         assert grads["a/0"].value == 1.0
-        # assert isinstance(grads[("a", "0")], nnx.Variable)
-        assert isinstance(grads["a/0"], nnx.Variable)
-        # assert grads[("a", "1")].value == 1.0
+        assert isinstance(grads["a/0"], nnx.Node)
         assert grads["a/1"].value == 1.0
-        # assert isinstance(grads[("a", "1")], nnx.Variable)
-        assert isinstance(grads["a/1"], nnx.Variable)
-        # assert grads[("b",)].value == 1.0
+        assert isinstance(grads["a/1"], nnx.Node)
         assert grads["b"].value == 1.0
-        # assert isinstance(grads[("b",)], nnx.Variable)
-        assert isinstance(grads["b"], nnx.Variable)
+        assert isinstance(grads["b"], nnx.Node)
         assert len(grads) == 3
 
         m.update_state(grads)
@@ -84,7 +78,7 @@ class TestGrad:
 
     def test_grad_with_multiple_ref_types(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(10.0), nnx.var("batch_stats", 20.0)]),
+            a=nnx.Sequence([nnx.param(10.0), nnx.variable("batch_stats", 20.0)]),
             b=nnx.param(10.0),
             c=7,
             d=5.0,
@@ -98,11 +92,8 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        # assert grads[("a", "0")].value == 1.0
         assert grads["a/0"].value == 1.0
-        # assert isinstance(grads[("a", "0")], nnx.Variable)
-        assert isinstance(grads["a/0"], nnx.Variable)
-        # assert grads[("a", "0")].collection == "params"
+        assert isinstance(grads["a/0"], nnx.Node)
         assert grads["a/0"].collection == "params"
         assert len(grads) == 2
 
@@ -116,7 +107,7 @@ class TestGrad:
 
     def test_grad_with_type_predicate(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(10.0), nnx.var("batch_stats", 20.0)]),
+            a=nnx.Sequence([nnx.param(10.0), nnx.variable("batch_stats", 20.0)]),
             b=nnx.param(10.0),
             c=7,
             d=5.0,
@@ -130,11 +121,8 @@ class TestGrad:
         grads = f(m)
 
         assert isinstance(grads, nnx.State)
-        # assert grads[("a", "1")].value == 1.0
         assert grads["a/1"].value == 1.0
-        # assert isinstance(grads[("a", "1")], nnx.Variable)
-        assert isinstance(grads["a/1"], nnx.Variable)
-        # assert grads[("a", "1")].collection == "batch_stats"
+        assert isinstance(grads["a/1"], nnx.Node)
         assert grads["a/1"].collection == "batch_stats"
         assert len(grads) == 1
 
@@ -166,9 +154,9 @@ class TestScan:
 
         module = MLP(ctx=nnx.context(0))
 
-        assert module.module.linear.kernel.shape == (5, 3, 3)
-        assert module.module.linear.bias.shape == (5, 3)
-        assert module.module.node.shape == (2,)
+        assert module.scan_module.linear.kernel.shape == (5, 3, 3)
+        assert module.scan_module.linear.bias.shape == (5, 3)
+        assert module.scan_module.node.shape == (2,)
 
         x = jnp.ones((1, 3))
         y, out = module.call(x, None)
@@ -204,9 +192,9 @@ class TestScan:
 
         module = MLP(ctx=nnx.context(0))
 
-        assert module.module.linear.kernel.shape == (5, 3, 3)
-        assert module.module.linear.bias.shape == (5, 3)
-        assert module.module.node.shape == (2,)
+        assert module.scan_module.linear.kernel.shape == (5, 3, 3)
+        assert module.scan_module.linear.bias.shape == (5, 3)
+        assert module.scan_module.node.shape == (2,)
 
         x = jnp.ones((1, 3))
         ctx = nnx.context(
@@ -216,3 +204,96 @@ class TestScan:
 
         assert y.shape == (1, 3)
         assert out is None
+
+    def test_scan_with_sharding(self):
+        class Block(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(
+                    3,
+                    3,
+                    kernel_init=nnx.with_metadata(
+                        nnx.initializers.lecun_normal(),
+                        sharding=("din", "dout"),
+                    ),
+                    bias_init=nnx.with_metadata(
+                        nnx.initializers.zeros(),
+                        sharding=("dout",),
+                    ),
+                    ctx=ctx,
+                )
+
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                x = self.linear(x)
+
+                # test sharding layer axes is not present inside scan
+                state = self.linear.get_state()
+                assert state["kernel"].value.shape == (3, 3)
+                assert state["kernel"].sharding == ("din", "dout")
+                assert state["bias"].value.shape == (3,)
+                assert state["bias"].sharding == ("dout",)
+
+                return x, None
+
+        MLP = nnx.scan(
+            Block,
+            variable_axes={"params": 0},
+            split_rngs=["params"],
+            length=5,
+            metadata_params={nnx.PARTITION_NAME: "layers"},
+        )
+
+        m = MLP(ctx=nnx.context(0))
+
+        # test sharding layers axes is set
+        state = m.get_state()
+        assert state["scan_module/linear/kernel"].value.shape == (5, 3, 3)
+        assert state["scan_module/linear/kernel"].sharding == ("layers", "din", "dout")
+        assert state["scan_module/linear/bias"].value.shape == (5, 3)
+        assert state["scan_module/linear/bias"].sharding == ("layers", "dout")
+
+        x = jnp.ones((1, 3))
+        y, out = m.call(x, None)
+
+        # test sharding axes is preserved
+        state = m.get_state()
+        assert state["scan_module/linear/kernel"].value.shape == (5, 3, 3)
+        assert state["scan_module/linear/kernel"].sharding == ("layers", "din", "dout")
+        assert state["scan_module/linear/bias"].value.shape == (5, 3)
+        assert state["scan_module/linear/bias"].sharding == ("layers", "dout")
+
+
+class TestRemat:
+    def test_basic_remat(self):
+        RematLinear = nnx.remat(nnx.Linear)
+
+        module = RematLinear(2, 3, ctx=nnx.context(0))
+
+        y = module.call(jnp.ones((1, 2)))
+
+        assert y.shape == (1, 3)
+
+    def test_remat_with_scan(self):
+        class LinearBlock(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                x = self.linear(x)
+                return x, None
+
+        RematLinear = nnx.remat(LinearBlock)
+
+        ScanRematLinear = nnx.scan(
+            RematLinear, variable_axes={"params": 0}, split_rngs="params", length=5
+        )
+
+        m = ScanRematLinear(ctx=nnx.context(0))
+
+        assert m.scan_module.remat_module.linear.kernel.shape == (5, 3, 3)
+        assert m.scan_module.remat_module.linear.bias.shape == (5, 3)
+
+        y, _ = m.call.call(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)
+
+        y, _ = m(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)

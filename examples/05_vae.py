@@ -45,7 +45,7 @@ class Encoder(nnx.Module):
         mean = self.linear_mean(x)
         std = jnp.exp(self.linear_std(x))
 
-        self.kl_loss = nnx.var(
+        self.kl_loss = nnx.variable(
             "losses",
             jnp.mean(
                 0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2, axis=-1)

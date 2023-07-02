@@ -194,8 +194,8 @@ class BatchNorm(Module):
         ctx: contextlib.Context,
     ):
         feature_shape = (num_features,)
-        self.mean = nnx.var("batch_stats", jnp.zeros(feature_shape, jnp.float32))
-        self.var = nnx.var("batch_stats", jnp.ones(feature_shape, jnp.float32))
+        self.mean = nnx.variable("batch_stats", jnp.zeros(feature_shape, jnp.float32))
+        self.var = nnx.variable("batch_stats", jnp.ones(feature_shape, jnp.float32))
 
         if use_scale:
             key = ctx.make_rng("params")

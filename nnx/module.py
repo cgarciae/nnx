@@ -6,7 +6,7 @@ from typing import Any
 import jax.tree_util as jtu
 
 from nnx import containers, errors, ids, nodes, partitioning, reprlib, tracers
-from nnx.containers import Container, Sharding, Variable
+from nnx.containers import Container, Node, Sharding
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -433,7 +433,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
         vars_dict = vars(self)
         if name in vars_dict and isinstance(vars_dict[name], Container):
-            vars_dict[name] = vars_dict[name].replace_value(value)
+            vars_dict[name] = vars_dict[name].replace(value=value)
         else:
             if isinstance(value, Container):
                 value = value.copy()
@@ -620,7 +620,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             value = current_value + (value,)
             setattr(self, name, value)
         else:
-            setattr(self, name, containers.var(collection, (value,)))
+            setattr(self, name, containers.variable(collection, (value,)))
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
         visited: tp.Set[ids.UUID] = set()
@@ -701,19 +701,19 @@ class MutableLeaf(reprlib.Representable):
 
     @property
     def collection(self) -> tp.Optional[str]:
-        module = vars(self._module)[self._name]
-        if not isinstance(module, Variable):
+        attr = vars(self._module)[self._name]
+        if not isinstance(attr, containers.Variable):
             return None
 
-        return module.collection
+        return attr.collection
 
     @property
     def sharding(self) -> tp.Optional[Sharding]:
-        module = vars(self._module)[self._name]
-        if not isinstance(module, Variable):
+        attr = vars(self._module)[self._name]
+        if not isinstance(attr, Node):
             return None
 
-        return module.sharding
+        return attr.metadata.get("sharding", None)
 
 
 def _get_module_state(module: Module) -> State:
@@ -722,7 +722,7 @@ def _get_module_state(module: Module) -> State:
 
 def _get_module_def(module: M) -> ModuleDef[M]:
     module_index: tp.Dict[ids.UUID, int] = {}
-    path: Path = ()
+    path: PathParts = ()
 
     moduledef = _make_module_def_recursive(module, module_index, path)
     assert isinstance(moduledef, ModuleDef)
@@ -733,7 +733,7 @@ def _get_module_def(module: M) -> ModuleDef[M]:
 def _make_module_def_recursive(
     module: M,
     module_index: tp.Dict[ids.UUID, int],
-    path: Path,
+    path: PathParts,
 ) -> tp.Union[ModuleDef[M], int]:
     if module._module__state.id in module_index:
         return module_index[module._module__state.id]

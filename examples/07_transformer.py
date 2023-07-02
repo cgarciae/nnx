@@ -185,8 +185,8 @@ class Attention(nnx.Module):
             P(sharding.heads, sharding.depth, sharding.embed),
         )
         # cache
-        self.index = nnx.var("cache", jnp.array(0, dtype=jnp.int32), P())
-        self.key = nnx.var(
+        self.index = nnx.variable("cache", jnp.array(0, dtype=jnp.int32), P())
+        self.key = nnx.variable(
             "cache",
             jnp.zeros(
                 (cfg.batch, cfg.heads, cfg.depth, cfg.max_length),
@@ -194,7 +194,7 @@ class Attention(nnx.Module):
             ),
             P(sharding.batch, sharding.heads, sharding.depth, None),
         )
-        self = nnx.var(
+        self = nnx.variable(
             "cache",
             jnp.zeros(
                 (cfg.batch, cfg.heads, cfg.depth, cfg.max_length),

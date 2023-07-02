@@ -111,7 +111,7 @@ def var_field(
     if "nnx_container_fn" in metadata:
         raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: containers.var(
+    metadata["nnx_container_fn"] = lambda value: containers.variable(
         collection, value, sharding=sharding
     )
 
