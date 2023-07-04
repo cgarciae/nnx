@@ -597,7 +597,7 @@ class Remat(Module, tp.Generic[M]):
             static_argnums = (static_argnums,)
 
         # add 2 as an offset to account for state and keys
-        static_argnums = tuple(x + 2 for x in static_argnums)
+        static_argnums = tuple(x + 2 if x >= 0 else x for x in static_argnums)
 
         self.module_constructor = module_constructor
         self.prevent_cse = prevent_cse
