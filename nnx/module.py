@@ -517,6 +517,9 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     def get_state(self) -> State:
         return _get_module_state(self)
 
+    def get_module_def(self: M) -> ModuleDef[M]:
+        return _get_module_def(self)
+
     @tp.overload
     def filter(self, first: partitioning.Filter, /) -> State:
         ...
