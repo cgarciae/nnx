@@ -125,9 +125,9 @@ class Node(NodeBase[A]):
 
 
 def with_metadata(
-    initializer: initializers.Initializer,
+    initializer: F,
     **metadata: tp.Any,
-) -> initializers.Initializer:
+) -> F:
     @functools.wraps(initializer)
     def wrapper(*args):
         return ContainerMetadata(initializer(*args), metadata=metadata)

@@ -23,6 +23,7 @@ LogicalPartitionSpecPytree = tp.Any  # pylint: disable=invalid-name
 PartitionSpecPytree = tp.Any  # pylint: disable=invalid-name
 
 A = tp.TypeVar("A")
+F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
 PARTITION_NAME = "partition_name"
 Sharding = tuple[tp.Optional[str], ...]
 
@@ -359,11 +360,12 @@ class LogicallyPartitioned(tp.Protocol):
 
 
 def with_logical_partitioning(
-    initializer: initializers.Initializer,
+    initializer: F,
     sharding: Sharding,
     mesh: tp.Optional[jax.sharding.Mesh] = None,
     rules: tp.Optional[LogicalRules] = None,
-) -> initializers.Initializer:
+    **metadata: tp.Any,
+) -> F:
     """Wraps a function's return value with LogicallyPartitioned.
 
     Example::
@@ -403,4 +405,5 @@ def with_logical_partitioning(
         sharding=sharding,
         mesh=mesh,
         rules=rules,
+        **metadata,
     )
