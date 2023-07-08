@@ -20,10 +20,10 @@ class TestPartitioning:
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 2)]),
             b=nnx.param(2),
-            c=np.array(100),
+            c=100,
         )
 
-        (params, ndarrays, rest), moduledef = m.partition("params", np.ndarray, ...)
+        (params, rest), moduledef = m.partition("params", ...)
 
         assert len(params) == 2
         assert len(rest) == 1
