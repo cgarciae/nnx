@@ -18,16 +18,20 @@ def dataset(batch_size):
 
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
-        self.b = nnx.param(jnp.zeros((dout,)))
+        self.w = nnx.Param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.Param(jnp.zeros((dout,)))
 
     def __call__(self, x):
         return x @ self.w + self.b
 
 
+class Count(nnx.Variable):
+    pass
+
+
 class MLP(nnx.Module):
     def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = nnx.variable("state", jnp.array(0))
+        self.count = Count(jnp.array(0))
         self.linear1 = Linear(din, dhidden, ctx=ctx)
         self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
@@ -51,10 +55,10 @@ def train_step(model: MLP, batch):
         return jnp.mean((y - y_pred) ** 2)
 
     #                                   |--default--|
-    grad: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+    grad: nnx.State = nnx.grad(loss_fn, wrt=nnx.Param)(model)
     # sdg update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grad)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grad)
     )
 
     # no return!!!

@@ -43,8 +43,8 @@ import jax.numpy as jnp
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
-        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jnp.zeros((dout,)))
+        self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.Param(jnp.zeros((dout,)))
         self.count = nnx.var("counts", 0)  # track the number of calls
 
     def __call__(self, x):
@@ -67,7 +67,7 @@ inside `__init__` to generate a random key to initialize the parameters.
 The [Functional API](#functional-api) converts an NNX Module python semantics into pure pytree object with functional semantics. It is the recommended way to use NNX as it provides tight control over the state, allows you to use regular JAX transformations, and it minimizes overhead. In this example the model will be trained using Stochastic Gradient Descent (SGD).
 
 ```python
-(params, counts), moduledef = model.partition("params", "counts")
+(params, counts), moduledef = model.partition(nnx.Param, "counts")
 
 @jax.jit
 def train_step(params, counts, x, y):
@@ -101,10 +101,10 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt=nnx.Param)(model)
     # SGD update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grads)
     )
 
 # execute the training step
@@ -155,10 +155,10 @@ NNX Modules are normal python classes, they obey regular python semantics such a
 class Foo(nnx.Module):
     def __init__(self, ctx: nnx.Context):
         # node attributes
-        self.variable = nnx.param(jnp.array(1))
+        self.variable = nnx.Param(jnp.array(1))
         self.np_buffer = np.array(2)
         self.jax_buffer = jnp.array(3)
-        self.node = nnx.node([4, 5])
+        self.node = nnx.Node([4, 5])
         self.submodule = nnx.Linear(2, 4, ctx=ctx)
         # static attributes
         self.int = 1
@@ -215,15 +215,15 @@ Here are various examples of how you can use the `partition` method along with c
 # partition the module into the state with all the nodes and the moduledef
 state, moduledef = model.partition()
 # verify that the state contains only params, else raise an error
-params, moduledef = model.partition("params")
+params, moduledef = model.partition(nnx.Param)
 # split the state into params and batch_stats, verify no nodes are left
-(params, batch_stats), moduledef = model.partition("params", "batch_stats")
+(params, batch_stats), moduledef = model.partition(nnx.Param, "batch_stats")
 # if there are any nodes left, use the `...` filter to capture them
-(params, batch_stats, rest), moduledef = model.partition("params", "batch_stats", ...)
+(params, batch_stats, rest), moduledef = model.partition(nnx.Param, "batch_stats", ...)
 # using `...` as the only filter is equivalent to not passing any filters
 model.partition(...) = model.partition()
 ```
-`partition` will make sure all nodes are match by atleast one filter, else it will raise an error. If you have non-`Variable` nodes like `nnx.node`, `jax.Array`, or `numpy.ndarray` attributes, you can use the `...` filter which will match any node. For a more general filter you can pass a predicate function of the form:
+`partition` will make sure all nodes are match by atleast one filter, else it will raise an error. If you have non-`Variable` nodes like `nnx.Node`, `jax.Array`, or `numpy.ndarray` attributes, you can use the `...` filter which will match any node. For a more general filter you can pass a predicate function of the form:
 
 ```python
 (path: Tuple[str, ...], value: Any) -> bool
@@ -244,16 +244,16 @@ y, (state, moduledef) = moduledef.apply(params, batch_stats, rest)(x)
  Note that `apply` will return a single `state` object, if you need to re-partition the state you can use `State`'s own `partition` method:
 
 ```python
-params, batch_stats, rest = state.partition("params", "batch_stats", ...)
+params, batch_stats, rest = state.partition(nnx.Param, "batch_stats", ...)
 ```
 
 Alternatively, if you are just interested in a subset of partitions, you can use the `State.filter` method which will not raise an error if some nodes are not matched by any filter:
 
 ```python
 # only get params
-params = state.filter("params")
+params = state.filter(nnx.Param)
 # get params and batch_stats
-params, batch_stats = state.filter("params", "batch_stats")
+params, batch_stats = state.filter(nnx.Param, "batch_stats")
 ```
 
 ### Filters
@@ -287,8 +287,8 @@ Here is an example of how to create a `Linear` module that captures its output i
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
-        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jnp.zeros((dout,)))
+        self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.Param(jnp.zeros((dout,)))
 
     def __call__(self, x):
         y = x @ self.w + self.b
@@ -381,13 +381,13 @@ apply it to the input `x`, passing the sliced `dropout_key` as part of the `Cont
 ```python
     def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
         dropout_key = jax.random.split(ctx.make_rng("dropout"), self.n_layers)
-        params, moduledef = self.layers.partition("params")
+        params, moduledef = self.layers.partition(nnx.Param)
 
         def scan_fn(x: inputs):
             params, dropout_key = inputs
             module = moduledef.merge(params)
             x = module(x, train=train, ctx=nnx.context(dropout=dropout_key))
-            return x, module.filter("params")
+            return x, module.filter(nnx.Param)
 
         x, params = jax.lax.scan(scan_fn, x, (params, dropout_key))
         self.layers.update_state(params)

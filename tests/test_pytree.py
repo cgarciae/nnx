@@ -12,7 +12,7 @@ class TestPytree:
         class Foo(nnx.Pytree):
             def __init__(self, y) -> None:
                 self.x = 2
-                self.y = nnx.node(y)
+                self.y = nnx.Node(y)
 
         pytree = Foo(y=3)
 
@@ -72,7 +72,7 @@ class TestPytree:
         class Bar(nnx.Pytree):
             def __init__(self, a, b):
                 self.a = a
-                self.b = nnx.node(b)
+                self.b = nnx.Node(b)
 
         @nnx.dataclass
         class Foo(nnx.Pytree):
@@ -196,7 +196,7 @@ class TestMutablePytree:
         class Foo(nnx.Pytree, mutable=True):
             def __init__(self, y) -> None:
                 self.x = 2
-                self.y = nnx.node(y)
+                self.y = nnx.Node(y)
 
         pytree = Foo(y=3)
 
@@ -218,7 +218,7 @@ class TestMutablePytree:
     def test_no_new_fields_after_init(self):
         class Foo(nnx.Pytree, mutable=True):
             def __init__(self, x):
-                self.x = nnx.node(x)
+                self.x = nnx.Node(x)
 
         foo = Foo(x=1)
         foo.x = 2

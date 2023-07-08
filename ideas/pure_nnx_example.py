@@ -10,8 +10,8 @@ import nnx
 
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.kernel = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
-        self.bias = nnx.param(jax.numpy.zeros((dout,)))
+        self.kernel = nnx.Param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.bias = nnx.Param(jax.numpy.zeros((dout,)))
 
     def __call__(self, x):
         return x @ self.kernel + self.bias
@@ -19,10 +19,10 @@ class Linear(nnx.Module):
 
 class BatchNorm(nnx.Module):
     def __init__(self, din: int, mu: float = 0.95, *, ctx: nnx.Context):
-        self.scale = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din,)))
-        self.bias = nnx.param(jax.numpy.zeros((din,)))
-        self.mean = nnx.variable("batch_stats", jax.numpy.zeros((din,)))
-        self.var = nnx.variable("batch_stats", jax.numpy.ones((din,)))
+        self.scale = nnx.Param(jax.random.uniform(ctx.make_rng("params"), (din,)))
+        self.bias = nnx.Param(jax.numpy.zeros((din,)))
+        self.mean = nnx.BatchStat(jax.numpy.zeros((din,)))
+        self.var = nnx.BatchStat(jax.numpy.ones((din,)))
         self.mu = mu
 
     def __call__(self, x, *, use_running_averages: bool) -> jax.Array:
@@ -85,9 +85,9 @@ def train_step(model: MLP, key, batch):
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
 
-    grads = nnx.grad(loss, wrt="params")(model)
+    grads = nnx.grad(loss, wrt=nnx.Param)(model)
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grads)
     )
 
 
@@ -104,7 +104,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 def create_state(params_key: jax.random.KeyArray):
     ctx = nnx.Context(rngs=dict(params=params_key))
     model = MLP(10, 20, 10, ctx=ctx)
-    (params, batch_stats), modeldef = model.partition("params", "batch_stats")
+    (params, batch_stats), modeldef = model.partition(nnx.Param, "batch_stats")
     return params, batch_stats, modeldef
 
 
@@ -129,7 +129,7 @@ def scan_fn(
     x = model(x, train=True, ctx=ctx)
 
     # partition state
-    (params, batch_stats), _ = model.partition("params", "batch_stats")
+    (params, batch_stats), _ = model.partition(nnx.Param, "batch_stats")
 
     return (x, batch_stats), params
 

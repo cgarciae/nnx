@@ -30,12 +30,6 @@ class State(tp.Mapping[Path, Leaf], reprlib.Representable):
         else:
             self._mapping = dict(sorted(__input, key=lambda x: x[0]))
 
-    def get_collections(self) -> tp.Set[tp.Union[str, None]]:
-        return {
-            value.collection if isinstance(value, Node) else None
-            for value in self._mapping.values()
-        }
-
     def __getitem__(self, __key: Path) -> Leaf:
         return self._mapping[__key]
 

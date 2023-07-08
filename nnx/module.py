@@ -12,6 +12,7 @@ from nnx.state import State
 A = tp.TypeVar("A")
 M = tp.TypeVar("M", bound="Module")
 S = tp.TypeVar("S", bound=tp.Union[State, tp.Tuple[State, ...]])
+V = tp.TypeVar("V", bound=containers.Variable[tp.Any])
 
 Path = str
 PathParts = tp.Tuple[str, ...]
@@ -609,17 +610,22 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
     def mutable_state_dict(self) -> tp.Dict[Path, "MutableLeaf"]:
         return {path: MutableLeaf(self, path) for path, _ in _iter_state(self)}
 
-    def sow(self, collection: str, name: str, value: tp.Any) -> None:
+    def sow(
+        self,
+        variable_type: tp.Type[containers.Variable],
+        name: str,
+        value: tp.Any,
+    ) -> None:
         if hasattr(self, name):
             variable = vars(self)[name]
             if not isinstance(variable, containers.Variable):
                 raise ValueError(
                     f"Expected '{name}' to be a Variable, got {type(variable).__name__}"
                 )
-            elif variable.collection != collection:
+            elif type(variable) != variable_type:
                 raise ValueError(
-                    f"Expected '{name}' to be in collection '{collection}', "
-                    f"got '{variable.collection}'"
+                    f"Expected '{name}' to be of type '{variable_type.__name__}', "
+                    f"got '{type(variable).__name__}'"
                 )
             current_value = variable.value
             if not isinstance(current_value, tuple):
@@ -630,7 +636,7 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
             value = current_value + (value,)
             setattr(self, name, value)
         else:
-            setattr(self, name, containers.variable(collection, (value,)))
+            setattr(self, name, variable_type((value,)))
 
     def for_each(self, module_type: tp.Type[M], fn: tp.Callable[[M], None]) -> None:
         visited: tp.Set[ids.UUID] = set()

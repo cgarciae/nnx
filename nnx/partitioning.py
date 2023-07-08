@@ -14,13 +14,13 @@ else:
 
 Path = str
 Predicate = tp.Callable[[Path, tp.Any], bool]
-FilterLiteral = tp.Union[str, type, Predicate, ellipsis, None]
+FilterLiteral = tp.Union[type, Predicate, ellipsis, None]
 Filter = tp.Union[FilterLiteral, tp.Tuple[FilterLiteral, ...]]
 
 
 def to_predicate(filter: Filter) -> Predicate:
     if isinstance(filter, str):
-        return FromCollection(filter)
+        raise TypeError(f"Invalid filter of type '{type(filter).__name__}'")
     elif isinstance(filter, type):
         return OfType(filter)
     elif filter is Ellipsis:
@@ -32,17 +32,7 @@ def to_predicate(filter: Filter) -> Predicate:
     elif isinstance(filter, tp.Tuple):
         return Any(*filter)
     else:
-        raise TypeError(f"Invalid collection filter: {filter}")
-
-
-@dataclasses.dataclass
-class FromCollection:
-    collection: str
-
-    def __call__(self, path: Path, x: tp.Any):
-        if isinstance(x, nnx.Variable):
-            return x.collection == self.collection
-        return False
+        raise TypeError(f"Invalid collection filter: {filter:!r}. ")
 
 
 @dataclasses.dataclass

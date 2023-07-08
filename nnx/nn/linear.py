@@ -88,14 +88,14 @@ class Linear(Module):
         ctx: contextlib.Context,
     ):
         kernel_key = ctx.make_rng("params")
-        self.kernel = nnx.param(
+        self.kernel = nnx.Param(
             kernel_init(kernel_key, (in_features, out_features), param_dtype)
         )
         if use_bias:
             bias_key = ctx.make_rng("params")
-            self.bias = nnx.param(bias_init(bias_key, (out_features,), param_dtype))
+            self.bias = nnx.Param(bias_init(bias_key, (out_features,), param_dtype))
         else:
-            self.bias = nnx.param(None)
+            self.bias = nnx.Param(None)
 
         self.in_features = in_features
         self.out_features = out_features
@@ -206,14 +206,14 @@ class Conv(Module):
             out_features,
         )
         kernel_key = ctx.make_rng("params")
-        self.kernel = nnx.param(kernel_init(kernel_key, kernel_shape, param_dtype))
+        self.kernel = nnx.Param(kernel_init(kernel_key, kernel_shape, param_dtype))
 
         if use_bias:
             bias_shape = (out_features,)
             bias_key = ctx.make_rng("params")
-            self.bias = nnx.param(bias_init(bias_key, bias_shape, param_dtype))
+            self.bias = nnx.Param(bias_init(bias_key, bias_shape, param_dtype))
         else:
-            self.bias = nnx.param(None)
+            self.bias = nnx.Param(None)
 
         self.in_features = in_features
         self.out_features = out_features
@@ -368,7 +368,7 @@ class Embed(Module):
         ] = default_embed_init,
         ctx: contextlib.Context,
     ):
-        self.embedding = nnx.param(
+        self.embedding = nnx.Param(
             embedding_init(
                 ctx.make_rng("params"), (num_embeddings, features), param_dtype
             )

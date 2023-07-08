@@ -1,8 +1,11 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
+import typing as tp
 
 import nnx
+
+A = tp.TypeVar("A")
 
 
 class TestIntegration:
@@ -38,7 +41,7 @@ class TestIntegration:
 
             grads = loss_fn(model)
             model.update_state(
-                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grads)
             )
 
         model = Model(ctx=nnx.context(0))
@@ -87,7 +90,7 @@ class TestIntegration:
 
             grads = loss_fn(model)
             model.update_state(
-                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grads)
             )
 
             return model.partition()
@@ -109,12 +112,15 @@ class TestIntegration:
         assert model.block1.bn is not model.block2.bn
 
     def test_stateful_example(self):
+        class State(nnx.Variable[A]):
+            pass
+
         class Linear(nnx.Module):
             def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
                 key = ctx.make_rng("params")
-                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-                self.b = nnx.param(jnp.zeros((dout,)))
-                self.count = nnx.variable("state", 0)
+                self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.Param(jnp.zeros((dout,)))
+                self.count = State(0)
 
             def __call__(self, x):
                 self.count += 1
@@ -133,10 +139,10 @@ class TestIntegration:
                 return jax.numpy.mean((y_pred - y) ** 2)
 
             # compute gradient
-            grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+            grads: nnx.State = nnx.grad(loss_fn, wrt=nnx.Param)(model)
             # SGD update
             model.update_state(
-                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+                jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grads)
             )
 
         # execute the training step
@@ -144,12 +150,15 @@ class TestIntegration:
         assert model.count == 2
 
     def test_functional_example(self):
+        class Count(nnx.Variable[A]):
+            pass
+
         class Linear(nnx.Module):
             def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
                 key = ctx.make_rng("params")
-                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-                self.b = nnx.param(jnp.zeros((dout,)))
-                self.count = nnx.variable("counts", 0)
+                self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.Param(jnp.zeros((dout,)))
+                self.count = Count(0)
 
             def __call__(self, x):
                 self.count += 1
@@ -161,14 +170,14 @@ class TestIntegration:
         y = model(x)
         assert model.count == 1
 
-        (params, counts), moduledef = model.partition("params", "counts")
+        (params, counts), moduledef = model.partition(nnx.Param, Count)
 
         @jax.jit
         def train_step(params, counts, x, y):
             def loss_fn(params):
                 y_pred, (updates, _) = moduledef.apply(params, counts)(x)
                 loss = jax.numpy.mean((y_pred - y) ** 2)
-                return loss, updates.filter("counts")
+                return loss, updates.filter(Count)
 
             # compute gradient
             grads, counts = jax.grad(loss_fn, has_aux=True)(params)
@@ -186,19 +195,19 @@ class TestIntegration:
         class Linear(nnx.Module):
             def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
                 key = ctx.make_rng("params")
-                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-                self.b = nnx.param(jnp.zeros((dout,)))
+                self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.Param(jnp.zeros((dout,)))
 
             def __call__(self, x):
                 y = x @ self.w + self.b
-                self.y = nnx.variable("intermediate", y)
+                self.y = nnx.Intermediate(y)
                 return y
 
         model = Linear(12, 2, ctx=nnx.context(0))
 
         y = model(jnp.ones((8, 12)))
 
-        intermediates = model.pop_state("intermediate")
+        intermediates = model.pop_state(nnx.Intermediate)
 
         assert "y" in intermediates
 
@@ -206,12 +215,12 @@ class TestIntegration:
         class Linear(nnx.Module):
             def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
                 key = ctx.make_rng("params")
-                self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-                self.b = nnx.param(jnp.zeros((dout,)))
+                self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+                self.b = nnx.Param(jnp.zeros((dout,)))
 
             def __call__(self, x):
                 y = x @ self.w + self.b
-                self.y = nnx.variable("intermediate", y)
+                self.y = nnx.Intermediate(y)
                 return y
 
         model = Linear(12, 2, ctx=nnx.context(0))
@@ -220,6 +229,6 @@ class TestIntegration:
 
         y, (state, _) = moduledef.apply(state)(jnp.ones((8, 12)))
 
-        intermediates, state = state.partition("intermediate", ...)
+        intermediates, state = state.partition(nnx.Intermediate, ...)
 
         assert "y" in intermediates

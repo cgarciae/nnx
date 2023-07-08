@@ -13,7 +13,7 @@ class TestSPMD:
     def test_init(self):
         class Foo(nnx.Module):
             def __init__(self):
-                self.w = nnx.param(
+                self.w = nnx.Param(
                     nnx.with_logical_partitioning(
                         lambda: jnp.ones((8, 2)),
                         sharding=("row", "col"),
@@ -38,7 +38,7 @@ class TestSPMD:
     def test_get_partition_spec(self):
         class Foo(nnx.Module):
             def __init__(self):
-                self.w = nnx.param(
+                self.w = nnx.Param(
                     nnx.with_logical_partitioning(
                         lambda: jnp.ones((8, 2)),
                         sharding=("row", "col"),

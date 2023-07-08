@@ -14,7 +14,7 @@ def collection(collection: str):
 
 class TestJIT:
     def test_jit(self):
-        m = nnx.Dict(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.Param(1))
 
         @nnx.jit
         def g(m: nnx.Dict):
@@ -27,7 +27,7 @@ class TestJIT:
         assert out == 1.0
 
     def test_jit_stateless(self):
-        m = nnx.Dict(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.Param(1))
 
         @partial(nnx.jit, stateful=False)
         def g(m: nnx.Dict):
@@ -42,8 +42,8 @@ class TestJIT:
 
 class TestGrad:
     def test_grad(self):
-        p1 = nnx.param(10.0)
-        p2 = nnx.param(20.0)
+        p1 = nnx.Param(10.0)
+        p2 = nnx.Param(20.0)
 
         m = nnx.Dict(
             a=nnx.Sequence([p1, p2]),
@@ -78,8 +78,8 @@ class TestGrad:
 
     def test_grad_with_multiple_ref_types(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(10.0), nnx.variable("batch_stats", 20.0)]),
-            b=nnx.param(10.0),
+            a=nnx.Sequence([nnx.Param(10.0), nnx.BatchStat(20.0)]),
+            b=nnx.Param(10.0),
             c=7,
             d=5.0,
         )
@@ -93,8 +93,7 @@ class TestGrad:
 
         assert isinstance(grads, nnx.State)
         assert grads["a/0"].value == 1.0
-        assert isinstance(grads["a/0"], nnx.Node)
-        assert grads["a/0"].collection == "params"
+        assert isinstance(grads["a/0"], nnx.Param)
         assert len(grads) == 2
 
         m.update_state(grads)
@@ -107,13 +106,13 @@ class TestGrad:
 
     def test_grad_with_type_predicate(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(10.0), nnx.variable("batch_stats", 20.0)]),
-            b=nnx.param(10.0),
+            a=nnx.Sequence([nnx.Param(10.0), nnx.BatchStat(20.0)]),
+            b=nnx.Param(10.0),
             c=7,
             d=5.0,
         )
 
-        @partial(nnx.grad, wrt="batch_stats")
+        @partial(nnx.grad, wrt=nnx.BatchStat)
         def f(m: nnx.Dict):
             # sum all params
             return m.a[0] + m.a[1] + m.b
@@ -122,8 +121,7 @@ class TestGrad:
 
         assert isinstance(grads, nnx.State)
         assert grads["a/1"].value == 1.0
-        assert isinstance(grads["a/1"], nnx.Node)
-        assert grads["a/1"].collection == "batch_stats"
+        assert isinstance(grads["a/1"], nnx.BatchStat)
         assert len(grads) == 1
 
         m.update_state(grads)
@@ -149,7 +147,7 @@ class TestScan:
                 return x, None
 
         MLP = nnx.scan(
-            Block, variable_axes={"params": 0}, split_rngs="params", length=5
+            Block, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
         )
 
         module = MLP(ctx=nnx.context(0))
@@ -184,7 +182,7 @@ class TestScan:
 
         MLP = nnx.scan(
             Block,
-            variable_axes={"params": 0},
+            variable_axes={nnx.Param: 0},
             # variable_carry="batch_stats",
             split_rngs=["params", "dropout"],
             length=5,
@@ -236,7 +234,7 @@ class TestScan:
 
         MLP = nnx.scan(
             Block,
-            variable_axes={"params": 0},
+            variable_axes={nnx.Param: 0},
             split_rngs=["params"],
             length=5,
             metadata_params={nnx.PARTITION_NAME: "layers"},
@@ -284,7 +282,7 @@ class TestRemat:
         RematLinear = nnx.remat(LinearBlock)
 
         ScanRematLinear = nnx.scan(
-            RematLinear, variable_axes={"params": 0}, split_rngs="params", length=5
+            RematLinear, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
         )
 
         m = ScanRematLinear(ctx=nnx.context(0))

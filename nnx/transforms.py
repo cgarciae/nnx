@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.stages
 import jax.tree_util as jtu
 
-from nnx import contextlib, partitioning, spmd, tracers
+from nnx import containers, contextlib, partitioning, spmd, tracers
 from nnx.module import CallableProxy, DelayedAccessor, Module, ModuleDef, PureModule
 from nnx.state import State
 
@@ -220,7 +220,7 @@ def grad(
 
 def grad(
     fun: tp.Callable[..., tp.Any],
-    wrt: partitioning.Filter = "params",
+    wrt: partitioning.Filter = containers.Param,
     *,
     stateful: bool = True,
     has_aux: bool = False,

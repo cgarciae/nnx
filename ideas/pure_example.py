@@ -92,7 +92,7 @@ state = model.create_state(rngs)
 @jax.jit
 def train_step(state: pure.State, key, batch):
     x, y = batch
-    params = state.partition("params")
+    params = state.partition(nnx.Param)
     rngs = pure.Rngs(dropout=key)
 
     def loss(params):
@@ -121,7 +121,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 @partial(jax.vmap, in_axes=0, out_axes=(0, None))
 def create_state(params_key: jax.random.KeyArray):
     state = model.create_state(pure.Rngs(params=params_key))
-    params, batch_stats = state.partition("params", "batch_stats")
+    params, batch_stats = state.partition(nnx.Param, "batch_stats")
     return params, batch_stats
 
 
@@ -147,7 +147,7 @@ def scan_fn(
     x, state = model(state, rngs, x, train=True)
 
     # partition state
-    params, batch_stats = state.partition("params", "batch_stats")
+    params, batch_stats = state.partition(nnx.Param, "batch_stats")
 
     return (x, batch_stats), params
 

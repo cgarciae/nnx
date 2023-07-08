@@ -17,7 +17,7 @@ class TestModule:
         assert hasattr(foo, "_module__state")
 
     def test_trace_level(self):
-        m = nnx.Dict(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.Param(1))
 
         @jax.jit
         def f():
@@ -30,7 +30,7 @@ class TestModule:
         f()
 
     def test_split_merge(self):
-        m = nnx.Dict(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.Param(1))
 
         @jax.jit
         def g(pure_module: nnx.PureModule[nnx.Dict[int]]):
@@ -45,7 +45,7 @@ class TestModule:
     def test_no_trace_level_error_on_grad(self):
         # No trace level error occurs because jax doesn't update
         # its top trace for grad.
-        m = nnx.Dict(a=nnx.param(1.0))
+        m = nnx.Dict(a=nnx.Param(1.0))
 
         @jax.grad
         def f(_):
@@ -57,7 +57,7 @@ class TestModule:
     def test_trace_level_error_on_nnx_grad(self):
         # error occurs because nnx updates its nnx_trace
         # in nnx.grad.
-        m = nnx.Dict(a=nnx.param(1.0))
+        m = nnx.Dict(a=nnx.Param(1.0))
 
         @nnx.grad
         def f(_):
@@ -74,7 +74,7 @@ class TestModule:
         class Foo(nnx.Module):
             def __init__(self, c: float, *, ctx: nnx.Context):
                 key = ctx.make_rng("params")
-                self.w = nnx.param(jax.random.uniform(key, ()))
+                self.w = nnx.Param(jax.random.uniform(key, ()))
                 self.c = jnp.asarray(c)
 
             def __call__(self, x, *, ctx: nnx.Context):
@@ -88,8 +88,8 @@ class TestModule:
         assert isinstance(y, jax.Array)
 
     def test_shared_module(self):
-        m1 = nnx.Dict(a=nnx.param(1), b=nnx.param(2))
-        m2 = nnx.Dict(x=m1, y=m1, z=nnx.param(3))
+        m1 = nnx.Dict(a=nnx.Param(1), b=nnx.Param(2))
+        m2 = nnx.Dict(x=m1, y=m1, z=nnx.Param(3))
 
         m3 = m2.partition().merge()
 
@@ -100,7 +100,7 @@ class TestModule:
     def test_module_graph(self):
         class Foo(nnx.Module):
             def __init__(self):
-                self.a = nnx.param(1)
+                self.a = nnx.Param(1)
                 self.sub = self
 
         m = Foo()
@@ -137,7 +137,7 @@ class TestModule:
         assert m["b"] is not m0["b"]
 
     def test_cross_barrier(self):
-        m = nnx.Dict(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.Param(1))
 
         @jax.jit
         def g(pure_module: nnx.PureModule[nnx.Dict[int]]):
@@ -152,7 +152,7 @@ class TestModule:
 
     def test_no_rejit(self):
         n = 0
-        m = nnx.Dict(a=nnx.param(1))
+        m = nnx.Dict(a=nnx.Param(1))
 
         @jax.jit
         def g(pure_module):
@@ -175,7 +175,7 @@ class TestModule:
         g(m2.partition())
         assert n == 1
 
-        m2.b = nnx.param(10)
+        m2.b = nnx.Param(10)
         g(m2.partition())
 
         assert n == 2
@@ -213,8 +213,8 @@ class TestModule:
 
     def test_clone(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), 3]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.param(2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), 3]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.Param(2)),
         )
 
         m2 = m.clone()
@@ -232,7 +232,7 @@ class TestModule:
         class Foo(nnx.Module):
             def __call__(self, x):
                 y = x + 1
-                self.sow("intermediates", "y", y)
+                self.sow(nnx.Intermediate, "y", y)
                 return y
 
         m = Foo()
@@ -243,10 +243,9 @@ class TestModule:
         assert y2 == 11
         assert m.y == (3, 11)
 
-        intermediates = m.pop_state("intermediates")
+        intermediates = m.pop_state(nnx.Intermediate)
 
-        assert isinstance(intermediates["y"], nnx.Node)
-        assert intermediates["y"].collection == "intermediates"
+        assert isinstance(intermediates["y"], nnx.Intermediate)
         assert intermediates["y"].value == (3, 11)
 
         assert not hasattr(m, "y")
@@ -258,7 +257,7 @@ class TestModule:
 
             def __call__(self, x):
                 y = x + 1
-                self.sow("intermediates", "y", y)
+                self.sow(nnx.Intermediate, "y", y)
                 return y
 
         m = Foo()
@@ -269,26 +268,26 @@ class TestModule:
     def test_sow_wrong_collection(self):
         class Foo(nnx.Module):
             def __init__(self) -> None:
-                self.y = nnx.param(10)
+                self.y = nnx.Param(10)
 
             def __call__(self, x):
                 y = x + 1
-                self.sow("intermediates", "y", y)
+                self.sow(nnx.Intermediate, "y", y)
                 return y
 
         m = Foo()
 
-        with pytest.raises(ValueError, match="to be in collection"):
+        with pytest.raises(ValueError, match="to be of type"):
             m(2)
 
     def test_sow_non_tuple(self):
         class Foo(nnx.Module):
             def __init__(self) -> None:
-                self.y = nnx.variable("intermediates", 10)
+                self.y = nnx.Intermediate(10)
 
             def __call__(self, x):
                 y = x + 1
-                self.sow("intermediates", "y", y)
+                self.sow(nnx.Intermediate, "y", y)
                 return y
 
         m = Foo()
@@ -304,7 +303,7 @@ class TestModuleDataclass:
             a: int = nnx.static_field()
             b: int = nnx.node_field()
             c: int = nnx.param_field()
-            d: int = nnx.var_field("batch_stats")
+            d: int = nnx.var_field(nnx.BatchStat)
             e: int
             f: int
 
@@ -314,33 +313,33 @@ class TestModuleDataclass:
             c=3,  # param
             d=4,  # var
             e=5,  # static int
-            f=nnx.node(6),  # test that we can pass in a node
+            f=nnx.Node(6),  # test that we can pass in a node
         )
 
         state, moduledef = m.partition()
 
         assert len(state) == 4
-        assert state["b"] == nnx.node(2)
-        assert state["c"] == nnx.param(3)
-        assert state["d"] == nnx.variable("batch_stats", 4)
-        assert state["f"] == nnx.node(6)
+        assert state["b"] == nnx.Node(2)
+        assert state["c"] == nnx.Param(3)
+        assert state["d"] == nnx.BatchStat(4)
+        assert state["f"] == nnx.Node(6)
 
     def test_no_override(self):
         @nnx.dataclass
         class Foo(nnx.Module):
             a: int = nnx.node_field()
 
-        with pytest.raises(ValueError, match="is not equivalent to"):
-            _m = Foo(a=nnx.param(1))
+        with pytest.raises(ValueError, match="is not compatible with return type"):
+            _m = Foo(a=nnx.Param(1))
 
-        _m = Foo(a=nnx.node(1))
+        _m = Foo(a=nnx.Node(1))
 
 
 class TestModuleDef:
     def test_apply(self):
         class Foo(nnx.Module):
             def __init__(self, c: float, *, ctx: nnx.Context):
-                self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), ()))
+                self.w = nnx.Param(jax.random.uniform(ctx.make_rng("params"), ()))
                 self.c = jnp.asarray(c)
 
             def __call__(self, x, *, ctx: nnx.Context):
@@ -351,10 +350,10 @@ class TestModuleDef:
         foo = Foo(c=1.0, ctx=ctx)
 
         states, moduledef = foo.partition()
-        collections = states.get_collections()
 
-        assert "params" in collections
-        assert None in collections
+        assert isinstance(states, nnx.State)
+        assert isinstance(states["w"], nnx.Param)
+        assert isinstance(states["c"], jax.Array)
 
         y, _updates = moduledef.apply(states)(x=2.0, ctx=nnx.context(e=1))
 
@@ -363,7 +362,7 @@ class TestModuleDef:
     def test_derefed_mod_apply(self):
         class Foo(nnx.Module):
             def __init__(self, c: float, *, ctx: nnx.Context):
-                self.w = nnx.param(
+                self.w = nnx.Param(
                     jax.random.uniform(ctx.make_rng("params"), ()),
                 )
                 self.c = jnp.asarray(c)
@@ -375,10 +374,11 @@ class TestModuleDef:
         foo = Foo(c=1.0, ctx=nnx.context(0))
 
         pure_module = foo.partition()
-        collections = pure_module.states.get_collections()
 
-        assert "params" in collections
-        assert None in collections
+        assert isinstance(pure_module, nnx.Pure)
+        assert isinstance(pure_module.states, nnx.State)
+        assert isinstance(pure_module.states["w"], nnx.Param)
+        assert isinstance(pure_module.states["c"], jax.Array)
 
         y, states = pure_module.apply(x=2.0, ctx=nnx.context(e=1))
 
@@ -388,8 +388,8 @@ class TestModuleDef:
 class TestPureModule:
     def test_partition_merge(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         pure_module = state, moduledef = m.partition()
@@ -406,12 +406,12 @@ class TestPureModule:
 
     def test_partition_merge_with_filters(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         pure_module = (params, batch_stats, rest), moduledef = m.partition(
-            "params", "batch_stats", ...
+            nnx.Param, nnx.BatchStat, ...
         )
 
         m2 = pure_module.merge()
@@ -428,14 +428,14 @@ class TestPureModule:
 
     def test_filter(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         pure_module = m.partition()
 
-        params = pure_module.filter("params")
-        batch_stats = pure_module.filter("batch_stats")
+        params = pure_module.filter(nnx.Param)
+        batch_stats = pure_module.filter(nnx.BatchStat)
         rest = pure_module.filter(nnx.Not(nnx.Variable))
 
         assert len(params) == 3
@@ -444,14 +444,14 @@ class TestPureModule:
 
     def test_filter_with_filters(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
-        pure_module = m.partition("params", ...)
+        pure_module = m.partition(nnx.Param, ...)
 
-        params = pure_module.filter("params")
-        batch_stats = pure_module.filter("batch_stats")
+        params = pure_module.filter(nnx.Param)
+        batch_stats = pure_module.filter(nnx.BatchStat)
         rest = pure_module.filter(nnx.Not(nnx.Variable))
 
         assert len(params) == 3
@@ -460,8 +460,8 @@ class TestPureModule:
 
     def test_partition_partition(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         pure_module = m.partition()
@@ -476,11 +476,11 @@ class TestPureModule:
 
     def test_partition_with_filters_partition(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
-        pure_module = m.partition("params", ...)
+        pure_module = m.partition(nnx.Param, ...)
 
         assert isinstance(pure_module, nnx.Pure)
         assert isinstance(pure_module.states, tuple)
@@ -492,29 +492,29 @@ class TestPureModule:
 
     def test_partition_with_filters_partition_with_filters(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
-        pure_module = m.partition("params", ...)
+        pure_module = m.partition(nnx.Param, ...)
 
         assert isinstance(pure_module, nnx.Pure)
         assert isinstance(pure_module.states, tuple)
 
-        pure_module = pure_module.partition("batch_stats", ...)
+        pure_module = pure_module.partition(nnx.BatchStat, ...)
 
         assert isinstance(pure_module, nnx.Pure)
         assert isinstance(pure_module.states, tuple)
 
     def test_pop(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         pure_module = m.partition()
 
-        params, pure_module2 = pure_module.pop_state("params")
+        params, pure_module2 = pure_module.pop_state(nnx.Param)
 
         assert isinstance(params, nnx.State)
         assert isinstance(pure_module2, nnx.Pure)
@@ -523,7 +523,7 @@ class TestPureModule:
         assert len(pure_module2.states) == 2
 
         (params, batch_stats), pure_module2 = pure_module.pop_state(
-            "params", "batch_stats"
+            nnx.Param, nnx.BatchStat
         )
 
         assert isinstance(params, nnx.State)
@@ -537,13 +537,13 @@ class TestPureModule:
     def test_on_all(self):
         class Bar(nnx.Module):
             def __init__(self):
-                self.a = nnx.param(1)
+                self.a = nnx.Param(1)
 
         class Foo(nnx.Module):
             def __init__(self, bar):
                 self.bar1 = bar
                 self.bar2 = bar
-                self.b = nnx.param(2)
+                self.b = nnx.Param(2)
 
         foo = Foo(Bar())
 

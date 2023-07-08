@@ -18,12 +18,12 @@ def has_collection(collection):
 class TestPartitioning:
     def test_partition(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 2)]),
-            b=nnx.param(2),
+            a=nnx.Sequence([nnx.Param(1), nnx.BatchStat(2)]),
+            b=nnx.Param(2),
             c=100,
         )
 
-        (params, rest), moduledef = m.partition("params", ...)
+        (params, rest), moduledef = m.partition(nnx.Param, ...)
 
         assert len(params) == 2
         assert len(rest) == 1
@@ -44,48 +44,48 @@ class TestPartitioning:
 
     def test_complete_partitioning(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         # no error
-        m.partition("params", "batch_stats", nnx.Node)
+        m.partition(nnx.Param, nnx.BatchStat, nnx.Node)
 
     def test_complete_partitioning_plus_ellipsis(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         # no error if additional ... is passed at the end
-        m.partition("params", "batch_stats", nnx.Node, ...)
+        m.partition(nnx.Param, nnx.BatchStat, nnx.Node, ...)
 
     def test_inclomplete_partition_error(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         with pytest.raises(
             ValueError, match="Non-exhaustive filters, got a non-empty remainder"
         ):
-            m.partition("params")
+            m.partition(nnx.Param)
 
     def test_ellipsis_not_last_error(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.param(2), nnx.node(3)]),
-            b=nnx.Dict(c=nnx.param(1), d=nnx.variable("batch_stats", 2)),
+            a=nnx.Sequence([nnx.Param(1), nnx.Param(2), nnx.Node(3)]),
+            b=nnx.Dict(c=nnx.Param(1), d=nnx.BatchStat(2)),
         )
 
         with pytest.raises(
             ValueError, match="Ellipsis `...` can only be used as the last filter,"
         ):
-            m.partition(..., "params")
+            m.partition(..., nnx.Param)
 
     def test_update_from(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 3)]),
-            b=nnx.param(2),
+            a=nnx.Sequence([nnx.Param(1), nnx.BatchStat(3)]),
+            b=nnx.Param(2),
             c=100,
         )
 
@@ -101,8 +101,8 @@ class TestPartitioning:
 
     def test_update_from_with_array_leaf(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 3)]),
-            b=nnx.param(2),
+            a=nnx.Sequence([nnx.Param(1), nnx.BatchStat(3)]),
+            b=nnx.Param(2),
             c=jax.numpy.array(100),
         )
 
@@ -118,12 +118,12 @@ class TestPartitioning:
 
     def test_grad_example(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(1.0), nnx.variable("batch_stats", -10)]),
-            b=nnx.param(2.0),
+            a=nnx.Sequence([nnx.Param(1.0), nnx.BatchStat(-10)]),
+            b=nnx.Param(2.0),
             c=100,
         )
 
-        params = m.filter("params")
+        params = m.filter(nnx.Param)
 
         def loss(params):
             return sum(2 * p for p in jax.tree_util.tree_leaves(params))
@@ -138,8 +138,8 @@ class TestPartitioning:
 
     def test_get_paritition(self):
         m = nnx.Dict(
-            a=nnx.Sequence([nnx.param(10.0), nnx.param(20.0)]),
-            b=nnx.param(10.0),
+            a=nnx.Sequence([nnx.Param(10.0), nnx.Param(20.0)]),
+            b=nnx.Param(10.0),
             c=7,
             d=5.0,
         )

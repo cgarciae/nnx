@@ -7,18 +7,18 @@ import nnx
 
 class TestHelpers:
     def test_train_state(self):
-        m = nnx.Dict(a=nnx.param(1), b=nnx.variable("batch_stats", 2))
+        m = nnx.Dict(a=nnx.Param(1), b=nnx.BatchStat(2))
 
-        (params, batch_stats), moduledef = m.partition("params", "batch_stats")
+        (params, batch_stats), moduledef = m.partition(nnx.Param, nnx.BatchStat)
 
         state = nnx.TrainState(
             moduledef,
             params=params,
             tx=optax.sgd(1.0),
             batch_stats=batch_stats,
-            other=nnx.node(100),
+            other=nnx.Node(100),
             int=200,
-            static=nnx.static(300),
+            static=nnx.Static(300),
         )
 
         leaves = jax.tree_util.tree_leaves(state)
@@ -41,7 +41,7 @@ class TestHelpers:
                 return x
 
         module = Foo(ctx=nnx.context(0))
-        (params, batch_stats), moduledef = module.partition("params", "batch_stats")
+        (params, batch_stats), moduledef = module.partition(nnx.Param, nnx.BatchStat)
 
         state = nnx.TrainState(
             moduledef,
