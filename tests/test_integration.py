@@ -1,7 +1,8 @@
+import typing as tp
+
 import jax
 import jax.numpy as jnp
 import numpy as np
-import typing as tp
 
 import nnx
 
