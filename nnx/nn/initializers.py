@@ -20,7 +20,7 @@ from jax.nn.initializers import xavier_normal as xavier_normal
 from jax.nn.initializers import xavier_uniform as xavier_uniform
 
 Shape = tp.Sequence[int]
-DTypeLikeInexact = Any
+DTypeLikeInexact = tp.Any
 KeyArray = jax.random.KeyArray
 Array = jax.Array
 

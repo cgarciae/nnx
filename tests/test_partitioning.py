@@ -1,6 +1,7 @@
 import typing as tp
 
 import jax
+import numpy as np
 import pytest
 
 import nnx
@@ -19,10 +20,10 @@ class TestPartitioning:
         m = nnx.Dict(
             a=nnx.Sequence([nnx.param(1), nnx.variable("batch_stats", 2)]),
             b=nnx.param(2),
-            c=100,
+            c=np.array(100),
         )
 
-        (params, rest), moduledef = m.partition("params", ...)
+        (params, ndarrays, rest), moduledef = m.partition("params", np.ndarray, ...)
 
         assert len(params) == 2
         assert len(rest) == 1

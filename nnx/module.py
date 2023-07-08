@@ -910,5 +910,4 @@ def first_from(*args: tp.Optional[A]) -> A:
 
 
 # register nodes
-nodes.register_node_type(Module)
 nodes.register_node_type(Pure)

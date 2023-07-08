@@ -278,9 +278,8 @@ def _with_sharding_constraint(
     mesh: tp.Optional[jax.sharding.Mesh] = None,
 ):
     """Wrapper for pjit with_sharding_constraint, no-op on cpu or outside pjit."""
-    if jax.devices()[0].platform == "cpu" or (
-        not _global_mesh_defined() and mesh is None
-    ):
+    # if jax.devices()[0].platform == "cpu" or (
+    if not _global_mesh_defined() and mesh is None:
         return x
     else:
         if mesh is not None and axis_resources is not None:
@@ -399,8 +398,20 @@ def with_logical_partitioning(
             )
         return node.value
 
+    @functools.wraps(initializer)
+    def wrapper(*args, **kwargs):
+        y = initializer(*args, **kwargs)
+        if _global_mesh_defined() or (mesh is not None):
+            return with_logical_constraint(
+                y,
+                sharding,
+                rules=rules,
+                mesh=mesh,
+            )
+        return y
+
     return containers.with_metadata(
-        initializer,
+        tp.cast(F, wrapper),
         unbox_fn=unbox_fn,
         sharding=sharding,
         mesh=mesh,
