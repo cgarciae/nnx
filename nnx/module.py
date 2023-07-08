@@ -410,6 +410,11 @@ class ModuleMeta(ABCMeta):
         return module
 
 
+@tp.runtime_checkable
+class HasUnboxFn(tp.Protocol):
+    unbox_fn: tp.Callable[["Container[tp.Any]"], tp.Any]
+
+
 class Module(reprlib.Representable, metaclass=ModuleMeta):
     if tp.TYPE_CHECKING:
         _module__state: ModuleState
@@ -419,6 +424,8 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         def __getattribute__(self, name: str) -> Any:
             value = object.__getattribute__(self, name)
             if isinstance(value, Container):
+                if isinstance(value, HasUnboxFn):
+                    return value.unbox_fn(value)
                 return value.value
             return value
 
@@ -509,6 +516,9 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
 
     def get_state(self) -> State:
         return _get_module_state(self)
+
+    def get_module_def(self: M) -> ModuleDef[M]:
+        return _get_module_def(self)
 
     @tp.overload
     def filter(self, first: partitioning.Filter, /) -> State:
@@ -900,5 +910,4 @@ def first_from(*args: tp.Optional[A]) -> A:
 
 
 # register nodes
-nodes.register_node_type(Module)
 nodes.register_node_type(Pure)

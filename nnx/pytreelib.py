@@ -10,11 +10,19 @@ from types import MappingProxyType
 
 import jax
 
-from nnx import nodes
-from nnx.containers import Container
+from nnx import containers, nodes, reprlib
 
 A = tp.TypeVar("A")
 P = tp.TypeVar("P", bound="Pytree")
+
+
+class TreeNode(containers.NodeBase[A]):
+    pass
+
+
+@partial(containers.check_container, num_arg=0)
+def tree_node(value: A, **metadata: tp.Any) -> A:
+    return TreeNode(value, **metadata)  # type: ignore
 
 
 @contextlib.contextmanager
@@ -64,7 +72,7 @@ class PytreeMeta(ABCMeta):
         return obj
 
 
-class Pytree(metaclass=PytreeMeta):
+class Pytree(reprlib.Representable, metaclass=PytreeMeta):
     _pytree__is_mutable: bool
     _pytree__class_is_mutable: bool
     _pytree__sorted_fields: tp.Tuple[str, ...]
@@ -73,7 +81,7 @@ class Pytree(metaclass=PytreeMeta):
 
         def __getattribute__(self, name: str) -> tp.Any:
             value = object.__getattribute__(self, name)
-            if isinstance(value, Container):
+            if isinstance(value, containers.Container):
                 return value.value
             return value
 
@@ -94,10 +102,10 @@ class Pytree(metaclass=PytreeMeta):
                 f"{type(self)} is immutable, trying to update field {name}"
             )
 
-        if name in vars_dict and isinstance(vars_dict[name], Container):
+        if name in vars_dict and isinstance(vars_dict[name], containers.Container):
             vars_dict[name] = vars_dict[name].replace(value=value)
         else:
-            if isinstance(value, Container):
+            if isinstance(value, containers.Container):
                 value = value.copy()
             vars_dict[name] = value
 
@@ -256,6 +264,12 @@ class Pytree(metaclass=PytreeMeta):
 
         return pytree
 
+    def __nnx_repr__(self):
+        yield reprlib.Object(type(self))
+        for name, value in vars(self).items():
+            yield reprlib.Attr(name, repr(value))
+
 
 # register node types
 nodes.register_node_type(Pytree)
+nodes.register_node_type(TreeNode)

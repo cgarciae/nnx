@@ -58,7 +58,14 @@ from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
 from .partitioning import All, Not, buffers
-from .pytreelib import Pytree
-from .spmd import PARTITION_NAME
+from .pytreelib import Pytree, tree_node
+from .spmd import (
+    PARTITION_NAME,
+    get_partition_spec,
+    logical_axis_rules,
+    logical_to_mesh,
+    with_logical_constraint,
+    with_logical_partitioning,
+)
 from .state import State
 from .transforms import Remat, Scan, grad, jit, remat, scan

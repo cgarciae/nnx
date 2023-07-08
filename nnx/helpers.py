@@ -1,9 +1,10 @@
 import inspect
 import typing as tp
 
+import jax.numpy as jnp
 import optax
 
-from nnx import containers, pytreelib
+from nnx import pytreelib
 from nnx.contextlib import Context
 from nnx.module import ApplyCaller, Module, ModuleDef, Pure
 from nnx.state import State
@@ -103,10 +104,10 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
         **kwargs,
     ):
         self.moduledef = moduledef
-        self.params: State = containers.node(params)
+        self.params: State = pytreelib.tree_node(params)
         self.tx = tx
-        self.opt_state = containers.node(tx.init(self.params))
-        self.step = containers.node(step)
+        self.opt_state = pytreelib.tree_node(tx.init(self.params))
+        self.step = pytreelib.tree_node(jnp.asarray(step))
         for name, value in kwargs.items():
             setattr(self, name, value)
 
