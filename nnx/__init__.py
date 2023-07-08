@@ -64,8 +64,8 @@ from .spmd import (
     get_partition_spec,
     logical_axis_rules,
     logical_to_mesh,
-    with_logical_partitioning,
     with_logical_constraint,
+    with_logical_partitioning,
 )
 from .state import State
 from .transforms import Remat, Scan, grad, jit, remat, scan

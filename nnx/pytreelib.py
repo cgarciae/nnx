@@ -10,8 +10,7 @@ from types import MappingProxyType
 
 import jax
 
-from nnx import nodes, reprlib
-from nnx import containers
+from nnx import containers, nodes, reprlib
 
 A = tp.TypeVar("A")
 P = tp.TypeVar("P", bound="Pytree")

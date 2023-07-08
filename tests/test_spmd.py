@@ -1,10 +1,11 @@
-import nnx
-import jax.numpy as jnp
 import jax
-from jax.experimental import mesh_utils
-from jax._src import test_util as jtu
+import jax.numpy as jnp
 import optax
-from jax.sharding import PartitionSpec, Mesh
+from jax._src import test_util as jtu
+from jax.experimental import mesh_utils
+from jax.sharding import Mesh, PartitionSpec
+
+import nnx
 
 
 class TestSPMD:
