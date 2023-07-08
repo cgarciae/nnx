@@ -151,7 +151,7 @@ One major difference between the two frameworks is that, by design, NNX Modules 
 
 ### Modules
 
-NNX Modules are normal python classes, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
+NNX Modules are normal python classes, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.Param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
 
 ```python
 class Foo(nnx.Module):
@@ -209,9 +209,9 @@ y, (state, moduledef) = moduledef.apply(state).submodule(x)
 `apply` can call any nested method or submodule as long as it can be accessed via the `.` or `[]` operators.
 
 ### Partitioning State
-`nnx.var` lets you create `Variable` attributes with `collection` metadata, this metadata can be used to partition the state into multiple substates. `nnx.param` is a special case of `nnx.var` where `collection="params"`. 
+In NNX you can filter based on any node type, most commonly you will want to filter based on `nnx.Variable` subclasses such as `nnx.Param` or `nnx.BatchStat`.
 
-Here are various examples of how you can use the `partition` method along with collection names to partition a module into multiple substates:
+Here are various examples of how you can use the `partition` method to split a module into multiple substates:
 
 ```python
 # partition the module into the state with all the nodes and the moduledef
