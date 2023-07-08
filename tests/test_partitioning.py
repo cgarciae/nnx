@@ -7,14 +7,6 @@ import pytest
 import nnx
 
 
-def any_ref(path, x):
-    return isinstance(x, nnx.Node)
-
-
-def has_collection(collection):
-    return lambda path, x: isinstance(x, nnx.Node) and x.collection == collection
-
-
 class TestPartitioning:
     def test_partition(self):
         m = nnx.Dict(
@@ -147,7 +139,7 @@ class TestPartitioning:
         # test Variables not shared
         assert vars(m.a)["0"] is not vars(m)["b"]
 
-        state = m.filter(any_ref)
+        state = m.filter(nnx.Node)
         assert state["a/0"].value == m.a[0]
         assert state["a/1"].value == m.a[1]
         assert state["b"].value == m.b

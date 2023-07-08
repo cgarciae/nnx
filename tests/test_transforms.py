@@ -8,10 +8,6 @@ import pytest
 import nnx
 
 
-def collection(collection: str):
-    return lambda x: isinstance(x, nnx.Node) and x.collection == collection
-
-
 class TestJIT:
     def test_jit(self):
         m = nnx.Dict(a=nnx.Param(1))

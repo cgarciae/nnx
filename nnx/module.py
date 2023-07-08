@@ -716,14 +716,6 @@ class MutableLeaf(reprlib.Representable):
         setattr(self._module, self._name, value)
 
     @property
-    def collection(self) -> tp.Optional[str]:
-        attr = vars(self._module)[self._name]
-        if not isinstance(attr, containers.Variable):
-            return None
-
-        return attr.collection
-
-    @property
     def sharding(self) -> tp.Optional[Sharding]:
         attr = vars(self._module)[self._name]
         if not isinstance(attr, Node):
