@@ -2,15 +2,15 @@ __version__ = "0.0.0"
 
 
 from .containers import (
+    BatchStat,
+    Cached,
     Container,
     ContainerMetadata,
+    Intermediate,
     Node,
+    Param,
     Static,
     Variable,
-    node,
-    param,
-    static,
-    variable,
     with_metadata,
 )
 from .contextlib import Context, context
@@ -58,7 +58,7 @@ from .nn.normalization import BatchNorm, LayerNorm
 from .nn.stochastic import Dropout
 from .nodes import is_node, register_node_type
 from .partitioning import All, Not, buffers
-from .pytreelib import Pytree, tree_node
+from .pytreelib import Pytree, TreeNode
 from .spmd import (
     PARTITION_NAME,
     get_partition_spec,

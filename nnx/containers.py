@@ -1,20 +1,17 @@
 import dataclasses
 import functools
 import typing as tp
-from abc import ABC, abstractmethod
+from abc import ABCMeta
 from functools import partial
 from typing import Any
 
 import jax.tree_util as jtu
 
 from nnx import nodes, reprlib
-from nnx.nn import initializers
 
 A = tp.TypeVar("A")
 B = tp.TypeVar("B")
-C = tp.TypeVar("C", bound="Container[tp.Any]")
 F = tp.TypeVar("F", bound=tp.Callable[..., tp.Any])
-TNodeBase = tp.TypeVar("TNodeBase", bound="NodeBase[tp.Any]")
 Sharding = tp.Tuple[tp.Optional[str], ...]
 
 
@@ -24,7 +21,26 @@ class ContainerMetadata(tp.Generic[A]):
     metadata: tp.Mapping[str, tp.Any]
 
 
-class Container(tp.Generic[A], reprlib.Representable):
+class ContainerMetaclass(ABCMeta):
+    def __call__(self, value: A, **metadata: tp.Any) -> A:
+        if isinstance(value, Container):
+            container = value
+            value = container.value
+        else:
+            container = None
+
+        obj = super().__call__(value, **metadata)
+
+        if container is not None and not container.is_equivalent(obj):
+            raise ValueError(
+                f"input value of type '{type(container).__name__}' is not compatible "
+                f"with return type '{type(obj).__name__}'"
+            )
+
+        return obj
+
+
+class Container(tp.Generic[A], reprlib.Representable, metaclass=ContainerMetaclass):
     value: A
 
     def __init__(self, value: tp.Union[A, ContainerMetadata[A]], **metadata: tp.Any):
@@ -124,29 +140,32 @@ class Node(NodeBase[A]):
     pass
 
 
-def with_metadata(
-    initializer: F,
-    **metadata: tp.Any,
-) -> F:
-    @functools.wraps(initializer)
-    def wrapper(*args):
-        return ContainerMetadata(initializer(*args), metadata=metadata)
-
-    return wrapper  # type: ignore
-
-
 class Variable(Node[A]):
-    collection: str
     sharding: tp.Optional[Sharding]
 
     def __init__(
         self,
         value: tp.Union[A, ContainerMetadata[A]],
-        collection: str,
         sharding: tp.Optional[Sharding] = None,
         **metadata: Any,
     ):
-        super().__init__(value, collection=collection, sharding=sharding, **metadata)
+        super().__init__(value, sharding=sharding, **metadata)
+
+
+class Param(Variable[A]):
+    pass
+
+
+class BatchStat(Variable[A]):
+    pass
+
+
+class Cached(Variable[A]):
+    pass
+
+
+class Intermediate(Variable[A]):
+    pass
 
 
 class Static(Container[A], reprlib.Representable):
@@ -168,61 +187,15 @@ def _static_unflatten(metadata: A, _) -> Static[A]:
 jtu.register_pytree_node(Static, _static_flatten, _static_unflatten)
 
 
-# --------------------
-# constructors
-# --------------------
-
-
-def check_container(f: F, *, num_arg: int) -> F:
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        args = list(args)
-        value = args[num_arg]
-
-        if isinstance(value, Container):
-            container = value
-            value = container.value
-        else:
-            container = None
-
-        args[num_arg] = value
-        output = f(*args, **kwargs)
-
-        if container is not None and not container.is_equivalent(output):
-            raise ValueError(f"Container {container} is not equivalent to {output}")
-
-        return output
+def with_metadata(
+    initializer: F,
+    **metadata: tp.Any,
+) -> F:
+    @functools.wraps(initializer)
+    def wrapper(*args):
+        return ContainerMetadata(initializer(*args), metadata=metadata)
 
     return wrapper  # type: ignore
-
-
-@partial(check_container, num_arg=0)
-def node(value: A, **metadata: tp.Any) -> A:
-    return Node(value, **metadata)  # type: ignore
-
-
-@partial(check_container, num_arg=1)
-def variable(
-    collection: str,
-    value: A,
-    sharding: tp.Optional[Sharding] = None,
-    **metadata: tp.Any,
-) -> A:
-    return Variable(
-        value,
-        collection=collection,
-        sharding=sharding,
-        **metadata,
-    )  # type: ignore
-
-
-def param(value: A, sharding: tp.Optional[Sharding] = None, **metadata: tp.Any) -> A:
-    return variable("params", value, sharding=sharding, **metadata)
-
-
-@partial(check_container, num_arg=0)
-def static(value: A) -> A:
-    return Static(value)  # type: ignore
 
 
 # register nodes

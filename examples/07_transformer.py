@@ -157,28 +157,28 @@ class Attention(nnx.Module):
         sharding = cfg.sharding
 
         key = ctx.make_rng("params")
-        self.WQ = nnx.param(
+        self.WQ = nnx.Param(
             dense_init(
                 key, (cfg.embed, cfg.heads, cfg.depth), cfg.param_dtype, 0, (1, 2)
             ),
             P(sharding.embed, sharding.heads, sharding.depth),
         )
         key = ctx.make_rng("params")
-        self.WK = nnx.param(
+        self.WK = nnx.Param(
             dense_init(
                 key, (cfg.embed, cfg.heads, cfg.depth), cfg.param_dtype, 0, (1, 2)
             ),
             P(sharding.embed, sharding.heads, sharding.depth),
         )
         key = ctx.make_rng("params")
-        self.WV = nnx.param(
+        self.WV = nnx.Param(
             dense_init(
                 key, (cfg.embed, cfg.heads, cfg.depth), cfg.param_dtype, 0, (1, 2)
             ),
             P(sharding.embed, sharding.heads, sharding.depth),
         )
         key = ctx.make_rng("params")
-        self.WO = nnx.param(
+        self.WO = nnx.Param(
             dense_init(
                 key, (cfg.heads, cfg.depth, cfg.embed), cfg.param_dtype, (0, 1), 2
             ),
@@ -258,19 +258,19 @@ class Attention(nnx.Module):
 class MLP(nnx.Module):
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         sharding = cfg.sharding
-        self.Win1 = nnx.param(
+        self.Win1 = nnx.Param(
             dense_init(
                 ctx.make_rng("params"), (cfg.embed, cfg.hidden), cfg.param_dtype, 0, 1
             ),
             P(sharding.embed, sharding.hidden),
         )
-        self.Win2 = nnx.param(
+        self.Win2 = nnx.Param(
             dense_init(
                 ctx.make_rng("params"), (cfg.embed, cfg.hidden), cfg.param_dtype, 0, 1
             ),
             P(sharding.embed, sharding.hidden),
         )
-        self.Wout = nnx.param(
+        self.Wout = nnx.Param(
             dense_init(
                 ctx.make_rng("params"), (cfg.hidden, cfg.embed), cfg.param_dtype, 0, 1
             ),
@@ -291,10 +291,10 @@ class DecoderBlock(nnx.Module):
         sharding = cfg.sharding
         self.attn = Attention(cfg, ctx=ctx)
         self.mlp = MLP(cfg, ctx=ctx)
-        self.scale1 = nnx.param(
+        self.scale1 = nnx.Param(
             jnp.ones((cfg.embed,), cfg.param_dtype), P(sharding.embed)
         )
-        self.scale2 = nnx.param(
+        self.scale2 = nnx.Param(
             jnp.ones((cfg.embed,), cfg.param_dtype), P(sharding.embed)
         )
 
@@ -312,19 +312,19 @@ class DecoderBlock(nnx.Module):
 class Decoder(nnx.Module):
     def __init__(self, cfg: Config, *, ctx: nnx.Context):
         sharding = cfg.sharding
-        self.embed = nnx.param(
+        self.embed = nnx.Param(
             embed_init(
                 ctx.make_rng("params"), (cfg.vocab, cfg.embed), cfg.param_dtype, 1, 0
             ),
             P(sharding.vocab, sharding.embed),
         )
-        self.unembed = nnx.param(
+        self.unembed = nnx.Param(
             dense_init(
                 ctx.make_rng("params"), (cfg.embed, cfg.vocab), jnp.float32, 0, 1
             ),
             P(sharding.embed, sharding.vocab),
         )
-        self.scale1 = nnx.param(
+        self.scale1 = nnx.Param(
             jnp.ones((cfg.embed,), cfg.param_dtype), P(sharding.embed)
         )
 

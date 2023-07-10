@@ -40,12 +40,14 @@ import nnx
 import jax
 import jax.numpy as jnp
 
+class Count(nnx.Variable): pass
+
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
-        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jnp.zeros((dout,)))
-        self.count = nnx.var("counts", 0)  # track the number of calls
+        self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.Param(jnp.zeros((dout,)))
+        self.count = Count(0)  # track the number of calls
 
     def __call__(self, x):
         self.count += 1
@@ -67,14 +69,14 @@ inside `__init__` to generate a random key to initialize the parameters.
 The [Functional API](#functional-api) converts an NNX Module python semantics into pure pytree object with functional semantics. It is the recommended way to use NNX as it provides tight control over the state, allows you to use regular JAX transformations, and it minimizes overhead. In this example the model will be trained using Stochastic Gradient Descent (SGD).
 
 ```python
-(params, counts), moduledef = model.partition("params", "counts")
+(params, counts), moduledef = model.partition(nnx.Param, Count)
 
 @jax.jit
 def train_step(params, counts, x, y):
     def loss_fn(params):
         y_pred, (updates, _) = moduledef.apply(params, counts)(x)
         loss = jax.numpy.mean((y_pred - y) ** 2)
-        return loss, updates.filter("counts")
+        return loss, updates.filter(Count)
 
     # compute gradient
     grads, counts = jax.grad(loss_fn, has_aux=True)(params)
@@ -101,10 +103,10 @@ def train_step(model, x, y):
         return jax.numpy.mean((y_pred - y) ** 2)
     
     # compute gradient
-    grads: nnx.State = nnx.grad(loss_fn, wrt="params")(model)
+    grads: nnx.State = nnx.grad(loss_fn, wrt=nnx.Param)(model)
     # SGD update
     model.update_state(
-        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter("params"), grads)
+        jax.tree_map(lambda w, g: w - 0.1 * g, model.filter(nnx.Param), grads)
     )
 
 # execute the training step
@@ -149,16 +151,16 @@ One major difference between the two frameworks is that, by design, NNX Modules 
 
 ### Modules
 
-NNX Modules are normal python classes, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
+NNX Modules are normal python classes, they obey regular python semantics such as mutability and reference sharing, including reference cycles. They can contain 2 types of attributes: node attributes and static attributes. Node attributes include NNX `Variable`s (e.g. `nnx.Param`), Numpy arrays, JAX arrays, submodules Modules, and other NNX types. All other types are treated as static attributes.
 
 ```python
 class Foo(nnx.Module):
     def __init__(self, ctx: nnx.Context):
         # node attributes
-        self.variable = nnx.param(jnp.array(1))
+        self.variable = nnx.Param(jnp.array(1))
         self.np_buffer = np.array(2)
         self.jax_buffer = jnp.array(3)
-        self.node = nnx.node([4, 5])
+        self.node = nnx.Node([4, 5])
         self.submodule = nnx.Linear(2, 4, ctx=ctx)
         # static attributes
         self.int = 1
@@ -182,9 +184,9 @@ State({
   ('jax_buffer',): Array(3),
   ('node',): Node(value=[4, 5]),
   ('np_buffer',): array(2),
-  ('submodule', 'bias'): Variable(collection='params', value=Array(...)),
-  ('submodule', 'kernel'): Variable(collection='params', value=Array(...)),
-  ('variable',): Variable(collection='params', value=Array(1))
+  ('submodule', 'bias'): Param(value=Array(...)),
+  ('submodule', 'kernel'): Param(value=Array(...)),
+  ('variable',): Param(value=Array(1))
 })
 ```
 
@@ -207,23 +209,23 @@ y, (state, moduledef) = moduledef.apply(state).submodule(x)
 `apply` can call any nested method or submodule as long as it can be accessed via the `.` or `[]` operators.
 
 ### Partitioning State
-`nnx.var` lets you create `Variable` attributes with `collection` metadata, this metadata can be used to partition the state into multiple substates. `nnx.param` is a special case of `nnx.var` where `collection="params"`. 
+In NNX you can filter based on any node type, most commonly you will want to filter based on `nnx.Variable` subclasses such as `nnx.Param` or `nnx.BatchStat`.
 
-Here are various examples of how you can use the `partition` method along with collection names to partition a module into multiple substates:
+Here are various examples of how you can use the `partition` method to split a module into multiple substates:
 
 ```python
 # partition the module into the state with all the nodes and the moduledef
 state, moduledef = model.partition()
 # verify that the state contains only params, else raise an error
-params, moduledef = model.partition("params")
+params, moduledef = model.partition(nnx.Param)
 # split the state into params and batch_stats, verify no nodes are left
-(params, batch_stats), moduledef = model.partition("params", "batch_stats")
+(params, batch_stats), moduledef = model.partition(nnx.Param, nnx.BatchStat)
 # if there are any nodes left, use the `...` filter to capture them
-(params, batch_stats, rest), moduledef = model.partition("params", "batch_stats", ...)
+(params, batch_stats, rest), moduledef = model.partition(nnx.Param, nnx.BatchStat, ...)
 # using `...` as the only filter is equivalent to not passing any filters
 model.partition(...) = model.partition()
 ```
-`partition` will make sure all nodes are match by atleast one filter, else it will raise an error. If you have non-`Variable` nodes like `nnx.node`, `jax.Array`, or `numpy.ndarray` attributes, you can use the `...` filter which will match any node. For a more general filter you can pass a predicate function of the form:
+`partition` will make sure all nodes are match by atleast one filter, else it will raise an error. If you have non-`Variable` nodes like `nnx.Node`, `jax.Array`, or `numpy.ndarray` attributes, you can use the `...` filter which will match any node. For a more general filter you can pass a predicate function of the form:
 
 ```python
 (path: Tuple[str, ...], value: Any) -> bool
@@ -244,23 +246,22 @@ y, (state, moduledef) = moduledef.apply(params, batch_stats, rest)(x)
  Note that `apply` will return a single `state` object, if you need to re-partition the state you can use `State`'s own `partition` method:
 
 ```python
-params, batch_stats, rest = state.partition("params", "batch_stats", ...)
+params, batch_stats, rest = state.partition(nnx.Param, nnx.BatchStat, ...)
 ```
 
 Alternatively, if you are just interested in a subset of partitions, you can use the `State.filter` method which will not raise an error if some nodes are not matched by any filter:
 
 ```python
 # only get params
-params = state.filter("params")
+params = state.filter(nnx.Param)
 # get params and batch_stats
-params, batch_stats = state.filter("params", "batch_stats")
+params, batch_stats = state.filter(nnx.Param, nnx.BatchStat)
 ```
 
 ### Filters
 
 Filters let you select subsets of nodes based on some criteria. These are use throughout the API in method like `partition`, `filter`, and `pop_state`. There are 4 types of filters:
 
-* `str`: matches all `Variable` nodes (e.g. `nnx.param` or `nnx.var`) with the given `collection` name.
 * `type`: matches all node instances of the given type.
 * `...`: matches all nodes.
 * `(path, any) -> bool`: a predicate function that takes a node path and value and returns a boolean.
@@ -273,7 +274,7 @@ NNX also provides the following custom filters:
 
 Here is an example of how to use `Not` and `buffers`:
 ```python
-rest = module.filter(nnx.Not("params"))
+rest = module.filter(nnx.Not(nnx.Param))
 buffers = module.filter(nnx.buffers)
 ```
 
@@ -287,34 +288,33 @@ Here is an example of how to create a `Linear` module that captures its output i
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
         key = ctx.make_rng("params")
-        self.w = nnx.param(jax.random.uniform(key, (din, dout)))
-        self.b = nnx.param(jnp.zeros((dout,)))
+        self.w = nnx.Param(jax.random.uniform(key, (din, dout)))
+        self.b = nnx.Param(jnp.zeros((dout,)))
 
     def __call__(self, x):
         y = x @ self.w + self.b
-        self.y = nnx.var("intermediates", y)
+        self.y = nnx.Intermediate(y)
         return y
 
 model = Linear(12, 2, ctx=nnx.context(0))
 ```
-Since `y` is only created when the module is called, it is not available upon initialization. However, once you call the module `y` will be created. It is recommended that you use `pop_state` to retrieve temporary collections like `intermediates`:
+Since `y` is only created when the module is called, it is not available upon initialization. However, once you call the module `y` will be created. It is recommended that you use `pop_state` to retrieve temporary collections like `Intermediate`:
 
 ```python
 y = model(jnp.ones((8, 12)))
-intermediates = model.pop_state("intermediates")
+intermediates = model.pop_state(nnx.Intermediate)
 ```
 `pop_state` will return a `State` object with the nodes that match the given filter and remove them from the module's attributes.
 
 ```
 State({
-  ('y',): Variable(
-    collection='intermediates',
+  ('y',): Intermediate(
     value=Array(...)
   )
 })
 ```
 
-If you use the functional API to call the module instead, the `intermediates` nodes will be present in the output `state`. To retrieve the `intermediates` nodes and optionally separate them from the output `state` you can use `State.partition`:
+If you use the functional API to call the module instead, the `Intermediate` nodes will be present in the output `state`. To retrieve the `intermediates` nodes and optionally separate them from the output `state` you can use `State.partition`:
 
 ```python
 state, moduledef = model.partition()
@@ -381,13 +381,13 @@ apply it to the input `x`, passing the sliced `dropout_key` as part of the `Cont
 ```python
     def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
         dropout_key = jax.random.split(ctx.make_rng("dropout"), self.n_layers)
-        params, moduledef = self.layers.partition("params")
+        params, moduledef = self.layers.partition(nnx.Param)
 
         def scan_fn(x: inputs):
             params, dropout_key = inputs
             module = moduledef.merge(params)
             x = module(x, train=train, ctx=nnx.context(dropout=dropout_key))
-            return x, module.filter("params")
+            return x, module.filter(nnx.Param)
 
         x, params = jax.lax.scan(scan_fn, x, (params, dropout_key))
         self.layers.update_state(params)

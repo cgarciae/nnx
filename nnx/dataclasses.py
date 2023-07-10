@@ -47,7 +47,7 @@ def node_field(
     if "nnx_container_fn" in metadata:
         raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: containers.node(value)
+    metadata["nnx_container_fn"] = lambda value: containers.Node(value)
 
     return field(
         default=default,
@@ -78,7 +78,7 @@ def static_field(
     if "nnx_container_fn" in metadata:
         raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: containers.static(value)
+    metadata["nnx_container_fn"] = lambda value: containers.Static(value)
 
     return field(
         default=default,
@@ -92,7 +92,7 @@ def static_field(
 
 
 def var_field(
-    collection: str,
+    variable_type: tp.Type[containers.Variable[tp.Any]],
     *,
     default: tp.Any = dataclasses.MISSING,
     default_factory: tp.Any = dataclasses.MISSING,
@@ -111,9 +111,7 @@ def var_field(
     if "nnx_container_fn" in metadata:
         raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: containers.variable(
-        collection, value, sharding=sharding
-    )
+    metadata["nnx_container_fn"] = lambda value: variable_type(value, sharding=sharding)
 
     return field(
         default=default,
@@ -137,7 +135,7 @@ def param_field(
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
     return var_field(
-        "params",
+        containers.Param,
         default=default,
         default_factory=default_factory,
         init=init,

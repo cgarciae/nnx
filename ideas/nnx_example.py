@@ -8,8 +8,8 @@ import nnx
 
 
 class Linear(nnx.Module):
-    kernel: jax.Array = nnx.param()
-    bias: jax.Array = nnx.param()
+    kernel: jax.Array = nnx.Param()
+    bias: jax.Array = nnx.Param()
 
     def __init__(self, din: int, dout: int):
         self.kernel = jax.random.uniform(nnx.make_rng("params"), (din, dout))
@@ -20,8 +20,8 @@ class Linear(nnx.Module):
 
 
 class BatchNorm(nnx.Module):
-    scale: jax.Array = nnx.param()
-    bias: jax.Array = nnx.param()
+    scale: jax.Array = nnx.Param()
+    bias: jax.Array = nnx.Param()
     mean: jax.Array = nnx.variable("batch_stats")
     var: jax.Array = nnx.variable("batch_stats")
     mu: float = nnx.static_field()
@@ -93,7 +93,7 @@ def train_step(model: MLP, key, batch):
         loss = jax.numpy.mean((y_pred - y) ** 2)
         return loss
 
-    grads = nnx.grad(loss, wrt="params")(model)
+    grads = nnx.grad(loss, wrt=nnx.Param)(model)
     model[:] = jax.tree_map(lambda w, g: w - 0.1 * g, model["params"], grads)
 
 
@@ -110,7 +110,7 @@ params_keys = jax.random.split(params_keys, n_layers)
 def create_state(params_key: jax.random.KeyArray):
     rngs = nnx.Context(params=params_key)
     model = MLP.init(rngs)(10, 20, 10)
-    (params, batch_stats), modeldef = model.partition("params", "batch_stats")
+    (params, batch_stats), modeldef = model.partition(nnx.Param, "batch_stats")
     return params, batch_stats, modeldef
 
 
@@ -136,7 +136,7 @@ def scan_fn(
     x = model.apply(rngs=rngs)(x, train=True)
 
     # partition state
-    params, batch_stats = model.partition("params", "batch_stats")[0]
+    params, batch_stats = model.partition(nnx.Param, "batch_stats")[0]
 
     return (x, batch_stats), params
 

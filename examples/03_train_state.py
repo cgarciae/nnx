@@ -20,8 +20,8 @@ def dataset(batch_size):
 
 class Linear(nnx.Module):
     def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = nnx.param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
-        self.b = nnx.param(jnp.zeros((dout,)))
+        self.w = nnx.Param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+        self.b = nnx.Param(jnp.zeros((dout,)))
 
     def __call__(self, x):
         return x @ self.w + self.b
@@ -43,7 +43,7 @@ class MLP(nnx.Module):
 
 (params, buffers), moduledef = MLP(
     din=1, dhidden=32, dout=1, ctx=nnx.context(0)
-).partition("params", ...)
+).partition(nnx.Param, ...)
 
 state = nnx.TrainState(
     moduledef,

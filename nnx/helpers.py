@@ -104,10 +104,10 @@ class TrainState(pytreelib.Pytree, tp.Generic[M]):
         **kwargs,
     ):
         self.moduledef = moduledef
-        self.params: State = pytreelib.tree_node(params)
+        self.params: State = pytreelib.TreeNode(params)
         self.tx = tx
-        self.opt_state = pytreelib.tree_node(tx.init(self.params))
-        self.step = pytreelib.tree_node(jnp.asarray(step))
+        self.opt_state = pytreelib.TreeNode(tx.init(self.params))
+        self.step = pytreelib.TreeNode(jnp.asarray(step))
         for name, value in kwargs.items():
             setattr(self, name, value)
 

@@ -46,7 +46,7 @@ class ScanMLP(nnx.Module):
         keys, ctxdef = ctx.partition()
         dropout_key = jax.random.split(keys["dropout"], self.n_layers)
         # partition Module to get params
-        params, moduledef = self.layers.partition("params")
+        params, moduledef = self.layers.partition(nnx.Param)
 
         def scan_fn(
             x: jax.Array, inputs: Tuple[nnx.State, jax.Array]
@@ -58,7 +58,7 @@ class ScanMLP(nnx.Module):
             # forward pass
             x = module(x, ctx=ctx)
             # partition state and return
-            params, _ = module.partition("params")
+            params, _ = module.partition(nnx.Param)
             return x, params
 
         # call scan passing x as the carry, and params + dropout_key as the input

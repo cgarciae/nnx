@@ -20,11 +20,6 @@ class TreeNode(containers.NodeBase[A]):
     pass
 
 
-@partial(containers.check_container, num_arg=0)
-def tree_node(value: A, **metadata: tp.Any) -> A:
-    return TreeNode(value, **metadata)  # type: ignore
-
-
 @contextlib.contextmanager
 def _mutable(obj: P) -> tp.Iterator[None]:
     vars(obj)["_pytree__is_mutable"] = True

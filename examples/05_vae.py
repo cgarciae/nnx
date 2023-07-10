@@ -30,6 +30,10 @@ print("X_train:", X_train.shape, X_train.dtype)
 print("X_test:", X_test.shape, X_test.dtype)
 
 
+class Loss(nnx.Variable):
+    pass
+
+
 # %%
 class Encoder(nnx.Module):
     def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
@@ -45,11 +49,10 @@ class Encoder(nnx.Module):
         mean = self.linear_mean(x)
         std = jnp.exp(self.linear_std(x))
 
-        self.kl_loss = nnx.variable(
-            "losses",
+        self.kl_loss = Loss(
             jnp.mean(
                 0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2, axis=-1)
-            ),
+            )
         )
         key = ctx.make_rng("noise")
         z = mean + std * jax.random.normal(key, mean.shape)
@@ -102,7 +105,7 @@ params, moduledef = VAE(
     latent_size=latent_size,
     output_shape=image_shape,
     ctx=nnx.context(0),
-).partition("params")
+).partition(nnx.Param)
 
 state = nnx.TrainState(
     moduledef,
@@ -118,7 +121,7 @@ def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
         ctx = nnx.context(noise=jax.random.fold_in(key, state.step))
         logits, (updates, _) = state.apply(params)(x, ctx=ctx)
 
-        losses = updates.filter("losses")
+        losses = updates.filter(Loss)
         kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
         reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
 

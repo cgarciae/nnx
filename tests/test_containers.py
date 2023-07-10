@@ -7,34 +7,34 @@ import nnx
 
 class TestContainers:
     def test_node_idenpotence(self):
-        x = nnx.node(1)
-        x = nnx.node(x)
+        x = nnx.Node(1)
+        x = nnx.Node(x)
 
         assert isinstance(x, nnx.Node)
 
     def test_variable_idenpotence(self):
-        x = nnx.variable("x", 1)
-        x = nnx.variable("x", x)
+        x = nnx.Variable(1)
+        x = nnx.Variable(x)
 
-        assert isinstance(x, nnx.Node)
-        assert x.collection == "x"
+        assert isinstance(x, nnx.Variable)
+        assert x.value == 1
 
     def test_variable_cannot_change_collection(self):
-        x = nnx.variable("x", 1)
+        x = nnx.Param(1)
 
-        with pytest.raises(ValueError, match="is not equivalent to"):
-            x = nnx.variable("y", x)
+        with pytest.raises(ValueError, match="is not compatible with return type"):
+            x = nnx.BatchStat(x)
 
     def test_container_cannot_change_type(self):
-        x = nnx.variable("x", 1)
+        x = nnx.Variable(1)
 
-        with pytest.raises(ValueError, match="is not equivalent to"):
-            x = nnx.node(x)
+        with pytest.raises(ValueError, match="is not compatible with return type"):
+            x = nnx.Node(x)
 
-        x = nnx.node(2)
+        x = nnx.Node(2)
 
-        with pytest.raises(ValueError, match="is not equivalent to"):
-            x = nnx.variable("x", x)
+        with pytest.raises(ValueError, match="is not compatible with return type"):
+            x = nnx.Variable(x)
 
     def test_static_is_empty(self):
         leaves = jax.tree_util.tree_leaves(nnx.Static(1))

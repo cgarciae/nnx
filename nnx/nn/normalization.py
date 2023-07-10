@@ -194,20 +194,20 @@ class BatchNorm(Module):
         ctx: contextlib.Context,
     ):
         feature_shape = (num_features,)
-        self.mean = nnx.variable("batch_stats", jnp.zeros(feature_shape, jnp.float32))
-        self.var = nnx.variable("batch_stats", jnp.ones(feature_shape, jnp.float32))
+        self.mean = nnx.BatchStat(jnp.zeros(feature_shape, jnp.float32))
+        self.var = nnx.BatchStat(jnp.ones(feature_shape, jnp.float32))
 
         if use_scale:
             key = ctx.make_rng("params")
-            self.scale = nnx.param(scale_init(key, feature_shape, param_dtype))
+            self.scale = nnx.Param(scale_init(key, feature_shape, param_dtype))
         else:
-            self.scale = nnx.param(None)
+            self.scale = nnx.Param(None)
 
         if use_bias:
             key = ctx.make_rng("params")
-            self.bias = nnx.param(bias_init(key, feature_shape, param_dtype))
+            self.bias = nnx.Param(bias_init(key, feature_shape, param_dtype))
         else:
-            self.bias = nnx.param(None)
+            self.bias = nnx.Param(None)
 
         self.num_features = num_features
         self.use_running_average = use_running_average
@@ -328,15 +328,15 @@ class LayerNorm(Module):
 
         if use_scale:
             key = ctx.make_rng("params")
-            self.scale = nnx.param(scale_init(key, feature_shape, param_dtype))
+            self.scale = nnx.Param(scale_init(key, feature_shape, param_dtype))
         else:
-            self.scale = nnx.param(None)
+            self.scale = nnx.Param(None)
 
         if use_bias:
             key = ctx.make_rng("params")
-            self.bias = nnx.param(bias_init(key, feature_shape, param_dtype))
+            self.bias = nnx.Param(bias_init(key, feature_shape, param_dtype))
         else:
-            self.bias = nnx.param(None)
+            self.bias = nnx.Param(None)
 
         self.num_features = num_features
         self.epsilon = epsilon
