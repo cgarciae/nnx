@@ -1,6 +1,7 @@
 import functools
 import typing as tp
 from types import MappingProxyType
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -8,7 +9,14 @@ import jax.stages
 import jax.tree_util as jtu
 
 from nnx import containers, contextlib, partitioning, spmd, tracers
-from nnx.module import CallableProxy, DelayedAccessor, Module, ModuleDef, PureModule
+from nnx.module import (
+    CallableProxy,
+    DelayedAccessor,
+    Module,
+    ModuleDef,
+    ModuleMeta,
+    PureModule,
+)
 from nnx.state import State
 
 A = tp.TypeVar("A")
@@ -246,24 +254,66 @@ def grad(
 # NOTE: I don't understand why variable_broadcasts exists. Passing them as
 # captures to `scan_fn` makes it impossible to propagate state updates from
 # them. Maybe, there should only be `variable_carry` and `variable_axes`.
-class Scan(Module, tp.Generic[M]):
+
+
+class ScanMeta(ModuleMeta):
+    def __call__(
+        self,
+        module_constructor: tp.Callable[..., M],
+        *,
+        variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
+        variable_broadcast: partitioning.Filter = None,
+        variable_carry: partitioning.Filter = ...,
+        split_rngs: contextlib.RngFilter = None,
+        in_axes: tp.Any = 0,
+        out_axes: tp.Any = 0,
+        length: tp.Optional[int] = None,
+        reverse: bool = False,
+        unroll: int = 1,
+        data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
+        metadata_params: tp.Mapping[tp.Any, tp.Any] = {},
+    ) -> tp.Callable[..., "Scan[M]"]:
+        super_call = super().__call__
+
+        def _create_scan(*args, **kwargs) -> Scan[M]:
+            return super_call(
+                module_constructor=module_constructor,
+                module_init_args=args,
+                module_init_kwargs=kwargs,
+                variable_axes=variable_axes,
+                variable_broadcast=variable_broadcast,
+                variable_carry=variable_carry,
+                split_rngs=split_rngs,
+                in_axes=in_axes,
+                out_axes=out_axes,
+                length=length,
+                reverse=reverse,
+                unroll=unroll,
+                data_transform=data_transform,
+                metadata_params=metadata_params,
+            )
+
+        return _create_scan
+
+
+class Scan(Module, tp.Generic[M], metaclass=ScanMeta):
     def __init__(
         self,
-        *,
         module_constructor: tp.Callable[..., M],
+        *,
+        variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
+        variable_broadcast: partitioning.Filter = None,
+        variable_carry: partitioning.Filter = ...,
+        split_rngs: contextlib.RngFilter = None,
+        in_axes: tp.Any = 0,
+        out_axes: tp.Any = 0,
+        length: tp.Optional[int] = None,
+        reverse: bool = False,
+        unroll: int = 1,
+        data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
+        metadata_params: tp.Mapping[tp.Any, tp.Any] = MappingProxyType({}),
         module_init_args: tp.Tuple[tp.Any, ...],
         module_init_kwargs: tp.Dict[str, tp.Any],
-        variable_axes: tp.Mapping[partitioning.Filter, int],
-        variable_broadcast: partitioning.Filter,
-        variable_carry: partitioning.Filter,
-        split_rngs: contextlib.RngFilter,
-        in_axes: tp.Any,
-        out_axes: tp.Any,
-        length: tp.Optional[int],
-        reverse: bool,
-        unroll: int,
-        data_transform: tp.Optional[tp.Callable[..., tp.Any]],
-        metadata_params: tp.Mapping[tp.Any, tp.Any],
     ):
         self.module_constructor = module_constructor
         self.variable_axes = variable_axes
@@ -545,42 +595,32 @@ class Scan(Module, tp.Generic[M]):
         return CallableProxy(_context, accessesor)  # type: ignore
 
 
-def scan(
-    module_constructor: tp.Callable[..., M],
-    variable_axes: tp.Mapping[partitioning.Filter, int] = MappingProxyType({}),
-    variable_broadcast: partitioning.Filter = None,
-    variable_carry: partitioning.Filter = ...,
-    split_rngs: contextlib.RngFilter = None,
-    in_axes: tp.Any = 0,
-    out_axes: tp.Any = 0,
-    length: tp.Optional[int] = None,
-    reverse: bool = False,
-    unroll: int = 1,
-    data_transform: tp.Optional[tp.Callable[..., tp.Any]] = None,
-    metadata_params: tp.Mapping[tp.Any, tp.Any] = {},
-) -> tp.Callable[..., Scan[M]]:
-    def _create_scan(*args, **kwargs) -> Scan[M]:
-        return Scan(
-            module_constructor=module_constructor,
-            module_init_args=args,
-            module_init_kwargs=kwargs,
-            variable_axes=variable_axes,
-            variable_broadcast=variable_broadcast,
-            variable_carry=variable_carry,
-            split_rngs=split_rngs,
-            in_axes=in_axes,
-            out_axes=out_axes,
-            length=length,
-            reverse=reverse,
-            unroll=unroll,
-            data_transform=data_transform,
-            metadata_params=metadata_params,
-        )
+class RematMeta(ModuleMeta):
+    def __call__(
+        self,
+        module_constructor: tp.Callable[..., M],
+        # variables: lift.CollectionFilter = True,
+        # rngs: lift.PRNGSequenceFilter = True,
+        prevent_cse: bool = True,
+        static_argnums: tp.Union[int, tuple[int, ...]] = (),
+        policy: tp.Optional[tp.Callable[..., bool]] = None,
+    ) -> tp.Callable[..., "Remat[M]"]:
+        super_call = super().__call__
 
-    return _create_scan
+        def create_remat(*args, **kwargs) -> Remat[M]:
+            return super_call(
+                module_constructor=module_constructor,
+                module_init_args=args,
+                module_init_kwargs=kwargs,
+                prevent_cse=prevent_cse,
+                static_argnums=static_argnums,
+                policy=policy,
+            )
+
+        return create_remat
 
 
-class Remat(Module, tp.Generic[M]):
+class Remat(Module, tp.Generic[M], metaclass=RematMeta):
     def __init__(
         self,
         *,
@@ -659,27 +699,6 @@ class Remat(Module, tp.Generic[M]):
             return out
 
         return CallableProxy(_call, accessesor)  # type: ignore
-
-
-def remat(
-    module_constructor: tp.Callable[..., M],
-    # variables: lift.CollectionFilter = True,
-    # rngs: lift.PRNGSequenceFilter = True,
-    prevent_cse: bool = True,
-    static_argnums: tp.Union[int, tuple[int, ...]] = (),
-    policy: tp.Optional[tp.Callable[..., bool]] = None,
-) -> tp.Callable[..., Remat[M]]:
-    def create_remat(*args, **kwargs) -> Remat[M]:
-        return Remat(
-            module_constructor=module_constructor,
-            module_init_args=args,
-            module_init_kwargs=kwargs,
-            prevent_cse=prevent_cse,
-            static_argnums=static_argnums,
-            policy=policy,
-        )
-
-    return create_remat
 
 
 def tree_map_upto_left(

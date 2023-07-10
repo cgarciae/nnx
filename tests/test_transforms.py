@@ -142,7 +142,7 @@ class TestScan:
                 x = nnx.gelu(x)
                 return x, None
 
-        MLP = nnx.scan(
+        MLP = nnx.Scan(
             Block, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
         )
 
@@ -176,7 +176,7 @@ class TestScan:
                 x = nnx.gelu(x)
                 return x, None
 
-        MLP = nnx.scan(
+        MLP = nnx.Scan(
             Block,
             variable_axes={nnx.Param: 0},
             # variable_carry="batch_stats",
@@ -228,7 +228,7 @@ class TestScan:
 
                 return x, None
 
-        MLP = nnx.scan(
+        MLP = nnx.Scan(
             Block,
             variable_axes={nnx.Param: 0},
             split_rngs=["params"],
@@ -258,7 +258,7 @@ class TestScan:
 
 class TestRemat:
     def test_basic_remat(self):
-        RematLinear = nnx.remat(nnx.Linear)
+        RematLinear = nnx.Remat(nnx.Linear)
 
         module = RematLinear(2, 3, ctx=nnx.context(0))
 
@@ -275,9 +275,9 @@ class TestRemat:
                 x = self.linear(x)
                 return x, None
 
-        RematLinear = nnx.remat(LinearBlock)
+        RematLinear = nnx.Remat(LinearBlock)
 
-        ScanRematLinear = nnx.scan(
+        ScanRematLinear = nnx.Scan(
             RematLinear, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
         )
 
