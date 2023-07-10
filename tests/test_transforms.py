@@ -199,6 +199,48 @@ class TestScan:
         assert y.shape == (1, 3)
         assert out is None
 
+    def test_complex_decorator(self):
+        scan_over_layers = partial(
+            nnx.scan,
+            variable_axes={nnx.Param: 0},
+            split_rngs=["params", "dropout"],
+            length=5,
+        )
+
+        class Block(nnx.Module):
+            @scan_over_layers
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+                self.bn = nnx.BatchNorm(3, ctx=ctx)
+                self.dropout = nnx.Dropout(0.5)
+                self.node = jnp.ones((2,))
+
+            @scan_over_layers
+            def __call__(
+                self, x: jax.Array, _, *, ctx: nnx.Context
+            ) -> tp.Tuple[jax.Array, None]:
+                jax.debug.print("x={x}", x=x)
+                x = self.linear(x)
+                x = self.bn(x, ctx=ctx)
+                x = self.dropout(x, ctx=ctx)
+                x = nnx.gelu(x)
+                return x, None
+
+        module = Block(ctx=nnx.context(0))
+
+        assert module.linear.kernel.shape == (5, 3, 3)
+        assert module.linear.bias.shape == (5, 3)
+        assert module.node.shape == (2,)
+
+        x = jnp.ones((1, 3))
+        ctx = nnx.context(
+            dropout=1, flags=dict(deterministic=False, use_running_average=False)
+        )
+        y, out = module(x, None, ctx=ctx)
+
+        assert y.shape == (1, 3)
+        assert out is None
+
     def test_scan_with_sharding(self):
         class Block(nnx.Module):
             def __init__(self, *, ctx: nnx.Context):

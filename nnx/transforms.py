@@ -678,12 +678,13 @@ def scan(
     if is_init:
 
         @functools.wraps(f)
-        def init_wrapper(module: M, *args, **kwargs) -> M:
+        def init_wrapper(module: Module, *args, **kwargs):
             def module_constructor(*args, **kwargs):
                 f(module, *args, **kwargs)
                 return module
 
-            return scan_init(options, module_constructor, args, kwargs)
+            lifted_module = scan_init(options, module_constructor, args, kwargs)
+            module.update_state(lifted_module)
 
         wrapper = init_wrapper
 
