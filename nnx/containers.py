@@ -160,7 +160,7 @@ class BatchStat(Variable[A]):
     pass
 
 
-class Cached(Variable[A]):
+class Cache(Variable[A]):
     pass
 
 

@@ -3,7 +3,7 @@ __version__ = "0.0.0"
 
 from .containers import (
     BatchStat,
-    Cached,
+    Cache,
     Container,
     ContainerMetadata,
     Intermediate,
