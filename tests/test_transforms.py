@@ -308,28 +308,42 @@ class TestRemat:
 
         assert y.shape == (1, 3)
 
-    def test_remat_with_scan(self):
-        class LinearBlock(nnx.Module):
+    def test_remat_decorator(self):
+        class RematLinear(nnx.Module):
+            @nnx.remat
+            def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(din, dout, ctx=ctx)
+
+            @nnx.remat
+            def __call__(self, x: jax.Array) -> jax.Array:
+                return self.linear(x)
+
+        module = RematLinear(2, 3, ctx=nnx.context(0))
+
+        y = module(jnp.ones((1, 2)))
+
+        assert y.shape == (1, 3)
+
+    def test_remat_with_scan_decorator(self):
+        scan = partial(
+            nnx.scan, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
+        )
+
+        class ScanLinear(nnx.Module):
+            @scan
             def __init__(self, *, ctx: nnx.Context):
                 self.linear = nnx.Linear(3, 3, ctx=ctx)
 
+            @scan
+            @nnx.remat
             def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
                 x = self.linear(x)
                 return x, None
 
-        RematLinear = nnx.Remat(LinearBlock)
+        m = ScanLinear(ctx=nnx.context(0))
 
-        ScanRematLinear = nnx.Scan(
-            RematLinear, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
-        )
-
-        m = ScanRematLinear(ctx=nnx.context(0))
-
-        assert m.scan_module.remat_module.linear.kernel.shape == (5, 3, 3)
-        assert m.scan_module.remat_module.linear.bias.shape == (5, 3)
-
-        y, _ = m.call.call(jnp.ones((1, 3)), None)
-        assert y.shape == (1, 3)
+        assert m.linear.kernel.shape == (5, 3, 3)
+        assert m.linear.bias.shape == (5, 3)
 
         y, _ = m(jnp.ones((1, 3)), None)
         assert y.shape == (1, 3)

@@ -68,4 +68,4 @@ from .spmd import (
     with_logical_partitioning,
 )
 from .state import State
-from .transforms import Remat, Scan, grad, jit, scan
+from .transforms import Remat, Scan, grad, jit, remat, scan

@@ -396,6 +396,94 @@ class ScanCall(tp.Protocol, tp.Generic[C, A, B]):
         ...
 
 
+def scan_init(
+    options: ScanOptions,
+    module_constructor: tp.Callable[..., M],
+    module_init_args: tp.Tuple[tp.Any, ...],
+    module_init_kwargs: tp.Dict[str, tp.Any],
+) -> M:
+    if options.variable_axes and options.length is None:
+        raise ValueError("Cannot use variable_axes without specifying a length")
+
+    ctx = module_init_kwargs.pop("ctx", None)
+
+    if ctx is not None and not isinstance(ctx, contextlib.Context):
+        raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
+
+    key_values = []
+
+    if ctx is not None:
+        if not isinstance(ctx, contextlib.Context):
+            raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
+
+        keys, ctxdef = ctx.partition()
+        split_predicate = contextlib.to_rng_predicate(options.split_rngs)
+
+        key_axes = []
+        key_names = tuple(keys.keys())
+
+        for name, key in keys.items():
+            if split_predicate(name):
+                if options.length is None:
+                    raise ValueError("Cannot split RNGs without specifying a length")
+                key = jax.random.split(key, options.length)
+                key_axes.append(0)
+            else:
+                key_axes.append(None)
+            key_values.append(key)
+    else:
+        key_names = None
+        ctxdef = None
+        key_axes = None
+
+    init_out_axes = (*options.variable_axes.values(), None, None)
+    moduledef: tp.Optional[ModuleDef[M]] = None
+
+    def _init_state(*key_values):
+        nonlocal moduledef
+
+        if ctxdef is not None:
+            assert key_names is not None
+            keys = dict(zip(key_names, key_values))
+            ctx = ctxdef.merge(keys)
+            module_init_kwargs["ctx"] = ctx
+
+        module = module_constructor(*module_init_args, **module_init_kwargs)
+
+        # lift module
+        filters = (
+            *options.variable_axes.keys(),
+            options.variable_broadcast,
+            options.variable_carry,
+        )
+
+        states, moduledef = module.partition(*filters)
+
+        return states
+
+    if ctxdef is not None or options.variable_axes:
+        _init_state = jax.vmap(
+            _init_state,
+            in_axes=key_axes,
+            out_axes=init_out_axes,
+            axis_size=options.length,
+        )
+
+    *axes_states, broadcast_state, carry_state = _init_state(*key_values)
+    moduledef = tp.cast(ModuleDef[M], moduledef)
+
+    # add additional axis name to Variable.sharding
+    if spmd.PARTITION_NAME in options.metadata_params:
+        axes_states = [
+            spmd.add_axis(state, index, options.metadata_params)
+            for state, index in zip(axes_states, options.variable_axes.values())
+        ]
+
+    module = moduledef.merge(*axes_states, broadcast_state, carry_state)
+
+    return module
+
+
 def scan_apply(
     options: ScanOptions,
     f: ScanCall[C, A, B],
@@ -554,94 +642,6 @@ def scan_apply(
     return carry_out, out
 
 
-def scan_init(
-    options: ScanOptions,
-    module_constructor: tp.Callable[..., M],
-    module_init_args: tp.Tuple[tp.Any, ...],
-    module_init_kwargs: tp.Dict[str, tp.Any],
-) -> M:
-    if options.variable_axes and options.length is None:
-        raise ValueError("Cannot use variable_axes without specifying a length")
-
-    ctx = module_init_kwargs.pop("ctx", None)
-
-    if ctx is not None and not isinstance(ctx, contextlib.Context):
-        raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
-
-    key_values = []
-
-    if ctx is not None:
-        if not isinstance(ctx, contextlib.Context):
-            raise TypeError(f"Expected a Context, got {type(ctx).__name__}")
-
-        keys, ctxdef = ctx.partition()
-        split_predicate = contextlib.to_rng_predicate(options.split_rngs)
-
-        key_axes = []
-        key_names = tuple(keys.keys())
-
-        for name, key in keys.items():
-            if split_predicate(name):
-                if options.length is None:
-                    raise ValueError("Cannot split RNGs without specifying a length")
-                key = jax.random.split(key, options.length)
-                key_axes.append(0)
-            else:
-                key_axes.append(None)
-            key_values.append(key)
-    else:
-        key_names = None
-        ctxdef = None
-        key_axes = None
-
-    init_out_axes = (*options.variable_axes.values(), None, None)
-    moduledef: tp.Optional[ModuleDef[M]] = None
-
-    def _init_state(*key_values):
-        nonlocal moduledef
-
-        if ctxdef is not None:
-            assert key_names is not None
-            keys = dict(zip(key_names, key_values))
-            ctx = ctxdef.merge(keys)
-            module_init_kwargs["ctx"] = ctx
-
-        module = module_constructor(*module_init_args, **module_init_kwargs)
-
-        # lift module
-        filters = (
-            *options.variable_axes.keys(),
-            options.variable_broadcast,
-            options.variable_carry,
-        )
-
-        states, moduledef = module.partition(*filters)
-
-        return states
-
-    if ctxdef is not None or options.variable_axes:
-        _init_state = jax.vmap(
-            _init_state,
-            in_axes=key_axes,
-            out_axes=init_out_axes,
-            axis_size=options.length,
-        )
-
-    *axes_states, broadcast_state, carry_state = _init_state(*key_values)
-    moduledef = tp.cast(ModuleDef[M], moduledef)
-
-    # add additional axis name to Variable.sharding
-    if spmd.PARTITION_NAME in options.metadata_params:
-        axes_states = [
-            spmd.add_axis(state, index, options.metadata_params)
-            for state, index in zip(axes_states, options.variable_axes.values())
-        ]
-
-    module = moduledef.merge(*axes_states, broadcast_state, carry_state)
-
-    return module
-
-
 def scan(
     f: F,
     *,
@@ -726,29 +726,41 @@ class RematMeta(ModuleMeta):
         return create_remat
 
 
+@dataclasses.dataclass
+class RematOptions:
+    # variables: lift.CollectionFilter,
+    # rngs: lift.PRNGSequenceFilter,
+    prevent_cse: bool
+    static_argnums: tp.Union[int, tuple[int, ...]]
+    policy: tp.Optional[tp.Callable[..., bool]]
+
+    def __post_init__(self):
+        if isinstance(self.static_argnums, int):
+            self.static_argnums = (self.static_argnums,)
+
+        # add 2 as an offset to account for state and keys
+        self.static_argnums = tuple(x + 2 if x >= 0 else x for x in self.static_argnums)
+
+
 class Remat(Module, tp.Generic[M], metaclass=RematMeta):
     def __init__(
         self,
         *,
         module_constructor: tp.Callable[..., M],
-        module_init_args: tp.Tuple[tp.Any, ...],
-        module_init_kwargs: tp.Dict[str, tp.Any],
         # variables: lift.CollectionFilter,
         # rngs: lift.PRNGSequenceFilter,
-        prevent_cse: bool,
-        static_argnums: tp.Union[int, tuple[int, ...]],
-        policy: tp.Optional[tp.Callable[..., bool]],
+        prevent_cse: bool = True,
+        static_argnums: tp.Union[int, tuple[int, ...]] = (),
+        policy: tp.Optional[tp.Callable[..., bool]] = None,
+        module_init_args: tp.Tuple[tp.Any, ...],
+        module_init_kwargs: tp.Dict[str, tp.Any],
     ):
-        if isinstance(static_argnums, int):
-            static_argnums = (static_argnums,)
-
-        # add 2 as an offset to account for state and keys
-        static_argnums = tuple(x + 2 if x >= 0 else x for x in static_argnums)
-
+        self.options = RematOptions(
+            prevent_cse=prevent_cse,
+            static_argnums=static_argnums,
+            policy=policy,
+        )
         self.module_constructor = module_constructor
-        self.prevent_cse = prevent_cse
-        self.static_argnums = static_argnums
-        self.policy = policy
         self.remat_module = self.module_constructor(
             *module_init_args, **module_init_kwargs
         )
@@ -767,44 +779,99 @@ class Remat(Module, tp.Generic[M], metaclass=RematMeta):
         def _call(
             accessesor, *args, ctx: tp.Optional[contextlib.Context] = None
         ) -> tp.Tuple[tp.Any]:
-            state, moduledef = self.remat_module.partition()
+            def _apply(module, *args, **kwargs):
+                return accessesor(module)(*args, **kwargs)
 
-            if ctx is not None:
-                keys, ctxdef = ctx.partition()
-            else:
-                keys = None
-                ctxdef = None
-
-            def _remat_fn(
-                state: State,
-                keys: tp.Optional[tp.Dict[str, jax.Array]],
-                *args,
-            ) -> tp.Tuple[State, tp.Any]:
-                kwargs = {}
-                if keys is not None:
-                    assert ctxdef is not None
-                    kwargs["ctx"] = ctxdef.merge(keys)
-
-                module = moduledef.merge(state)
-                fn = accessesor(module)
-                out = fn(*args, **kwargs)
-
-                state, _ = module.partition()
-
-                return state, out
-
-            state, out = jax.checkpoint(
-                _remat_fn,
-                prevent_cse=self.prevent_cse,
-                static_argnums=self.static_argnums,
-                policy=self.policy,
-            )(state, keys, *args)
-
-            self.remat_module.update_state(state)
-
-            return out
+            return remat_apply(
+                self.options,
+                _apply,
+                self.remat_module,
+                args,
+                ctx,
+            )
 
         return CallableProxy(_call, accessesor)  # type: ignore
+
+
+class RematCall(tp.Protocol):
+    def __call__(self, *args, ctx: tp.Optional[contextlib.Context]) -> tp.Any:
+        ...
+
+
+def remat_apply(
+    options: RematOptions,
+    f: RematCall,
+    module: Module,
+    args: tp.Tuple[tp.Any, ...],
+    ctx: tp.Optional[contextlib.Context],
+):
+    state, moduledef = module.partition()
+
+    if ctx is not None:
+        keys, ctxdef = ctx.partition()
+    else:
+        keys = None
+        ctxdef = None
+
+    def _remat_fn(
+        state: State,
+        keys: tp.Optional[tp.Dict[str, jax.Array]],
+        *args,
+    ) -> tp.Tuple[State, tp.Any]:
+        kwargs = {}
+        if keys is not None:
+            assert ctxdef is not None
+            kwargs["ctx"] = ctxdef.merge(keys)
+
+        module = moduledef.merge(state)
+        out = f(module, *args, **kwargs)
+
+        state, _ = module.partition()
+
+        return state, out
+
+    state, out = jax.checkpoint(
+        _remat_fn,
+        prevent_cse=options.prevent_cse,
+        static_argnums=options.static_argnums,
+        policy=options.policy,
+    )(state, keys, *args)
+
+    module.update_state(state)
+
+    return out
+
+
+def remat(
+    f: F,
+    *,
+    # variables: lift.CollectionFilter,
+    # rngs: lift.PRNGSequenceFilter,
+    prevent_cse: bool = True,
+    static_argnums: tp.Union[int, tuple[int, ...]] = (),
+    policy: tp.Optional[tp.Callable[..., bool]] = None,
+    is_init: tp.Optional[bool] = None,
+) -> F:
+    if is_init is None:
+        is_init = f.__name__ == "__init__"
+
+    options = RematOptions(
+        # variables=variables,
+        # rngs=rngs,
+        prevent_cse=prevent_cse,
+        static_argnums=static_argnums,
+        policy=policy,
+    )
+
+    if is_init:
+        return f
+    else:
+
+        @functools.wraps(f)
+        def wrapper(module: Module, *args, ctx: tp.Optional[contextlib.Context] = None):
+            return remat_apply(options, f, module, args, ctx)
+
+        return wrapper  # type: ignore
 
 
 def tree_map_upto_left(
