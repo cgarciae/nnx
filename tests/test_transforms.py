@@ -142,7 +142,7 @@ class TestScan:
                 x = nnx.gelu(x)
                 return x, None
 
-        MLP = nnx.scan(
+        MLP = nnx.Scan(
             Block, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
         )
 
@@ -176,7 +176,7 @@ class TestScan:
                 x = nnx.gelu(x)
                 return x, None
 
-        MLP = nnx.scan(
+        MLP = nnx.Scan(
             Block,
             variable_axes={nnx.Param: 0},
             # variable_carry="batch_stats",
@@ -195,6 +195,48 @@ class TestScan:
             dropout=1, flags=dict(deterministic=False, use_running_average=False)
         )
         y, out = module.call(x, None, ctx=ctx)
+
+        assert y.shape == (1, 3)
+        assert out is None
+
+    def test_complex_decorator(self):
+        scan_over_layers = partial(
+            nnx.scan,
+            variable_axes={nnx.Param: 0},
+            split_rngs=["params", "dropout"],
+            length=5,
+        )
+
+        class Block(nnx.Module):
+            @scan_over_layers
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+                self.bn = nnx.BatchNorm(3, ctx=ctx)
+                self.dropout = nnx.Dropout(0.5)
+                self.node = jnp.ones((2,))
+
+            @scan_over_layers
+            def __call__(
+                self, x: jax.Array, _, *, ctx: nnx.Context
+            ) -> tp.Tuple[jax.Array, None]:
+                jax.debug.print("x={x}", x=x)
+                x = self.linear(x)
+                x = self.bn(x, ctx=ctx)
+                x = self.dropout(x, ctx=ctx)
+                x = nnx.gelu(x)
+                return x, None
+
+        module = Block(ctx=nnx.context(0))
+
+        assert module.linear.kernel.shape == (5, 3, 3)
+        assert module.linear.bias.shape == (5, 3)
+        assert module.node.shape == (2,)
+
+        x = jnp.ones((1, 3))
+        ctx = nnx.context(
+            dropout=1, flags=dict(deterministic=False, use_running_average=False)
+        )
+        y, out = module(x, None, ctx=ctx)
 
         assert y.shape == (1, 3)
         assert out is None
@@ -228,7 +270,7 @@ class TestScan:
 
                 return x, None
 
-        MLP = nnx.scan(
+        MLP = nnx.Scan(
             Block,
             variable_axes={nnx.Param: 0},
             split_rngs=["params"],
@@ -258,11 +300,27 @@ class TestScan:
 
 class TestRemat:
     def test_basic_remat(self):
-        RematLinear = nnx.remat(nnx.Linear)
+        RematLinear = nnx.Remat(nnx.Linear)
 
         module = RematLinear(2, 3, ctx=nnx.context(0))
 
         y = module.call(jnp.ones((1, 2)))
+
+        assert y.shape == (1, 3)
+
+    def test_remat_decorator(self):
+        class RematLinear(nnx.Module):
+            @nnx.remat
+            def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(din, dout, ctx=ctx)
+
+            @nnx.remat
+            def __call__(self, x: jax.Array) -> jax.Array:
+                return self.linear(x)
+
+        module = RematLinear(2, 3, ctx=nnx.context(0))
+
+        y = module(jnp.ones((1, 2)))
 
         assert y.shape == (1, 3)
 
@@ -275,9 +333,9 @@ class TestRemat:
                 x = self.linear(x)
                 return x, None
 
-        RematLinear = nnx.remat(LinearBlock)
+        RematLinear = nnx.Remat(LinearBlock)
 
-        ScanRematLinear = nnx.scan(
+        ScanRematLinear = nnx.Scan(
             RematLinear, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
         )
 
@@ -288,6 +346,30 @@ class TestRemat:
 
         y, _ = m.call.call(jnp.ones((1, 3)), None)
         assert y.shape == (1, 3)
+
+        y, _ = m(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)
+
+    def test_remat_with_scan_decorator(self):
+        scan = partial(
+            nnx.scan, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
+        )
+
+        class ScanLinear(nnx.Module):
+            @scan
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+
+            @scan
+            @nnx.remat
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                x = self.linear(x)
+                return x, None
+
+        m = ScanLinear(ctx=nnx.context(0))
+
+        assert m.linear.kernel.shape == (5, 3, 3)
+        assert m.linear.bias.shape == (5, 3)
 
         y, _ = m(jnp.ones((1, 3)), None)
         assert y.shape == (1, 3)
