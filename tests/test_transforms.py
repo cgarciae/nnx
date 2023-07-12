@@ -324,6 +324,32 @@ class TestRemat:
 
         assert y.shape == (1, 3)
 
+    def test_remat_with_scan(self):
+        class LinearBlock(nnx.Module):
+            def __init__(self, *, ctx: nnx.Context):
+                self.linear = nnx.Linear(3, 3, ctx=ctx)
+
+            def __call__(self, x: jax.Array, _) -> tp.Tuple[jax.Array, None]:
+                x = self.linear(x)
+                return x, None
+
+        RematLinear = nnx.Remat(LinearBlock)
+
+        ScanRematLinear = nnx.Scan(
+            RematLinear, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
+        )
+
+        m = ScanRematLinear(ctx=nnx.context(0))
+
+        assert m.scan_module.remat_module.linear.kernel.shape == (5, 3, 3)
+        assert m.scan_module.remat_module.linear.bias.shape == (5, 3)
+
+        y, _ = m.call.call(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)
+
+        y, _ = m(jnp.ones((1, 3)), None)
+        assert y.shape == (1, 3)
+
     def test_remat_with_scan_decorator(self):
         scan = partial(
             nnx.scan, variable_axes={nnx.Param: 0}, split_rngs="params", length=5
