@@ -1,6 +1,7 @@
 import dataclasses
 import typing as tp
 from abc import ABCMeta
+from functools import partial
 from typing import Any
 
 import jax.tree_util as jtu
@@ -81,7 +82,7 @@ class _SubmodulesRepr(reprlib.Representable):
 
 
 class ModuleDef(tp.Generic[M], reprlib.Representable):
-    __slots__ = ("_type", "_index", "_submodules", "_static_fields")
+    __slots__ = ("_type", "_index", "_submodules", "_static_fields", "_module_state")
 
     def __init__(
         self,
@@ -89,11 +90,13 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
         index: int,
         submodules: tp.Tuple[tp.Tuple[str, tp.Union["ModuleDef[Module]", int]], ...],
         static_fields: tp.Tuple[tp.Tuple[str, tp.Any], ...],
+        module_state: "ModuleStateTuple",
     ):
         self._type = type
         self._index = index
         self._submodules = submodules
         self._static_fields = static_fields
+        self._module_state = module_state
 
     def __nnx_repr__(self):
         yield reprlib.Object(type=type(self))
@@ -133,6 +136,10 @@ class ModuleDef(tp.Generic[M], reprlib.Representable):
     def static_fields(self) -> tp.Tuple[tp.Tuple[str, tp.Any], ...]:
         return self._static_fields
 
+    @property
+    def module_state(self) -> "ModuleStateTuple":
+        return self._module_state
+
     def merge(self, state: State, *states: State) -> M:
         states = (state, *states)
         module = _build_module(self)
@@ -160,6 +167,7 @@ def _moddef_flatten(moduledef: ModuleDef[M]):
         moduledef._index,
         moduledef._submodules,
         moduledef._static_fields,
+        moduledef._module_state,
     )
 
 
@@ -169,6 +177,7 @@ def _moddef_unflatten(
         int,
         tp.Tuple[tp.Tuple[str, tp.Union["ModuleDef[Module]", int]], ...],
         tp.Tuple[tp.Tuple[str, tp.Any], ...],
+        "ModuleStateTuple",
     ],
     _,
 ) -> ModuleDef[M]:
@@ -365,13 +374,16 @@ PureModule = Pure[tp.Union[State, tp.Tuple[State, ...]], M]
 
 SEEN_MODULES_REPR: tp.Optional[tp.Set[ids.UUID]] = None
 
+ModuleStateTuple = tuple[bool]
+
 
 class ModuleState(reprlib.Representable):
-    __slots__ = ("_trace_state", "_id")
+    __slots__ = ("_trace_state", "_id", "is_initializing")
 
-    def __init__(self, trace_state: tracers.TraceState):
-        self._trace_state = trace_state
+    def __init__(self, is_initializing: bool = False):
+        self._trace_state = tracers.TraceState()
         self._id = ids.uuid()
+        self.is_initializing = is_initializing
 
     @property
     def trace_state(self) -> tracers.TraceState:
@@ -380,6 +392,13 @@ class ModuleState(reprlib.Representable):
     @property
     def id(self) -> ids.UUID:
         return self._id
+
+    def to_tuple(self) -> ModuleStateTuple:
+        return (self.is_initializing,)
+
+    @classmethod
+    def from_tuple(cls, tup: ModuleStateTuple) -> "ModuleState":
+        return cls(*tup)
 
     def __nnx_repr__(self):
         yield reprlib.Object(type(self))
@@ -394,7 +413,7 @@ class ModuleMeta(ABCMeta):
 
     def _meta_call(self: tp.Type[M], *args, **kwargs) -> M:
         module = self.__new__(self, *args, **kwargs)
-        vars(module)["_module__state"] = ModuleState(tracers.TraceState())
+        vars(module)["_module__state"] = ModuleState()
         module.__init__(*args, **kwargs)
 
         if dataclasses.is_dataclass(module):
@@ -475,6 +494,27 @@ class Module(reprlib.Representable, metaclass=ModuleMeta):
         finally:
             if clear_seen:
                 SEEN_MODULES_REPR = None
+
+    @property
+    def init(self: M) -> M:
+        accessor = DelayedAccessor()
+
+        def _init(accessor, *args, **kwargs):
+            def _set_is_initializing(module: Module, value: bool):
+                module._module__state.is_initializing = value
+
+            self.for_each(Module, partial(_set_is_initializing, value=True))
+
+            try:
+                return accessor(self)(*args, **kwargs)
+            finally:
+                self.for_each(Module, partial(_set_is_initializing, value=False))
+
+        return CallableProxy(_init, accessor)  # type: ignore
+
+    @property
+    def is_initializing(self) -> bool:
+        return self._module__state.is_initializing
 
     def clone(self: M) -> M:
         return self.partition().merge()
@@ -765,6 +805,7 @@ def _make_module_def_recursive(
         index=index,
         submodules=tuple(submodules),
         static_fields=tuple(static_fields),
+        module_state=module._module__state.to_tuple(),
     )
     return module_def
 
@@ -835,7 +876,7 @@ def _build_module_recursive(
 
     vars(module).update(moduledef.static_fields)
     vars(module).update(submodules)
-    vars(module)["_module__state"] = ModuleState(tracers.TraceState())
+    vars(module)["_module__state"] = ModuleState.from_tuple(moduledef.module_state)
 
     return module
 

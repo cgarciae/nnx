@@ -436,7 +436,6 @@ def scan_init(
         ctxdef = None
         key_axes = None
 
-    init_out_axes = (*options.variable_axes.values(), None, None)
     moduledef: tp.Optional[ModuleDef[M]] = None
 
     def _init_state(*key_values):
@@ -462,6 +461,7 @@ def scan_init(
         return states
 
     if ctxdef is not None or options.variable_axes:
+        init_out_axes = (*options.variable_axes.values(), None, None)
         _init_state = jax.vmap(
             _init_state,
             in_axes=key_axes,
@@ -600,17 +600,25 @@ def scan_apply(
         )
 
         # split module state
-        (*axes_states, _broadcast_state, carry_state), _ = module.partition(*filters)
+        (*axes_states_out, broadcast_state_out, carry_state_out), _ = module.partition(
+            *filters
+        )
+
+        carry_state_new = carry_state_out - carry_state
+        broadcast_state_new = broadcast_state - broadcast_state_out
+
+        # remove new carry state
+        carry_state_out = carry_state_out - carry_state_new
 
         # add metadata axis name to Variable.sharding
         if spmd.PARTITION_NAME in options.metadata_params:
-            axes_states = [
+            axes_states_out = [
                 spmd.add_axis(state, index, options.metadata_params)
-                for state, index in zip(axes_states, options.variable_axes.values())
+                for state, index in zip(axes_states_out, options.variable_axes.values())
             ]
 
-        carry = (carry_state, carry_out)
-        out = (axes_states, axes_out)
+        carry = (carry_state_out, carry_out)
+        out = (axes_states_out, broadcast_state_new, carry_state_new, axes_out)
 
         return carry, out
 
@@ -623,7 +631,12 @@ def scan_apply(
         unroll=options.unroll,
     )
     carry_state, carry_out = carry
-    axes_states, out = scan_out
+    axes_states, broadcast_state_new, carry_state_new, out = scan_out
+
+    # slice new broadcast state and carry state
+    broadcast_state_new, carry_state_new = jax.tree_map(
+        lambda x: x[0], (broadcast_state_new, carry_state_new)
+    )
 
     # transpose axes state
     axes_states = tuple(
@@ -637,7 +650,9 @@ def scan_apply(
         out,
     )
 
-    module.update_state((*axes_states, carry_state))
+    module.update_state(
+        (*axes_states, carry_state, broadcast_state_new, carry_state_new)
+    )
 
     return carry_out, out
 
