@@ -10,20 +10,20 @@ from nnx.module import CallableProxy, DelayedAccessor
 
 class Linear(nnx.Module):
     @tp.overload
-    def __init__(
-        self,
-        *,
-        din: int,
-        dout: int,
-        ctx: nnx.Context,
-    ):
+    def __init__(self, *, din: int, dout: int, ctx: nnx.Context):
+        ...
+
+    @tp.overload
+    def __init__(self, *, dout: int):
         ...
 
     @tp.overload
     def __init__(
         self,
         *,
+        din: tp.Optional[int] = None,
         dout: int,
+        ctx: tp.Optional[nnx.Context] = None,
     ):
         ...
 
@@ -57,6 +57,24 @@ class Linear(nnx.Module):
 
 
 class BatchNorm(nnx.Module):
+    @tp.overload
+    def __init__(self, *, mu: float = 0.95):
+        ...
+
+    @tp.overload
+    def __init__(self, *, din: int, mu: float = 0.95, ctx: nnx.Context):
+        ...
+
+    @tp.overload
+    def __init__(
+        self,
+        *,
+        din: tp.Optional[int] = None,
+        mu: float = 0.95,
+        ctx: tp.Optional[nnx.Context] = None,
+    ):
+        ...
+
     def __init__(
         self,
         *,
@@ -134,10 +152,15 @@ y2 = m2(x=jnp.ones((1, 32)))
 # ----------------------------
 
 
-class LazyBlock(nnx.Module):
-    def __init__(self, dout: int):
-        self.linear = Linear(dout=dout)
-        self.bn = BatchNorm()
+class Block(nnx.Module):
+    def __init__(
+        self,
+        din: tp.Optional[int] = None,
+        dout: int = 10,
+        ctx: tp.Optional[nnx.Context] = None,
+    ):
+        self.linear = Linear(din=din, dout=dout, ctx=ctx)
+        self.bn = BatchNorm(din=dout, ctx=ctx)
         self.dropout = Dropout(0.5)
 
     def __call__(self, x: jax.Array, _, *, train: bool, ctx: nnx.Context):
@@ -149,16 +172,21 @@ class LazyBlock(nnx.Module):
 
 
 MLP = nnx.Scan(
-    LazyBlock,
+    Block,
     variable_axes={nnx.Param: 0},
     variable_carry=nnx.BatchStat,
     split_rngs={"params": True, "dropout": True},
     length=5,
 )
 
-mlp = MLP(dout=10)
-mlp.init.call(jnp.ones((1, 10)), None, train=False, ctx=nnx.context(params=0))
 
+# eager
+mlp = MLP(din=10, dout=10, ctx=nnx.context(params=0))
 y, _ = mlp.call(jnp.ones((1, 10)), None, train=True, ctx=nnx.context(dropout=1))
+mlp
 
+# lazy
+mlp = MLP(dout=10)
+mlp.init(jnp.ones((1, 10)), None, train=False, ctx=nnx.context(params=0))
+y, _ = mlp.call(jnp.ones((1, 10)), None, train=True, ctx=nnx.context(dropout=1))
 mlp
