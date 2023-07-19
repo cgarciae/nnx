@@ -7,12 +7,12 @@ node_types: tp.Tuple[type, ...] = ()
 
 
 def register_node_type(node_type: type) -> None:
-    global node_types
-    node_types += (node_type,)
+  global node_types
+  node_types += (node_type,)
 
 
 def is_node(obj: object) -> bool:
-    return isinstance(obj, node_types)
+  return isinstance(obj, node_types)
 
 
 # register nodes

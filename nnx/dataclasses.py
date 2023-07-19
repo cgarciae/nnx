@@ -18,15 +18,15 @@ def field(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ):
-    return dataclasses.field(  # type: ignore
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+  return dataclasses.field(  # type: ignore
+      default=default,
+      default_factory=default_factory,
+      init=init,
+      repr=repr,
+      hash=hash,
+      compare=compare,
+      metadata=metadata,
+  )
 
 
 def node_field(
@@ -39,25 +39,25 @@ def node_field(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ):
-    if metadata is None:
-        metadata = {}
-    else:
-        metadata = dict(metadata)
+  if metadata is None:
+    metadata = {}
+  else:
+    metadata = dict(metadata)
 
-    if "nnx_container_fn" in metadata:
-        raise ValueError("'nnx_container_fn' found in metadata")
+  if "nnx_container_fn" in metadata:
+    raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: containers.Node(value)
+  metadata["nnx_container_fn"] = lambda value: containers.Node(value)
 
-    return field(
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+  return field(
+      default=default,
+      default_factory=default_factory,
+      init=init,
+      repr=repr,
+      hash=hash,
+      compare=compare,
+      metadata=metadata,
+  )
 
 
 def static_field(
@@ -70,25 +70,25 @@ def static_field(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ):
-    if metadata is None:
-        metadata = {}
-    else:
-        metadata = dict(metadata)
+  if metadata is None:
+    metadata = {}
+  else:
+    metadata = dict(metadata)
 
-    if "nnx_container_fn" in metadata:
-        raise ValueError("'nnx_container_fn' found in metadata")
+  if "nnx_container_fn" in metadata:
+    raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: containers.Static(value)
+  metadata["nnx_container_fn"] = lambda value: containers.Static(value)
 
-    return field(
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+  return field(
+      default=default,
+      default_factory=default_factory,
+      init=init,
+      repr=repr,
+      hash=hash,
+      compare=compare,
+      metadata=metadata,
+  )
 
 
 def var_field(
@@ -103,25 +103,25 @@ def var_field(
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
     sharding: tp.Optional[containers.Sharding] = None,
 ) -> tp.Any:
-    if metadata is None:
-        metadata = {}
-    else:
-        metadata = dict(metadata)
+  if metadata is None:
+    metadata = {}
+  else:
+    metadata = dict(metadata)
 
-    if "nnx_container_fn" in metadata:
-        raise ValueError("'nnx_container_fn' found in metadata")
+  if "nnx_container_fn" in metadata:
+    raise ValueError("'nnx_container_fn' found in metadata")
 
-    metadata["nnx_container_fn"] = lambda value: variable_type(value, sharding=sharding)
+  metadata["nnx_container_fn"] = lambda value: variable_type(value, sharding=sharding)
 
-    return field(
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+  return field(
+      default=default,
+      default_factory=default_factory,
+      init=init,
+      repr=repr,
+      hash=hash,
+      compare=compare,
+      metadata=metadata,
+  )
 
 
 def param_field(
@@ -134,21 +134,21 @@ def param_field(
     compare: bool = True,
     metadata: tp.Optional[tp.Mapping[str, tp.Any]] = None,
 ) -> tp.Any:
-    return var_field(
-        containers.Param,
-        default=default,
-        default_factory=default_factory,
-        init=init,
-        repr=repr,
-        hash=hash,
-        compare=compare,
-        metadata=metadata,
-    )
+  return var_field(
+      containers.Param,
+      default=default,
+      default_factory=default_factory,
+      init=init,
+      repr=repr,
+      hash=hash,
+      compare=compare,
+      metadata=metadata,
+  )
 
 
 @tp.overload
 def dataclass(cls: tp.Type[A]) -> tp.Type[A]:
-    ...
+  ...
 
 
 @tp.overload
@@ -161,7 +161,7 @@ def dataclass(
     unsafe_hash: bool = False,
     frozen: bool = False,
 ) -> tp.Callable[[tp.Type[A]], tp.Type[A]]:
-    ...
+  ...
 
 
 @tpe.dataclass_transform(
@@ -176,16 +176,16 @@ def dataclass(
     unsafe_hash: bool = False,
     frozen: bool = False,
 ) -> tp.Union[tp.Type[A], tp.Callable[[tp.Type[A]], tp.Type[A]]]:
-    decorator = dataclasses.dataclass(
-        init=init,
-        repr=repr,
-        eq=eq,
-        order=order,
-        unsafe_hash=unsafe_hash,
-        frozen=frozen,
-    )
+  decorator = dataclasses.dataclass(
+      init=init,
+      repr=repr,
+      eq=eq,
+      order=order,
+      unsafe_hash=unsafe_hash,
+      frozen=frozen,
+  )
 
-    if cls is None:
-        return decorator
+  if cls is None:
+    return decorator
 
-    return decorator(cls)
+  return decorator(cls)

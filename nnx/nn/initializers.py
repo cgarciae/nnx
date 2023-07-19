@@ -26,35 +26,36 @@ Array = jax.Array
 
 
 class Initializer(tp.Protocol):
-    @staticmethod
-    def __call__(
-        key: KeyArray, shape: Shape, dtype: DTypeLikeInexact = jnp.float_
-    ) -> Array:
-        ...
+
+  @staticmethod
+  def __call__(
+      key: KeyArray, shape: Shape, dtype: DTypeLikeInexact = jnp.float_
+  ) -> Array:
+    ...
 
 
 def zeros() -> Initializer:
-    """Builds an initializer that returns a constant array full of zeros.
+  """Builds an initializer that returns a constant array full of zeros.
 
-    >>> import jax, jax.numpy as jnp
-    >>> from flax.linen.initializers import zeros_init
-    >>> zeros_initializer = zeros_init()
-    >>> zeros_initializer(jax.random.PRNGKey(42), (2, 3), jnp.float32)
-    Array([[0., 0., 0.],
-           [0., 0., 0.]], dtype=float32)
-    """
-    return jax.nn.initializers.zeros
+  >>> import jax, jax.numpy as jnp
+  >>> from flax.linen.initializers import zeros_init
+  >>> zeros_initializer = zeros_init()
+  >>> zeros_initializer(jax.random.PRNGKey(42), (2, 3), jnp.float32)
+  Array([[0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)
+  """
+  return jax.nn.initializers.zeros
 
 
 def ones() -> Initializer:
-    """Builds an initializer that returns a constant array full of ones.
+  """Builds an initializer that returns a constant array full of ones.
 
-    >>> import jax, jax.numpy as jnp
-    >>> from flax.linen.initializers import ones_init
-    >>> ones_initializer = ones_init()
-    >>> ones_initializer(jax.random.PRNGKey(42), (3, 2), jnp.float32)
-    Array([[1., 1.],
-           [1., 1.],
-           [1., 1.]], dtype=float32)
-    """
-    return jax.nn.initializers.ones
+  >>> import jax, jax.numpy as jnp
+  >>> from flax.linen.initializers import ones_init
+  >>> ones_initializer = ones_init()
+  >>> ones_initializer(jax.random.PRNGKey(42), (3, 2), jnp.float32)
+  Array([[1., 1.],
+         [1., 1.],
+         [1., 1.]], dtype=float32)
+  """
+  return jax.nn.initializers.ones

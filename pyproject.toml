@@ -20,10 +20,11 @@ flax = ">=0.6.10"
 
 
 [tool.poetry.group.dev.dependencies]
-black = "23.3.0"
+black = { version = "23.3.0", extras = ["jupyter"] }
 isort = "5.12.0"
 ipykernel = "^6.22.0"
 pre-commit = ">=3.3.2"
+pyink = "23.3.0"
 
 [tool.poetry.group.examples.dependencies]
 matplotlib = "^3.7.1"
@@ -40,3 +41,6 @@ exclude_lines = [
     "@tp.overload",
     "@abstractmethod",
 ]
+
+[tool.pyink]
+pyink-indentation = 2

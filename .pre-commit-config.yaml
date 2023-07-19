@@ -1,10 +1,9 @@
 
 repos:
-  - repo: https://github.com/psf/black
+  - repo: https://github.com/google/pyink
     rev: 23.3.0
     hooks:
-      - id: black
-        args: ["--target-version", "py38", "--fast"]
+      - id: pyink
   - repo: https://github.com/pycqa/isort
     rev: 5.12.0
     hooks:

@@ -1,2 +1,2 @@
 class TraceContextError(Exception):
-    pass
+  pass
