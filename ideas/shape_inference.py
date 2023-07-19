@@ -5,7 +5,6 @@ import jax.numpy as jnp
 from jax import random
 
 import nnx
-from nnx.module import CallableProxy, DelayedAccessor
 
 
 class Linear(nnx.Module):
@@ -135,6 +134,7 @@ class Dropout(nnx.Module):
 # ----------------------------
 # test Linear
 # ----------------------------
+print("test Linear")
 
 # eager
 m1 = Linear(din=32, dout=10, ctx=nnx.context(params=0))
@@ -153,6 +153,7 @@ y2 = m2(x=jnp.ones((1, 32)))
 # ----------------------------
 # Test scan
 # ----------------------------
+print("\ntest scan")
 
 
 class Block(nnx.Module):
@@ -164,7 +165,7 @@ class Block(nnx.Module):
       ctx: tp.Optional[nnx.Context] = None,
   ):
     self.linear = Linear(din=din, dout=dout, ctx=ctx)
-    self.bn = BatchNorm(din=dout, ctx=ctx)
+    self.bn = BatchNorm(din=dout if din is not None else None, ctx=ctx)
     self.dropout = Dropout(0.5)
 
   def __call__(self, x: jax.Array, _, *, train: bool, ctx: nnx.Context):
@@ -187,10 +188,13 @@ MLP = nnx.Scan(
 # eager
 mlp = MLP(din=10, dout=10, ctx=nnx.context(params=0))
 y, _ = mlp.call(jnp.ones((1, 10)), None, train=True, ctx=nnx.context(dropout=1))
-mlp
+print(f"{y.shape=}")
+print("state =", jax.tree_map(jnp.shape, mlp.get_state()))
+print()
 
 # lazy
 mlp = MLP(dout=10)
 mlp.init(jnp.ones((1, 10)), None, train=False, ctx=nnx.context(params=0))
 y, _ = mlp.call(jnp.ones((1, 10)), None, train=True, ctx=nnx.context(dropout=1))
-mlp
+print(f"{y.shape=}")
+print("state =", jax.tree_map(jnp.shape, mlp.get_state()))

@@ -571,9 +571,6 @@ def scan_apply(
     axes_keys = None
     broadcast_keys = None
 
-  carry = (carry_state, carry_arg)
-  axes = (axes_keys, axes_states, axes_arg)
-
   def scan_fn(
       carry: tp.Tuple[State, tp.Any],
       axes: tp.Tuple[
@@ -626,21 +623,55 @@ def scan_apply(
 
     return carry, out
 
-  carry, scan_out = jax.lax.scan(
+  scan_partial = lambda length, unroll: lambda carry, axes: jax.lax.scan(
       scan_fn,
       carry,
       axes,
       length=length,
       reverse=options.reverse,
-      unroll=options.unroll,
+      unroll=unroll,
   )
-  carry_state, carry_out = carry
-  axes_states, broadcast_state_new, carry_state_new, out = scan_out
 
-  # slice new broadcast state and carry state
-  broadcast_state_new, carry_state_new = jax.tree_map(
-      lambda x: x[0], (broadcast_state_new, carry_state_new)
-  )
+  carry = (carry_state, carry_arg)
+  axes = (axes_keys, axes_states, axes_arg)
+
+  abstract_output = jax.eval_shape(scan_partial(length, options.unroll), carry, axes)
+  carry_state_new = abstract_output[1][2]
+  has_new_carry_state = len(jax.tree_util.tree_leaves(carry_state_new)) > 0
+
+  if has_new_carry_state:
+    # run scan for 1 step
+    axes1 = jax.tree_map(lambda x: x[:1], axes)
+    carry, scan_out = scan_partial(1, 1)(carry, axes1)
+    carry_state, carry_arg = carry
+    axes_states1, broadcast_state_new, carry_state_new, out1 = scan_out
+
+    # slice new broadcast state and carry state
+    broadcast_state_new, carry_state_new = jax.tree_map(
+        lambda x: x[0], (broadcast_state_new, carry_state_new)
+    )
+    # merge states
+    broadcast_state = State.merge(broadcast_state, broadcast_state_new)
+    carry_state = State.merge(carry_state, carry_state_new)
+    # udpate carry
+    carry = (carry_state, carry_arg)
+
+    # run scan for the rest of the steps
+    axes_rest = jax.tree_map(lambda x: x[1:], axes)
+    carry, scan_out = scan_partial(length - 1, options.unroll)(carry, axes_rest)
+    carry_state, carry_out = carry
+    axes_states_rest, broadcast_state_new, carry_state_new, out_rest = scan_out
+
+    # concatenate outputs
+    axes_states, out = jax.tree_map(
+        lambda x, y: jnp.concatenate((x, y), axis=0),
+        (axes_states1, out1),
+        (axes_states_rest, out_rest),
+    )
+  else:
+    carry, scan_out = scan_partial(length, options.unroll)(carry, axes)
+    carry_state, carry_out = carry
+    axes_states, broadcast_state_new, carry_state_new, out = scan_out
 
   # transpose axes state
   axes_states = tuple(
