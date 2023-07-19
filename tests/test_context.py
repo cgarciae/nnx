@@ -9,91 +9,92 @@ from nnx.contextlib import _stable_hash
 
 
 class TestContext:
-    def test_hash(self):
-        _hash = _stable_hash("hi")
-        assert isinstance(_hash, int)
 
-    def test_rng_stream(self):
-        key0 = jax.random.PRNGKey(0)
-        ctx = nnx.context(key0)
-        assert ctx._rngs["params"].count == 0
+  def test_hash(self):
+    _hash = _stable_hash("hi")
+    assert isinstance(_hash, int)
 
-        key1 = ctx.make_rng("params")
-        assert ctx._rngs["params"].count == 1
-        assert ctx._rngs["params"].key is key0
-        assert not np.equal(key0, key1).all()
+  def test_rng_stream(self):
+    key0 = jax.random.PRNGKey(0)
+    ctx = nnx.context(key0)
+    assert ctx._rngs["params"].count == 0
 
-        key2 = ctx.make_rng("params")
-        assert ctx._rngs["params"].count == 2
-        assert ctx._rngs["params"].key is key0
-        assert not np.equal(key1, key2).all()
+    key1 = ctx.make_rng("params")
+    assert ctx._rngs["params"].count == 1
+    assert ctx._rngs["params"].key is key0
+    assert not np.equal(key0, key1).all()
 
-    def test_rng_fork(self):
-        key0 = jax.random.PRNGKey(0)
-        ctx1 = nnx.context(key0)
-        ctx2 = ctx1.partition().merge()
+    key2 = ctx.make_rng("params")
+    assert ctx._rngs["params"].count == 2
+    assert ctx._rngs["params"].key is key0
+    assert not np.equal(key1, key2).all()
 
-        assert ctx2._rngs["params"].count == 0
-        assert ctx2._rngs["params"].count_path == (0,)
+  def test_rng_fork(self):
+    key0 = jax.random.PRNGKey(0)
+    ctx1 = nnx.context(key0)
+    ctx2 = ctx1.partition().merge()
 
-        key1 = ctx1.make_rng("params")
-        key2 = ctx2.make_rng("params")
+    assert ctx2._rngs["params"].count == 0
+    assert ctx2._rngs["params"].count_path == (0,)
 
-        assert not np.equal(key1, key2).all()
+    key1 = ctx1.make_rng("params")
+    key2 = ctx2.make_rng("params")
 
-    def test_rng_trace_level_constraints(self):
-        ctx = nnx.context(0)
+    assert not np.equal(key1, key2).all()
 
-        @jax.jit
-        def f():
-            with pytest.raises(
-                nnx.TraceContextError,
-                match="Cannot use Context from a different trace level",
-            ):
-                ctx.make_rng("params")
+  def test_rng_trace_level_constraints(self):
+    ctx = nnx.context(0)
 
-        f()
+    @jax.jit
+    def f():
+      with pytest.raises(
+          nnx.TraceContextError,
+          match="Cannot use Context from a different trace level",
+      ):
+        ctx.make_rng("params")
 
-        @jax.jit
-        def f():
-            with pytest.raises(
-                nnx.TraceContextError,
-                match="Cannot use Context from a different trace level",
-            ):
-                ctx.partition()
+    f()
 
-        f()
+    @jax.jit
+    def f():
+      with pytest.raises(
+          nnx.TraceContextError,
+          match="Cannot use Context from a different trace level",
+      ):
+        ctx.partition()
 
-        ctx1: Any = None
+    f()
 
-        @jax.jit
-        def g():
-            nonlocal ctx1
-            ctx1 = nnx.context(1)
+    ctx1: Any = None
 
-        g()
+    @jax.jit
+    def g():
+      nonlocal ctx1
+      ctx1 = nnx.context(1)
 
-        assert isinstance(ctx1, nnx.Context)
-        with pytest.raises(
-            nnx.TraceContextError,
-            match="Cannot use Context from a different trace level",
-        ):
-            ctx1.make_rng("params")
+    g()
 
-    def test_partition_merge(self):
-        ctx = nnx.context(dropout=0)
+    assert isinstance(ctx1, nnx.Context)
+    with pytest.raises(
+        nnx.TraceContextError,
+        match="Cannot use Context from a different trace level",
+    ):
+      ctx1.make_rng("params")
 
-        keys, ctxdef = ctx.partition()
+  def test_partition_merge(self):
+    ctx = nnx.context(dropout=0)
 
-        assert "dropout" in keys
-        assert ctxdef._rng_counts == (("dropout", (0,)),)
+    keys, ctxdef = ctx.partition()
 
-        ctx2 = ctxdef.merge(keys)
+    assert "dropout" in keys
+    assert ctxdef._rng_counts == (("dropout", (0,)),)
 
-        key1 = ctx.make_rng("dropout")
-        key2 = ctx2.make_rng("dropout")
-        assert not np.equal(key1, key2).all()
+    ctx2 = ctxdef.merge(keys)
 
-        ctx3 = ctxdef.merge(keys)
-        key3 = ctx3.make_rng("dropout")
-        assert np.equal(key2, key3).all()
+    key1 = ctx.make_rng("dropout")
+    key2 = ctx2.make_rng("dropout")
+    assert not np.equal(key1, key2).all()
+
+    ctx3 = ctxdef.merge(keys)
+    key3 = ctx3.make_rng("dropout")
+    assert np.equal(key2, key3).all()

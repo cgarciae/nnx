@@ -31,72 +31,75 @@ print("X_test:", X_test.shape, X_test.dtype)
 
 
 class Loss(nnx.Variable):
-    pass
+  pass
 
 
 # %%
 class Encoder(nnx.Module):
-    def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
-        self.linear1 = nnx.Linear(din, dmid, ctx=ctx)
-        self.linear_mean = nnx.Linear(dmid, dout, ctx=ctx)
-        self.linear_std = nnx.Linear(dmid, dout, ctx=ctx)
 
-    def __call__(self, x: jax.Array, *, ctx: nnx.Context) -> jax.Array:
-        x = x.reshape((x.shape[0], -1))  # flatten
-        x = self.linear1(x)
-        x = jax.nn.relu(x)
+  def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
+    self.linear1 = nnx.Linear(din, dmid, ctx=ctx)
+    self.linear_mean = nnx.Linear(dmid, dout, ctx=ctx)
+    self.linear_std = nnx.Linear(dmid, dout, ctx=ctx)
 
-        mean = self.linear_mean(x)
-        std = jnp.exp(self.linear_std(x))
+  def __call__(self, x: jax.Array, *, ctx: nnx.Context) -> jax.Array:
+    x = x.reshape((x.shape[0], -1))  # flatten
+    x = self.linear1(x)
+    x = jax.nn.relu(x)
 
-        self.kl_loss = Loss(
-            jnp.mean(
-                0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2, axis=-1)
-            )
+    mean = self.linear_mean(x)
+    std = jnp.exp(self.linear_std(x))
+
+    self.kl_loss = Loss(
+        jnp.mean(
+            0.5 * jnp.mean(-jnp.log(std**2) - 1.0 + std**2 + mean**2, axis=-1)
         )
-        key = ctx.make_rng("noise")
-        z = mean + std * jax.random.normal(key, mean.shape)
-        return z
+    )
+    key = ctx.make_rng("noise")
+    z = mean + std * jax.random.normal(key, mean.shape)
+    return z
 
 
 class Decoder(nnx.Module):
-    def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
-        self.linear1 = nnx.Linear(din, dmid, ctx=ctx)
-        self.linear2 = nnx.Linear(dmid, dout, ctx=ctx)
 
-    def __call__(self, z: jax.Array) -> jax.Array:
-        z = self.linear1(z)
-        z = jax.nn.relu(z)
-        logits = self.linear2(z)
-        return logits
+  def __init__(self, din: int, dmid: int, dout: int, *, ctx: nnx.Context):
+    self.linear1 = nnx.Linear(din, dmid, ctx=ctx)
+    self.linear2 = nnx.Linear(dmid, dout, ctx=ctx)
+
+  def __call__(self, z: jax.Array) -> jax.Array:
+    z = self.linear1(z)
+    z = jax.nn.relu(z)
+    logits = self.linear2(z)
+    return logits
 
 
 class VAE(nnx.Module):
-    def __init__(
-        self,
-        din: int,
-        hidden_size: int,
-        latent_size: int,
-        output_shape: tp.Sequence[int],
-        *,
-        ctx: nnx.Context,
-    ):
-        self.output_shape = output_shape
-        self.encoder = Encoder(din, hidden_size, latent_size, ctx=ctx)
-        self.decoder = Decoder(
-            latent_size, hidden_size, int(np.prod(output_shape)), ctx=ctx
-        )
 
-    def __call__(self, x: jax.Array, *, ctx: nnx.Context) -> jax.Array:
-        z = self.encoder(x, ctx=ctx)
-        logits = self.decoder(z)
-        logits = jnp.reshape(logits, (-1, *self.output_shape))
-        return logits
+  def __init__(
+      self,
+      din: int,
+      hidden_size: int,
+      latent_size: int,
+      output_shape: tp.Sequence[int],
+      *,
+      ctx: nnx.Context,
+  ):
+    self.output_shape = output_shape
+    self.encoder = Encoder(din, hidden_size, latent_size, ctx=ctx)
+    self.decoder = Decoder(
+        latent_size, hidden_size, int(np.prod(output_shape)), ctx=ctx
+    )
 
-    def generate(self, z):
-        logits = self.decoder(z)
-        logits = jnp.reshape(logits, (-1, *self.output_shape))
-        return nnx.sigmoid(logits)
+  def __call__(self, x: jax.Array, *, ctx: nnx.Context) -> jax.Array:
+    z = self.encoder(x, ctx=ctx)
+    logits = self.decoder(z)
+    logits = jnp.reshape(logits, (-1, *self.output_shape))
+    return logits
+
+  def generate(self, z):
+    logits = self.decoder(z)
+    logits = jnp.reshape(logits, (-1, *self.output_shape))
+    return nnx.sigmoid(logits)
 
 
 params, moduledef = VAE(
@@ -117,49 +120,49 @@ state = nnx.TrainState(
 # %%
 @jax.jit
 def train_step(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array):
-    def loss_fn(params: nnx.State):
-        ctx = nnx.context(noise=jax.random.fold_in(key, state.step))
-        logits, (updates, _) = state.apply(params)(x, ctx=ctx)
+  def loss_fn(params: nnx.State):
+    ctx = nnx.context(noise=jax.random.fold_in(key, state.step))
+    logits, (updates, _) = state.apply(params)(x, ctx=ctx)
 
-        losses = updates.filter(Loss)
-        kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
-        reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
+    losses = updates.filter(Loss)
+    kl_loss = sum(jax.tree_util.tree_leaves(losses), 0.0)
+    reconstruction_loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, x))
 
-        loss = reconstruction_loss + 0.1 * kl_loss
-        return loss, loss
+    loss = reconstruction_loss + 0.1 * kl_loss
+    return loss, loss
 
-    grad_fn = jax.grad(loss_fn, has_aux=True)
-    grads, loss = grad_fn(state.params)
-    state.apply_gradients(grads=grads)
+  grad_fn = jax.grad(loss_fn, has_aux=True)
+  grads, loss = grad_fn(state.params)
+  state.apply_gradients(grads=grads)
 
-    return state, loss
+  return state, loss
 
 
 @partial(jax.jit, donate_argnums=(0,))
 def forward(state: nnx.TrainState[VAE], x: jax.Array, key: jax.Array) -> jax.Array:
-    ctx = nnx.context(noise=key)
-    y_pred = state.apply("params")(x, ctx=ctx)[0]
-    return jax.nn.sigmoid(y_pred)
+  ctx = nnx.context(noise=key)
+  y_pred = state.apply("params")(x, ctx=ctx)[0]
+  return jax.nn.sigmoid(y_pred)
 
 
 @jax.jit
 def sample(state: nnx.TrainState[VAE], z: jax.Array) -> jax.Array:
-    return state.apply("params").generate(z)[0]
+  return state.apply("params").generate(z)[0]
 
 
 # %%
 key = jax.random.PRNGKey(0)
 
 for epoch in range(epochs):
-    losses = []
-    for step in range(steps_per_epoch):
-        idxs = np.random.randint(0, len(X_train), size=(batch_size,))
-        x_batch = X_train[idxs]
+  losses = []
+  for step in range(steps_per_epoch):
+    idxs = np.random.randint(0, len(X_train), size=(batch_size,))
+    x_batch = X_train[idxs]
 
-        state, loss = train_step(state, x_batch, key)
-        losses.append(np.asarray(loss))
+    state, loss = train_step(state, x_batch, key)
+    losses.append(np.asarray(loss))
 
-    print(f"Epoch {epoch} loss: {np.mean(losses)}")
+  print(f"Epoch {epoch} loss: {np.mean(losses)}")
 
 exit()
 # %%
@@ -174,11 +177,11 @@ y_pred = forward(state, x_sample, key)
 figure = plt.figure(figsize=(3 * 5, 3 * 2))
 plt.title("Reconstruction Samples")
 for i in range(5):
-    plt.subplot(2, 5, i + 1)
-    plt.imshow(x_sample[i], cmap="gray")
-    plt.subplot(2, 5, 5 + i + 1)
-    plt.imshow(y_pred[i], cmap="gray")
-    # # tbwriter.add_figure("VAE Example", figure, epochs)
+  plt.subplot(2, 5, i + 1)
+  plt.imshow(x_sample[i], cmap="gray")
+  plt.subplot(2, 5, 5 + i + 1)
+  plt.imshow(y_pred[i], cmap="gray")
+  # # tbwriter.add_figure("VAE Example", figure, epochs)
 
 plt.show()
 
@@ -190,10 +193,10 @@ samples = sample(state, z_samples)
 figure = plt.figure(figsize=(3 * 5, 3 * 2))
 plt.title("Generative Samples")
 for i in range(5):
-    plt.subplot(2, 5, 2 * i + 1)
-    plt.imshow(samples[i], cmap="gray")
-    plt.subplot(2, 5, 2 * i + 2)
-    plt.imshow(samples[i + 1], cmap="gray")
+  plt.subplot(2, 5, 2 * i + 1)
+  plt.imshow(samples[i], cmap="gray")
+  plt.subplot(2, 5, 2 * i + 2)
+  plt.imshow(samples[i + 1], cmap="gray")
 
 plt.show()
 

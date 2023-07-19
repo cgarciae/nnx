@@ -9,124 +9,127 @@ from nnx.module import CallableProxy, DelayedAccessor
 
 
 class Linear(nnx.Module):
-    @tp.overload
-    def __init__(self, *, din: int, dout: int, ctx: nnx.Context):
-        ...
 
-    @tp.overload
-    def __init__(self, *, dout: int):
-        ...
+  @tp.overload
+  def __init__(self, *, din: int, dout: int, ctx: nnx.Context):
+    ...
 
-    @tp.overload
-    def __init__(
-        self,
-        *,
-        din: tp.Optional[int] = None,
-        dout: int,
-        ctx: tp.Optional[nnx.Context] = None,
-    ):
-        ...
+  @tp.overload
+  def __init__(self, *, dout: int):
+    ...
 
-    def __init__(
-        self,
-        *,
-        din: tp.Optional[int] = None,
-        dout: int,
-        ctx: tp.Optional[nnx.Context] = None,
-    ):
-        self.dout = dout
-        if din is not None:
-            if ctx is None:
-                raise ValueError("ctx must be provided if din is provided")
-            self.init_variables(din, ctx)
+  @tp.overload
+  def __init__(
+      self,
+      *,
+      din: tp.Optional[int] = None,
+      dout: int,
+      ctx: tp.Optional[nnx.Context] = None,
+  ):
+    ...
 
-    def init_variables(self, din: int, ctx: nnx.Context):
-        key = ctx.make_rng("params")
-        self.w = nnx.Param(random.uniform(key, (din, self.dout)))
-        self.b = nnx.Param(jnp.zeros((self.dout,)))
+  def __init__(
+      self,
+      *,
+      din: tp.Optional[int] = None,
+      dout: int,
+      ctx: tp.Optional[nnx.Context] = None,
+  ):
+    self.dout = dout
+    if din is not None:
+      if ctx is None:
+        raise ValueError("ctx must be provided if din is provided")
+      self.init_variables(din, ctx)
 
-    def __call__(
-        self, x: jax.Array, *, ctx: tp.Optional[nnx.Context] = None
-    ) -> jax.Array:
-        if self.is_initializing and not hasattr(self, "w"):
-            if ctx is None:
-                raise ValueError("ctx must be provided to initialize module")
-            self.init_variables(x.shape[-1], ctx)
+  def init_variables(self, din: int, ctx: nnx.Context):
+    key = ctx.make_rng("params")
+    self.w = nnx.Param(random.uniform(key, (din, self.dout)))
+    self.b = nnx.Param(jnp.zeros((self.dout,)))
 
-        return x @ self.w + self.b
+  def __call__(
+      self, x: jax.Array, *, ctx: tp.Optional[nnx.Context] = None
+  ) -> jax.Array:
+    if self.is_initializing and not hasattr(self, "w"):
+      if ctx is None:
+        raise ValueError("ctx must be provided to initialize module")
+      self.init_variables(x.shape[-1], ctx)
+
+    return x @ self.w + self.b
 
 
 class BatchNorm(nnx.Module):
-    @tp.overload
-    def __init__(self, *, mu: float = 0.95):
-        ...
 
-    @tp.overload
-    def __init__(self, *, din: int, mu: float = 0.95, ctx: nnx.Context):
-        ...
+  @tp.overload
+  def __init__(self, *, mu: float = 0.95):
+    ...
 
-    @tp.overload
-    def __init__(
-        self,
-        *,
-        din: tp.Optional[int] = None,
-        mu: float = 0.95,
-        ctx: tp.Optional[nnx.Context] = None,
-    ):
-        ...
+  @tp.overload
+  def __init__(self, *, din: int, mu: float = 0.95, ctx: nnx.Context):
+    ...
 
-    def __init__(
-        self,
-        *,
-        din: tp.Optional[int] = None,
-        mu: float = 0.95,
-        ctx: tp.Optional[nnx.Context] = None,
-    ):
-        self.mu = mu
+  @tp.overload
+  def __init__(
+      self,
+      *,
+      din: tp.Optional[int] = None,
+      mu: float = 0.95,
+      ctx: tp.Optional[nnx.Context] = None,
+  ):
+    ...
 
-        if din is not None:
-            if ctx is None:
-                raise ValueError("ctx must be provided if din is provided")
-            self.init_variables(din, ctx)
+  def __init__(
+      self,
+      *,
+      din: tp.Optional[int] = None,
+      mu: float = 0.95,
+      ctx: tp.Optional[nnx.Context] = None,
+  ):
+    self.mu = mu
 
-    def init_variables(self, din: int, ctx: nnx.Context):
-        self.scale = nnx.Param(jax.numpy.ones((din,)))
-        self.bias = nnx.Param(jax.numpy.zeros((din,)))
-        self.mean = nnx.BatchStat(jax.numpy.zeros((din,)))
-        self.var = nnx.BatchStat(jax.numpy.ones((din,)))
+    if din is not None:
+      if ctx is None:
+        raise ValueError("ctx must be provided if din is provided")
+      self.init_variables(din, ctx)
 
-    def __call__(
-        self, x, *, train: bool, ctx: tp.Optional[nnx.Context] = None
-    ) -> jax.Array:
-        if self.is_initializing and not hasattr(self, "scale"):
-            if ctx is None:
-                raise ValueError("ctx must be provided to initialize module")
-            self.init_variables(x.shape[-1], ctx)
+  def init_variables(self, din: int, ctx: nnx.Context):
+    self.scale = nnx.Param(jax.numpy.ones((din,)))
+    self.bias = nnx.Param(jax.numpy.zeros((din,)))
+    self.mean = nnx.BatchStat(jax.numpy.zeros((din,)))
+    self.var = nnx.BatchStat(jax.numpy.ones((din,)))
 
-        if train:
-            axis = tuple(range(x.ndim - 1))
-            mean = jax.numpy.mean(x, axis=axis)
-            var = jax.numpy.var(x, axis=axis)
-            # ema update
-            self.mean = self.mu * self.mean + (1 - self.mu) * mean
-            self.var = self.mu * self.var + (1 - self.mu) * var
-        else:
-            mean, var = self.mean, self.var
+  def __call__(
+      self, x, *, train: bool, ctx: tp.Optional[nnx.Context] = None
+  ) -> jax.Array:
+    if self.is_initializing and not hasattr(self, "scale"):
+      if ctx is None:
+        raise ValueError("ctx must be provided to initialize module")
+      self.init_variables(x.shape[-1], ctx)
 
-        scale, bias = self.scale, self.bias
-        x = (x - mean) / jax.numpy.sqrt(var + 1e-5) * scale + bias
-        return x
+    if train:
+      axis = tuple(range(x.ndim - 1))
+      mean = jax.numpy.mean(x, axis=axis)
+      var = jax.numpy.var(x, axis=axis)
+      # ema update
+      self.mean = self.mu * self.mean + (1 - self.mu) * mean
+      self.var = self.mu * self.var + (1 - self.mu) * var
+    else:
+      mean, var = self.mean, self.var
+
+    scale, bias = self.scale, self.bias
+    x = (x - mean) / jax.numpy.sqrt(var + 1e-5) * scale + bias
+    return x
 
 
 class Dropout(nnx.Module):
-    def __init__(self, rate: float):
-        self.rate = rate
 
-    def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
-        if train:
-            mask = random.bernoulli(ctx.make_rng("dropout"), (1 - self.rate), x.shape)
-            x = x * mask / (1 - self.rate)
-        return x
+  def __init__(self, rate: float):
+    self.rate = rate
+
+  def __call__(self, x: jax.Array, *, train: bool, ctx: nnx.Context) -> jax.Array:
+    if train:
+      mask = random.bernoulli(ctx.make_rng("dropout"), (1 - self.rate), x.shape)
+      x = x * mask / (1 - self.rate)
+    return x
 
 
 # ----------------------------
@@ -153,22 +156,23 @@ y2 = m2(x=jnp.ones((1, 32)))
 
 
 class Block(nnx.Module):
-    def __init__(
-        self,
-        din: tp.Optional[int] = None,
-        dout: int = 10,
-        ctx: tp.Optional[nnx.Context] = None,
-    ):
-        self.linear = Linear(din=din, dout=dout, ctx=ctx)
-        self.bn = BatchNorm(din=dout, ctx=ctx)
-        self.dropout = Dropout(0.5)
 
-    def __call__(self, x: jax.Array, _, *, train: bool, ctx: nnx.Context):
-        x = self.linear(x, ctx=ctx)
-        x = self.bn(x, train=train, ctx=ctx)
-        x = self.dropout(x, train=train, ctx=ctx)
-        x = jax.nn.gelu(x)
-        return x, None
+  def __init__(
+      self,
+      din: tp.Optional[int] = None,
+      dout: int = 10,
+      ctx: tp.Optional[nnx.Context] = None,
+  ):
+    self.linear = Linear(din=din, dout=dout, ctx=ctx)
+    self.bn = BatchNorm(din=dout, ctx=ctx)
+    self.dropout = Dropout(0.5)
+
+  def __call__(self, x: jax.Array, _, *, train: bool, ctx: nnx.Context):
+    x = self.linear(x, ctx=ctx)
+    x = self.bn(x, train=train, ctx=ctx)
+    x = self.dropout(x, train=train, ctx=ctx)
+    x = jax.nn.gelu(x)
+    return x, None
 
 
 MLP = nnx.Scan(

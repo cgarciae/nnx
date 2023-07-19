@@ -13,32 +13,34 @@ Y = 0.8 * X**2 + 0.1 + np.random.normal(0, 0.1, size=X.shape)
 
 
 def dataset(batch_size):
-    while True:
-        idx = np.random.choice(len(X), size=batch_size)
-        yield X[idx], Y[idx]
+  while True:
+    idx = np.random.choice(len(X), size=batch_size)
+    yield X[idx], Y[idx]
 
 
 class Linear(nnx.Module):
-    def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
-        self.w = nnx.Param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
-        self.b = nnx.Param(jnp.zeros((dout,)))
 
-    def __call__(self, x):
-        return x @ self.w + self.b
+  def __init__(self, din: int, dout: int, *, ctx: nnx.Context):
+    self.w = nnx.Param(jax.random.uniform(ctx.make_rng("params"), (din, dout)))
+    self.b = nnx.Param(jnp.zeros((dout,)))
+
+  def __call__(self, x):
+    return x @ self.w + self.b
 
 
 class MLP(nnx.Module):
-    def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
-        self.count = jnp.array(0)
-        self.linear1 = Linear(din, dhidden, ctx=ctx)
-        self.linear2 = Linear(dhidden, dout, ctx=ctx)
 
-    def __call__(self, x):
-        self.count += 1
-        x = self.linear1(x)
-        x = jax.nn.relu(x)
-        x = self.linear2(x)
-        return x
+  def __init__(self, din, dhidden, dout, *, ctx: nnx.Context):
+    self.count = jnp.array(0)
+    self.linear1 = Linear(din, dhidden, ctx=ctx)
+    self.linear2 = Linear(dhidden, dout, ctx=ctx)
+
+  def __call__(self, x):
+    self.count += 1
+    x = self.linear1(x)
+    x = jax.nn.relu(x)
+    x = self.linear2(x)
+    return x
 
 
 (params, buffers), moduledef = MLP(
@@ -56,39 +58,39 @@ del params, buffers
 
 @jax.jit
 def train_step(state: nnx.TrainState, batch):
-    x, y = batch
+  x, y = batch
 
-    def loss_fn(params):
-        y_pred, (updates, _) = state.apply(params, "buffers")(x)
-        buffers = updates.filter(nnx.buffers)
-        loss = jnp.mean((y - y_pred) ** 2)
-        return loss, buffers
+  def loss_fn(params):
+    y_pred, (updates, _) = state.apply(params, "buffers")(x)
+    buffers = updates.filter(nnx.buffers)
+    loss = jnp.mean((y - y_pred) ** 2)
+    return loss, buffers
 
-    grads, buffers = jax.grad(loss_fn, has_aux=True)(state.params)
-    # sdg update
-    state = state.apply_gradients(grads=grads, buffers=buffers)
+  grads, buffers = jax.grad(loss_fn, has_aux=True)(state.params)
+  # sdg update
+  state = state.apply_gradients(grads=grads, buffers=buffers)
 
-    return state
+  return state
 
 
 @jax.jit
 def test_step(state: nnx.TrainState, batch):
-    x, y = batch
-    y_pred, _ = state.apply("params", "buffers")(x)
-    loss = jnp.mean((y - y_pred) ** 2)
-    return {"loss": loss}
+  x, y = batch
+  y_pred, _ = state.apply("params", "buffers")(x)
+  loss = jnp.mean((y - y_pred) ** 2)
+  return {"loss": loss}
 
 
 total_steps = 10_000
 for step, batch in enumerate(dataset(32)):
-    state = train_step(state, batch)
+  state = train_step(state, batch)
 
-    if step % 1000 == 0:
-        logs = test_step(state, (X, Y))
-        print(f"step: {step}, loss: {logs['loss']}")
+  if step % 1000 == 0:
+    logs = test_step(state, (X, Y))
+    print(f"step: {step}, loss: {logs['loss']}")
 
-    if step >= total_steps - 1:
-        break
+  if step >= total_steps - 1:
+    break
 
 model = moduledef.merge(state.params, state.buffers)
 print("times called:", model.count)

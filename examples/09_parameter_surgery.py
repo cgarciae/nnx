@@ -7,20 +7,21 @@ import nnx
 
 # lets pretend this function loads a pretrained model from a checkpoint
 def load_backbone():
-    return nnx.Linear(784, 128, ctx=nnx.context(0))
+  return nnx.Linear(784, 128, ctx=nnx.context(0))
 
 
 # create a simple linear classifier using a pretrained backbone
 class Classifier(nnx.Module):
-    def __init__(self, backbone: Callable[[jax.Array], jax.Array], *, ctx: nnx.Context):
-        self.backbone = backbone
-        self.head = nnx.Linear(128, 10, ctx=ctx)
 
-    def __call__(self, x):
-        x = self.backbone(x)
-        x = nnx.relu(x)
-        x = self.head(x)
-        return x
+  def __init__(self, backbone: Callable[[jax.Array], jax.Array], *, ctx: nnx.Context):
+    self.backbone = backbone
+    self.head = nnx.Linear(128, 10, ctx=ctx)
+
+  def __call__(self, x):
+    x = self.backbone(x)
+    x = nnx.relu(x)
+    x = self.head(x)
+    return x
 
 
 backbone = load_backbone()
