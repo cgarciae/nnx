@@ -1,3 +1,6 @@
+**NNX** moved, it is now an experimental module on Flax, check it out at [flax/experimental/nnx](https://github.com/google/flax/tree/main/flax/experimental/nnx).
+
+
 [![codecov](https://codecov.io/gh/cgarciae/nnx/branch/main/graph/badge.svg?token=VqJjL474Z7)](https://codecov.io/gh/cgarciae/nnx)
 
 # NNX
